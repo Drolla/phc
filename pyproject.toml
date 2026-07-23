@@ -1,0 +1,25 @@
+[project]
+name = "phc"
+version = "0.1.0"
+description = "YAML-configured home automation framework"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+    "aiohttp>=3.9",
+    "astral>=3.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools]
+py-modules = ["phc"]
+
+[tool.setuptools.packages.find]
+include = ["core*", "modules*"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

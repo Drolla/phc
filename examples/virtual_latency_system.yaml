@@ -1,0 +1,93 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+  scheduler: DEBUG
+
+# Demonstrates the effect of slow/flaky devices on the scheduler, which
+# runs every due device's fetch() synchronously, one after another in a
+# single tick. Compare "fast_light"'s tick timing against the two
+# virtual_latency devices below -- watch the scheduler DEBUG log to see
+# how a slow or spiking device stretches out the whole tick, even though
+# fast_light itself never got any slower.
+
+devices:
+  - id: fast_light
+    module: virtual
+    name: Fast Light (baseline, no latency)
+    update: 1s
+    endpoints:
+      - key: state
+        writable: true
+        default: "off"
+
+  - id: slow_sensor
+    module: virtual_latency
+    name: Slow Sensor (0.5s read delay, +/-20% natural jitter)
+    update: 2s
+    params:
+      read_latency: 0.5
+      read_jitter: 0.2
+      write_latency: 0.2
+      write_jitter: 0.2
+    endpoints:
+      - key: value
+        writable: true
+        default: 0
+      - key: alert
+        writable: true
+        default: "off"
+
+  - id: flaky_sensor
+    module: virtual_latency
+    name: Flaky Sensor (fast + jittery, but spikes to ~2-4s ~20% of the time)
+    update: 2s
+    params:
+      read_latency: 0.1
+      read_jitter: 0.3
+      read_spike_probability: 0.2
+      read_spike_latency: 3.0
+      read_spike_jitter: 0.3
+      write_latency: 0.1
+      write_jitter: 0.3
+      write_spike_probability: 0.2
+      write_spike_latency: 3.0
+      write_spike_jitter: 0.3
+    endpoints:
+      - key: value
+        writable: true
+        default: 0
+
+tasks:
+  - tag: blink
+    description: "Toggle the baseline light every 4s, unaffected by the other devices' latency"
+    time: +1s
+    repeat: 4s
+    action: { kind: toggle, device: "fast_light.state" }
+
+  - tag: report_slow_sensor
+    description: "Log whenever the slow sensor's value changes"
+    condition: { device: "slow_sensor.value", changed: true }
+    action: { kind: log, device: "slow_sensor.value", message: "slow_sensor.value changed to {state}" }
+
+  - tag: report_flaky_sensor
+    description: "Log whenever the flaky sensor's value changes"
+    condition: { device: "flaky_sensor.value", changed: true }
+    action: { kind: log, device: "flaky_sensor.value", message: "flaky_sensor.value changed to {state}" }
+
+  - tag: raise_alert_on_flaky_change
+    description: >
+      Whenever the flaky sensor's value changes, turn on the alert and
+      spawn a one-shot task (via create_task) to clear it 2s later --
+      demonstrating multiple actions per task and task-creates-task.
+    condition: { device: "flaky_sensor.value", changed: true }
+    actions:
+      - { kind: turn_on, device: "slow_sensor.alert" }
+      - kind: create_task
+        specs:
+          tag: clear_alert
+          time: "+2s"
+          action: { kind: turn_off, device: "slow_sensor.alert" }

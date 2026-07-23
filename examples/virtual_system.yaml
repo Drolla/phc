@@ -1,0 +1,67 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+# Level: DEBUG, INFO, WARNING, ERROR.
+# 'default' applies to any module below that doesn't set its own level
+# (can be overridden from the command line with --log-level). The
+# remaining keys are optional per-module overrides, matching the dotted
+# suffix of a "phc.<name>" logger (e.g. "scheduler", "tasks"); omit a
+# module to fall back to 'default'.
+log_levels:
+  default: INFO
+  scheduler: DEBUG
+  # tasks: INFO
+
+intervals:
+  fast: 3s
+
+devices:
+  - id: living_light
+    module: virtual
+    name: Living Room Light
+    update: fast
+    endpoints:
+      - key: state
+        writable: true
+        default: "off"
+
+  - id: house
+    module: host
+    name: Whole House
+    children:
+      - id: kitchen
+        module: host
+        name: Kitchen
+        children:
+          - id: kitchen_light
+            module: virtual
+            update: 5s
+            endpoints:
+              - key: state
+                writable: true
+                default: "off"
+
+      - id: desk_lamp
+        module: virtual
+        update: fast
+        endpoints:
+          - key: power
+            writable: true
+            default: "off"
+          - key: brightness
+            writable: true
+            default: 0
+
+tasks:
+  - tag: blink
+    description: "Toggle the light every 5s"
+    time: +1s
+    repeat: 10s
+    action: { kind: toggle, device: "living_light.state" }
+
+  - tag: report
+    description: "Log whenever the light changes"
+    condition: { device: "living_light.state", changed: true }
+    action: { kind: log, device: "living_light.state", message: "living_light changed to {state}" }

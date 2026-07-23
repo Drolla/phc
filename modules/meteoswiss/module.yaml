@@ -1,0 +1,66 @@
+description: >
+  Live weather readings from a MeteoSwiss automatic weather station
+  (temperature, humidity, pressure, wind, precipitation). One device per
+  station -- set `station` to the station's abbreviation.
+
+update: "10m"
+
+parameters:
+  - name: data_url
+    override: none
+    scope: module
+    default: https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/VQHA80.csv
+    description: Source of the weather data. Not configurable.
+  - name: station
+    override: required
+    description: >
+      Which weather station to read from, e.g. "BER" for Bern. See the
+      station list at
+      https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
+      for all available codes.
+  - name: cache_time
+    override: allowed
+    scope: module
+    default: "10m"
+    description: >
+      How long a downloaded copy of the shared CSV file may be reused before
+      re-fetching (e.g. "10m", "30s" -- any value parse_duration accepts).
+      All meteoswiss devices share one cached copy per data_url, so this is
+      configured once for the whole module (see the top-level `modules:`
+      section), not per device -- it controls how often that shared file is
+      actually re-downloaded, independent of each device's own `update`
+      polling interval. The default matches how often MeteoSwiss itself
+      refreshes the published file, so caching for up to this long costs no
+      real freshness. Set to "0s" to always re-fetch.
+
+endpoints:
+  - key: temperature
+    readable: true
+    writable: false
+    description: Air temperature, degrees Celsius
+    parameters: { column: tre200s0 }
+  - key: precipitation
+    readable: true
+    writable: false
+    description: 10-minute precipitation, mm
+    parameters: { column: rre150z0 }
+  - key: direction
+    readable: true
+    writable: false
+    description: Wind direction, degrees
+    parameters: { column: dkl010z0 }
+  - key: speed
+    readable: true
+    writable: false
+    description: Wind speed, m/s
+    parameters: { column: fu3010z0 }
+  - key: pressure
+    readable: true
+    writable: false
+    description: QNH pressure, hPa
+    parameters: { column: pp0qnhs0 }
+  - key: humidity
+    readable: true
+    writable: false
+    description: Relative humidity, percent
+    parameters: { column: ure200s0 }

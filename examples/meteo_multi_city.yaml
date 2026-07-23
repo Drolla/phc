@@ -1,0 +1,86 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+
+intervals:
+  weather: 10m
+
+# All meteoswiss devices below poll the same published CSV
+# (data_url/cache_time are `scope: module` in modules/meteoswiss/module.yaml
+# -- one shared value for every station, not per device). Setting cache_time
+# here, once, means the five stations below coalesce into a single shared
+# HTTP fetch per cache window instead of five independent downloads.
+modules:
+  meteoswiss:
+    params:
+      cache_time: 5m
+
+# Station codes below are a sample of MeteoSwiss automatic weather stations
+# (one per city); see the full list at
+# https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
+# and swap in whichever stations you actually want to track.
+devices:
+  - id: meteo-bern
+    module: meteoswiss
+    name: Bern Weather
+    update: weather
+    params:
+      station: BER
+
+  - id: meteo-zurich
+    module: meteoswiss
+    name: Zurich Weather
+    update: weather
+    params:
+      station: KLO
+
+  - id: meteo-geneva
+    module: meteoswiss
+    name: Geneva Weather
+    update: weather
+    params:
+      station: GVE
+
+  - id: meteo-basel
+    module: meteoswiss
+    name: Basel Weather
+    update: weather
+    params:
+      station: BAS
+
+  - id: meteo-lugano
+    module: meteoswiss
+    name: Lugano Weather
+    update: weather
+    params:
+      station: LUG
+
+tasks:
+  - tag: report_bern
+    description: "Log whenever the Bern temperature reading changes"
+    condition: { device: "meteo-bern.temperature", changed: true }
+    action: { kind: log, device: "meteo-bern", message: "meteo-bern changed to {state}" }
+
+  - tag: report_zurich
+    description: "Log whenever the Zurich temperature reading changes"
+    condition: { device: "meteo-zurich.temperature", changed: true }
+    action: { kind: log, device: "meteo-zurich", message: "meteo-zurich changed to {state}" }
+
+  - tag: report_geneva
+    description: "Log whenever the Geneva temperature reading changes"
+    condition: { device: "meteo-geneva.temperature", changed: true }
+    action: { kind: log, device: "meteo-geneva", message: "meteo-geneva changed to {state}" }
+
+  - tag: report_basel
+    description: "Log whenever the Basel temperature reading changes"
+    condition: { device: "meteo-basel.temperature", changed: true }
+    action: { kind: log, device: "meteo-basel", message: "meteo-basel changed to {state}" }
+
+  - tag: report_lugano
+    description: "Log whenever the Lugano temperature reading changes"
+    condition: { device: "meteo-lugano.temperature", changed: true }
+    action: { kind: log, device: "meteo-lugano", message: "meteo-lugano changed to {state}" }

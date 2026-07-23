@@ -1,0 +1,79 @@
+description: >
+  Live current-conditions weather for any location worldwide, from the free
+  Open-Meteo forecast API (https://open-meteo.com, no API key required).
+  Unlike modules/meteoswiss, which only covers the Swiss weather-station
+  network, this works anywhere -- set `latitude`/`longitude` to the location
+  to track. One device per location.
+
+update: "10m"
+
+parameters:
+  - name: base_url
+    override: none
+    scope: module
+    default: https://api.open-meteo.com/v1/forecast
+    description: Source of the forecast data. Not configurable.
+  - name: latitude
+    override: required
+    description: Location latitude in decimal degrees (north positive).
+  - name: longitude
+    override: required
+    description: Location longitude in decimal degrees (east positive).
+  - name: cache_time
+    override: allowed
+    default: "10m"
+    description: >
+      How long a downloaded response for this device's exact
+      latitude/longitude may be reused before re-fetching (e.g. "10m", "30s"
+      -- any value parse_duration accepts). Open-Meteo's current-conditions
+      block itself only changes roughly every 10-15 minutes, so caching for
+      up to this long costs no real freshness. Set to "0s" to always
+      re-fetch. Unlike meteoswiss's cache_time, this is per-device (not
+      scope: module) since each device's request URL already differs by
+      location.
+
+endpoints:
+  - key: temperature
+    readable: true
+    writable: false
+    description: Air temperature, degrees Celsius
+    parameters: { field: temperature_2m }
+  - key: humidity
+    readable: true
+    writable: false
+    description: Relative humidity, percent
+    parameters: { field: relative_humidity_2m }
+  - key: precipitation
+    readable: true
+    writable: false
+    description: Precipitation over the current hour, mm
+    parameters: { field: precipitation }
+  - key: pressure
+    readable: true
+    writable: false
+    description: Mean sea-level pressure, hPa
+    parameters: { field: pressure_msl }
+  - key: wind_speed
+    readable: true
+    writable: false
+    description: Wind speed, m/s
+    parameters: { field: wind_speed_10m }
+  - key: wind_direction
+    readable: true
+    writable: false
+    description: Wind direction, degrees
+    parameters: { field: wind_direction_10m }
+  - key: weather_code
+    readable: true
+    writable: false
+    description: >
+      WMO weather interpretation code (0=clear, 1-3=mainly clear/partly
+      cloudy/overcast, 45/48=fog, 51-67=drizzle, 61-67=rain, 71-77=snow,
+      80-82=rain showers, 85/86=snow showers, 95-99=thunderstorm). See
+      https://open-meteo.com/en/docs for the full table.
+    parameters: { field: weather_code }
+  - key: is_day
+    readable: true
+    writable: false
+    description: 1 if it is currently daytime at the location, 0 if night
+    parameters: { field: is_day }

@@ -1,0 +1,12 @@
+description: >
+  A virtual device with no real hardware behind it, useful for testing and
+  demos. Values you write to it are simply stored and echoed back on the
+  next update, so it behaves like a live device without needing any
+  physical equipment. Define whatever endpoints you need for your own
+  device instance.
+
+update: "5s"
+
+parameters: []
+
+endpoints: []

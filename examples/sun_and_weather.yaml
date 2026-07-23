@@ -1,0 +1,71 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+
+intervals:
+  sun: 1m
+  weather: 10m
+
+# None of the modules below need any real or virtual hardware: sun is pure
+# local computation (latitude/longitude + the system clock), open_meteo and
+# meteoswiss are plain HTTP calls to free public APIs.
+
+# All meteoswiss devices below poll the same published CSV
+# (data_url/cache_time are `scope: module` in modules/meteoswiss/module.yaml
+# -- one shared value for every station, not per device).
+modules:
+  meteoswiss:
+    params:
+      cache_time: 5m
+
+# sun and open_meteo take latitude/longitude directly on the device, so swap
+# in whatever location you actually want to track.
+devices:
+  - id: sun
+    module: sun
+    name: Sun
+    update: sun
+    params:
+      latitude: 47.3769
+      longitude: 8.5417
+      timezone: Europe/Zurich
+
+  - id: zurich-weather
+    module: open_meteo
+    name: Zurich Weather
+    update: weather
+    params:
+      latitude: 47.3769
+      longitude: 8.5417
+
+  - id: meteo-bern
+    module: meteoswiss
+    name: Bern Weather
+    update: weather
+    params:
+      station: BER
+
+tasks:
+  - tag: report_sunset
+    description: "Log whenever today's sunset time is (re-)computed"
+    condition: { device: "sun.sunset", changed: true }
+    action: { kind: log, device: "sun", message: "sunset today is at {state}" }
+
+  - tag: report_daylight
+    description: "Log whenever daylight starts or ends"
+    condition: { device: "sun.is_daylight", changed: true }
+    action: { kind: log, device: "sun", message: "is_daylight changed to {state}" }
+
+  - tag: report_temperature
+    description: "Log whenever the Zurich temperature reading changes"
+    condition: { device: "zurich-weather.temperature", changed: true }
+    action: { kind: log, device: "zurich-weather", message: "zurich-weather temperature changed to {state}" }
+
+  - tag: report_weather
+    description: "Log whenever the Bern temperature reading changes"
+    condition: { device: "meteo-bern.temperature", changed: true }
+    action: { kind: log, device: "meteo-bern", message: "meteo-bern changed to {state}" }

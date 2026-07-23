@@ -1,0 +1,63 @@
+description: >
+  Local solar ephemeris: today's sunrise, sunset, dawn, dusk and solar noon,
+  plus the current solar elevation/azimuth. Computed purely from
+  latitude/longitude and the system clock (via astral) -- no network access
+  and no hardware, real or virtual. One device per location.
+
+update: "1h"
+
+parameters:
+  - name: latitude
+    override: required
+    description: Observer latitude in decimal degrees (north positive).
+  - name: longitude
+    override: required
+    description: Observer longitude in decimal degrees (east positive).
+  - name: elevation
+    override: allowed
+    default: 0.0
+    description: >
+      Observer elevation above sea level, in meters. Shifts sunrise/sunset
+      by a small amount (higher vantage points see the sun rise earlier and
+      set later).
+  - name: timezone
+    override: allowed
+    default: null
+    description: >
+      IANA timezone name (e.g. "Europe/Zurich") that the returned
+      sunrise/sunset/dawn/dusk/solar_noon timestamps are computed against.
+      Defaults to the system's local timezone.
+
+endpoints:
+  - key: sunrise
+    readable: true
+    writable: false
+    description: Today's sunrise, Unix timestamp
+  - key: sunset
+    readable: true
+    writable: false
+    description: Today's sunset, Unix timestamp
+  - key: solar_noon
+    readable: true
+    writable: false
+    description: Today's solar noon (the sun's highest point today), Unix timestamp
+  - key: dawn
+    readable: true
+    writable: false
+    description: Today's civil dawn (sun 6 degrees below the horizon), Unix timestamp
+  - key: dusk
+    readable: true
+    writable: false
+    description: Today's civil dusk (sun 6 degrees below the horizon), Unix timestamp
+  - key: elevation
+    readable: true
+    writable: false
+    description: Current solar elevation angle, degrees above the horizon (negative at night)
+  - key: azimuth
+    readable: true
+    writable: false
+    description: Current solar azimuth angle, degrees clockwise from north
+  - key: is_daylight
+    readable: true
+    writable: false
+    description: True whenever the current solar elevation is above the horizon
