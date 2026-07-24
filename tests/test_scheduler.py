@@ -63,17 +63,19 @@ def test_end_to_end_virtual_system_example():
     scheduler = Scheduler(system.scheduled_devices(), heartbeat=system.heartbeat)
 
     living_light = system.devices["living_light"]
-    assert living_light.get() == "off"
+    assert living_light.get() == 0
+    assert living_light.get_text() == "off"
 
-    living_light.set("on")
+    living_light.set_text("on")
     scheduler.tick(now=0.0)
-    assert living_light.get() == "on"
-    assert living_light.event == "on"
+    assert living_light.get() == 1
+    assert living_light.get_text() == "on"
+    assert living_light.event == 1
 
     # tick again after the device's interval has elapsed: value is steady,
     # event should have cleared
     scheduler.tick(now=living_light.update_interval + 0.1)
-    assert living_light.get() == "on"
+    assert living_light.get() == 1
     assert living_light.event is None
 
 
@@ -86,7 +88,8 @@ def test_end_to_end_nested_desk_lamp():
     scheduler.tick(now=0.0)
 
     assert desk_lamp.get("brightness") == 75
-    assert desk_lamp.get("power") == "off"
+    assert desk_lamp.get("power") == 0
+    assert desk_lamp.get_text("power") == "off"
 
 
 def test_scheduler_runs_blink_task_and_reschedules():
@@ -176,7 +179,7 @@ def test_scheduler_create_task_action_spawns_task_that_later_fires():
     specs = {
         "tag": "clear_alert",
         "time": "+1s",
-        "action": {"kind": "turn_off", "device": "living_light.state"},
+        "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
     trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
@@ -216,7 +219,7 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
     specs = {
         "tag": "clear_alert",
         "time": "+1s",
-        "action": {"kind": "turn_off", "device": "living_light.state"},
+        "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
     trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
@@ -257,7 +260,7 @@ def test_scheduler_newly_created_task_visible_within_same_tick_if_already_due():
     specs = {
         "tag": "clear_alert",
         "condition": {"device": "living_light.state", "changed": False},
-        "action": {"kind": "turn_off", "device": "living_light.state"},
+        "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
     trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])

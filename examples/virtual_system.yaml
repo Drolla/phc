@@ -25,7 +25,9 @@ devices:
     endpoints:
       - key: state
         writable: true
-        default: "off"
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
 
   - id: house
     module: host
@@ -41,7 +43,9 @@ devices:
             endpoints:
               - key: state
                 writable: true
-                default: "off"
+                type: int
+                values: { 0: "off", 1: "on" }
+                default: 0
 
       - id: desk_lamp
         module: virtual
@@ -49,9 +53,13 @@ devices:
         endpoints:
           - key: power
             writable: true
-            default: "off"
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
           - key: brightness
             writable: true
+            type: int
+            unit: "%"
             default: 0
 
 tasks:
@@ -64,4 +72,4 @@ tasks:
   - tag: report
     description: "Log whenever the light changes"
     condition: { device: "living_light.state", changed: true }
-    action: { kind: log, device: "living_light.state", message: "living_light changed to {state}" }
+    action: { kind: log, device: "living_light.state", message: "living_light changed to {text}" }

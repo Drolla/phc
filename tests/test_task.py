@@ -6,7 +6,7 @@ import pytest
 
 from core.endpoint import Endpoint
 from core.task import (
-    Condition, CreateTaskAction, LogAction, Task, ToggleAction, TurnOffAction, TurnOnAction,
+    Condition, CreateTaskAction, LogAction, SetAction, Task, ToggleAction,
     resolve_endpoint_ref,
 )
 from modules.virtual.device import VirtualDevice
@@ -15,6 +15,16 @@ from tests.conftest import fetch_sync
 
 def _light(default="off"):
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)])
+    light.set(default)
+    fetch_sync(light)
+    light.update_state()
+    return light
+
+
+def _typed_light(default=0):
+    light = VirtualDevice("living_light", endpoints=[
+        Endpoint("state", writable=True, value_type="int", values={0: "off", 1: "on"}),
+    ])
     light.set(default)
     fetch_sync(light)
     light.update_state()
@@ -63,22 +73,31 @@ def test_resolve_endpoint_ref_allow_bare_still_splits_dotted_ref():
 
 # ---------- default actions ----------
 
-def test_turn_on_action_sets_on():
+def test_set_action_untyped_passes_value_through():
     light = _light("off")
     devices = {"living_light": light}
-    TurnOnAction(device_id="living_light", endpoint_key="state").perform(devices)
+    SetAction(device_id="living_light", endpoint_key="state", value="on").perform(devices)
     fetch_sync(light)
     light.update_state()
     assert light.get() == "on"
 
 
-def test_turn_off_action_sets_off():
-    light = _light("on")
+def test_set_action_translates_text_via_values_mapping():
+    light = _typed_light(0)
     devices = {"living_light": light}
-    TurnOffAction(device_id="living_light", endpoint_key="state").perform(devices)
+    SetAction(device_id="living_light", endpoint_key="state", value="on").perform(devices)
     fetch_sync(light)
     light.update_state()
-    assert light.get() == "off"
+    assert light.get() == 1
+
+
+def test_set_action_accepts_raw_value_via_values_mapping():
+    light = _typed_light(0)
+    devices = {"living_light": light}
+    SetAction(device_id="living_light", endpoint_key="state", value=1).perform(devices)
+    fetch_sync(light)
+    light.update_state()
+    assert light.get() == 1
 
 
 def test_toggle_action_flips_off_to_on():
@@ -99,6 +118,20 @@ def test_toggle_action_flips_on_to_off():
     assert light.get() == "off"
 
 
+def test_toggle_action_flips_via_values_mapping():
+    light = _typed_light(0)
+    devices = {"living_light": light}
+    ToggleAction(device_id="living_light", endpoint_key="state").perform(devices)
+    fetch_sync(light)
+    light.update_state()
+    assert light.get() == 1
+
+    ToggleAction(device_id="living_light", endpoint_key="state").perform(devices)
+    fetch_sync(light)
+    light.update_state()
+    assert light.get() == 0
+
+
 def test_log_action_formats_state_placeholder(task_log):
     light = _light("on")
     devices = {"living_light": light}
@@ -106,6 +139,15 @@ def test_log_action_formats_state_placeholder(task_log):
                         message="living_light changed to {state}")
     action.perform(devices)
     assert "living_light changed to on" in task_log.text
+
+
+def test_log_action_formats_text_placeholder_via_values_mapping(task_log):
+    light = _typed_light(1)
+    devices = {"living_light": light}
+    action = LogAction(device_id="living_light", endpoint_key="state",
+                        message="living_light changed to {text} (raw {state})")
+    action.perform(devices)
+    assert "living_light changed to on (raw 1)" in task_log.text
 
 
 def test_log_action_with_no_endpoint_reports_every_endpoint(task_log):
@@ -221,8 +263,8 @@ def test_task_with_multiple_actions_runs_all_in_order():
     lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True)])
     devices = {"living_light": light, "desk_lamp": lamp}
     task = Task("both", due_time=0.0, repeat=0.0,
-                actions=[TurnOnAction(device_id="living_light", endpoint_key="state"),
-                         TurnOnAction(device_id="desk_lamp", endpoint_key="power")])
+                actions=[SetAction(device_id="living_light", endpoint_key="state", value="on"),
+                         SetAction(device_id="desk_lamp", endpoint_key="power", value="on")])
 
     assert task.run(0.0, devices) is True
     fetch_sync(light)
@@ -243,7 +285,7 @@ def test_condition_task_with_multiple_actions_all_run_only_when_condition_true(t
     task = Task("both", due_time=float("-inf"), condition=condition,
                 actions=[LogAction(device_id="living_light", endpoint_key="state",
                                     message="changed to {state}"),
-                         TurnOnAction(device_id="desk_lamp", endpoint_key="power")])
+                         SetAction(device_id="desk_lamp", endpoint_key="power", value="on")])
 
     assert task.run(1.0, devices) is False  # no change this cycle
     assert "changed to" not in task_log.text
@@ -270,7 +312,7 @@ def test_create_task_action_appends_new_task_to_list():
     specs = {
         "tag": "clear_alert",
         "time": "+1s",
-        "action": {"kind": "turn_off", "device": "living_light.state"},
+        "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
     action = CreateTaskAction(specs=specs, flat=flat, tasks=tasks)
 
@@ -286,12 +328,12 @@ def test_create_task_action_replaces_existing_same_tag_task():
     light = _light("off")
     flat = {"living_light": light}
     old_task = Task("clear_alert", due_time=1.0, repeat=0.0,
-                     actions=[TurnOffAction(device_id="living_light", endpoint_key="state")])
+                     actions=[SetAction(device_id="living_light", endpoint_key="state", value="off")])
     tasks: list[Task] = [old_task]
     specs = {
         "tag": "clear_alert",
         "time": "+1s",
-        "action": {"kind": "turn_off", "device": "living_light.state"},
+        "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
     action = CreateTaskAction(specs=specs, flat=flat, tasks=tasks)
 

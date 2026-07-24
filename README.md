@@ -18,9 +18,25 @@ state, all on a fixed-heartbeat scheduler.
   startup.
 - **Task** — an automation triggered either by a schedule (`time`/`repeat`)
   or by a device endpoint changing (`condition`), performing one or more
-  **actions** (`turn_on`, `turn_off`, `toggle`, `log`, `create_task`, ...).
+  **actions** (`set`, `toggle`, `log`, `create_task`, ...).
 - **Scheduler** — drives each device's fetch on its own interval and
   evaluates tasks once per heartbeat tick, running device I/O concurrently.
+
+### Endpoint types, units & text
+
+Unless otherwise specified, an endpoint's value is untyped and passes
+through unchanged. An endpoint definition may opt into:
+
+- `type` — `int`, `float`, `bool`, or `str`.
+- `unit` — a display unit, e.g. `"°C"`, appended when formatting a
+  numeric value as text.
+- `values` — a raw value → text label mapping, e.g. `{ 0: "off", 1: "on" }`.
+
+Given these, `Endpoint.to_text()`/`from_text()` (and the matching
+`Device.get_text()`/`set_text()`) are the standard way to format a raw
+value as display text and to parse text (or a raw value/label, e.g. `1` or
+`"on"`) back into the endpoint's raw value — used by the `log` action's
+`{text}` placeholder and the `set` action's `value:` parameter.
 
 See [`examples/`](examples/) for complete system configurations, and the
 `module.yaml` file in each [`modules/`](modules/) subfolder for what

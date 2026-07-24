@@ -22,7 +22,9 @@ devices:
     endpoints:
       - key: state
         writable: true
-        default: "off"
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
 
   - id: slow_sensor
     module: virtual_latency
@@ -39,7 +41,9 @@ devices:
         default: 0
       - key: alert
         writable: true
-        default: "off"
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
 
   - id: flaky_sensor
     module: virtual_latency
@@ -85,9 +89,9 @@ tasks:
       demonstrating multiple actions per task and task-creates-task.
     condition: { device: "flaky_sensor.value", changed: true }
     actions:
-      - { kind: turn_on, device: "slow_sensor.alert" }
+      - { kind: set, device: "slow_sensor.alert", value: "on" }
       - kind: create_task
         specs:
           tag: clear_alert
           time: "+2s"
-          action: { kind: turn_off, device: "slow_sensor.alert" }
+          action: { kind: set, device: "slow_sensor.alert", value: "off" }

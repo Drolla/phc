@@ -211,6 +211,50 @@ class Device:
         if writes:
             self._emit(writes)
 
+    def get_text(self, name: str | None = None):
+        """Like get(), but returns each endpoint's formatted display text
+        (see Endpoint.to_text) instead of its raw value."""
+        if name is not None:
+            kind, target = self._resolve(name)
+            return target.to_text() if kind == "endpoint" else target.get_text()
+        if self.endpoints and len(self.endpoints) == 1 and not self.children:
+            return next(iter(self.endpoints.values())).to_text()
+        result = {n: ep.to_text() for n, ep in self.endpoints.items()}
+        result.update({cid: child.get_text() for cid, child in self.children.items()})
+        return result
+
+    def set_text(self, text, name: str | None = None):
+        """Like set(), but `text` is formatted display text (see
+        Endpoint.from_text) rather than a raw value."""
+        if name is not None:
+            kind, target = self._resolve(name)
+            if kind == "endpoint":
+                if not target.writable:
+                    raise AttributeError(f"{self.qualified_id}: endpoint {name!r} is read-only")
+                self._emit({name: target.from_text(text)})
+            else:
+                target.set_text(text)
+            return
+        if self.endpoints and len(self.endpoints) == 1 and not self.children:
+            ep = next(iter(self.endpoints.values()))
+            if not ep.writable:
+                raise AttributeError(f"{self.qualified_id}: endpoint {ep.key!r} is read-only")
+            self._emit({ep.key: ep.from_text(text)})
+            return
+        if not isinstance(text, dict):
+            raise TypeError(f"{self.qualified_id}: multi-endpoint/child device requires dict text")
+        writes = {}
+        for key, val in text.items():
+            kind, target = self._resolve(key)
+            if kind == "endpoint":
+                if not target.writable:
+                    raise AttributeError(f"{self.qualified_id}: endpoint {key!r} is read-only")
+                writes[key] = target.from_text(val)
+            else:
+                target.set_text(val)
+        if writes:
+            self._emit(writes)
+
     def get_event(self, name: str | None = None):
         """Like get(), but returns each endpoint's change event (see
         Endpoint.get_event) instead of its current value."""

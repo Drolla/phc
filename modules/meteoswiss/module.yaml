@@ -37,30 +37,42 @@ endpoints:
   - key: temperature
     readable: true
     writable: false
+    type: float
+    unit: "°C"
     description: Air temperature, degrees Celsius
     parameters: { column: tre200s0 }
   - key: precipitation
     readable: true
     writable: false
+    type: float
+    unit: mm
     description: 10-minute precipitation, mm
     parameters: { column: rre150z0 }
   - key: direction
     readable: true
     writable: false
+    type: float
+    unit: "°"
     description: Wind direction, degrees
     parameters: { column: dkl010z0 }
   - key: speed
     readable: true
     writable: false
+    type: float
+    unit: m/s
     description: Wind speed, m/s
     parameters: { column: fu3010z0 }
   - key: pressure
     readable: true
     writable: false
+    type: float
+    unit: hPa
     description: QNH pressure, hPa
     parameters: { column: pp0qnhs0 }
   - key: humidity
     readable: true
     writable: false
+    type: float
+    unit: "%"
     description: Relative humidity, percent
     parameters: { column: ure200s0 }
