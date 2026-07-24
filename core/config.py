@@ -2,18 +2,21 @@
 tasks, and scheduler settings), merging each device's params/endpoints
 against its module's declared module.yaml along the way."""
 
+import importlib
 from pathlib import Path
 
 import yaml
 
 from core.device import Device
-from core.endpoint import VALUE_TYPES, Endpoint
+from core.endpoint import LOG_AGGREGATIONS, VALUE_TYPES, Endpoint
 from core.intervals import parse_duration, parse_time
 from core.logging_setup import configure_logging
-from core.registry import discover_modules, get_device_class, get_endpoint_class, get_task_kind_class
+from core.registry import (discover_extensions, discover_modules, get_device_class,
+                            get_endpoint_class, get_task_kind_class)
 from core.task import Task, Condition, resolve_endpoint_ref
 
 _DEVICES_DIR = Path(__file__).resolve().parent.parent / "devices"
+_EXTENSIONS_DIR = Path(__file__).resolve().parent.parent / "extensions"
 
 
 class ConfigError(Exception):
@@ -79,6 +82,102 @@ def _resolve_module_params(module: ModuleDescriptor, modules_config: dict) -> di
         raise ConfigError(f"module {module.name!r}: unrecognized parameter(s) {unknown}")
 
     return resolved
+
+
+class ExtensionDescriptor:
+    """Parsed extension.yaml for one extension package. Structurally like
+    ModuleDescriptor, but every extension instance (e.g. one named logdb
+    entry) is merged independently against the same descriptor -- there is
+    no module/device scope split since extensions aren't devices."""
+
+    def __init__(self, name: str, raw: dict):
+        self.name = name
+        self.description = raw.get("description", "")
+        self.parameters = raw.get("parameters") or []
+
+
+_extension_descriptors: dict[str, ExtensionDescriptor] = {}
+
+
+def _load_extension_descriptor(name: str) -> ExtensionDescriptor:
+    """Return the cached ExtensionDescriptor for `name`, loading and parsing
+    its extension.yaml on first use."""
+    if name in _extension_descriptors:
+        return _extension_descriptors[name]
+    extension_yaml_path = _EXTENSIONS_DIR / name / "extension.yaml"
+    if not extension_yaml_path.exists():
+        raise ConfigError(f"extension {name!r} has no extension.yaml at {extension_yaml_path}")
+    with open(extension_yaml_path, "r") as f:
+        raw = yaml.safe_load(f) or {}
+    descriptor = ExtensionDescriptor(name, raw)
+    _extension_descriptors[name] = descriptor
+    return descriptor
+
+
+def _merge_extension_params(descriptor: ExtensionDescriptor, instance_config: dict,
+                             instance_label: str) -> dict:
+    """Merge one extension instance's params against its extension.yaml's
+    declared parameters, honoring each parameter's `override` rule and
+    `default` -- same validation shape as _merge_params, but there is no
+    module/device scope split to handle. Raises ConfigError on an
+    unrecognized, missing-but-required, or not-overridable parameter,
+    naming `instance_label` (e.g. "logdb.house_log") in the message."""
+    instance_config = dict(instance_config or {})
+    declared = {p["name"]: p for p in descriptor.parameters}
+
+    merged = {}
+    for name, spec in declared.items():
+        override = spec.get("override", "allowed")
+        if name in instance_config:
+            if override == "none":
+                raise ConfigError(
+                    f"extension instance {instance_label!r}: parameter {name!r} is not "
+                    f"overridable (override: none) but instance config sets it")
+            merged[name] = instance_config.pop(name)
+        elif override == "required":
+            raise ConfigError(
+                f"extension instance {instance_label!r}: parameter {name!r} is required "
+                f"but not supplied")
+        else:
+            merged[name] = spec.get("default")
+
+    if instance_config:
+        unknown = ", ".join(repr(k) for k in instance_config)
+        raise ConfigError(f"extension instance {instance_label!r}: unrecognized parameter(s) {unknown}")
+
+    return merged
+
+
+def _load_extensions(raw: dict, flat: dict[str, Device]) -> dict[str, object]:
+    """Build every extensions.<name>.<instance>: entry in the system YAML.
+    raw['extensions'] is {extension_name: {instance_name: params, ...}, ...}
+    -- an extension may have zero, one, or several named instances (e.g.
+    multiple independently-configured/scheduled logdb files). Each
+    instance's params are merged against extensions/<name>/extension.yaml,
+    then handed to that package's configure(params, flat, instance_key)
+    entry point (instance_key = "<extension_name>.<instance_name>", used
+    both as the registry key below and as the sticky-log subscriber id --
+    see core.endpoint.Endpoint.subscribe_log). The returned object is
+    registered under instance_key so a hand-authored task action
+    (kind: log_db, instance: "logdb.house_log") can look it up, and -- if
+    it exposes an on_tick(devices) method -- is auto-collected as a
+    Scheduler tick hook (see load_system()). Absence of extensions: (or of
+    a given extension's key) means nothing of that kind is active --
+    mirrors devices:/tasks: only building what's explicitly declared."""
+    registry: dict[str, object] = {}
+    for ext_name, instances in (raw.get("extensions") or {}).items():
+        if not isinstance(instances, dict):
+            raise ConfigError(f"extensions.{ext_name}: expected a mapping of instance name -> params")
+        descriptor = _load_extension_descriptor(ext_name)
+        module = importlib.import_module(f"extensions.{ext_name}.extension")
+        configure = getattr(module, "configure", None)
+        if configure is None:
+            raise ConfigError(f"extension {ext_name!r} has no configure() entry point")
+        for instance_name, instance_config in instances.items():
+            key = f"{ext_name}.{instance_name}"
+            params = _merge_extension_params(descriptor, instance_config or {}, key)
+            registry[key] = configure(params, flat, key)
+    return registry
 
 
 def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: str,
@@ -156,6 +255,11 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             raise ConfigError(
                 f"device {device_id!r}: endpoint {spec['key']!r} has invalid type "
                 f"{value_type!r}, expected one of {VALUE_TYPES}")
+        log_aggregation = spec.get("log_aggregation", "max")
+        if log_aggregation not in LOG_AGGREGATIONS:
+            raise ConfigError(
+                f"device {device_id!r}: endpoint {spec['key']!r} has invalid log_aggregation "
+                f"{log_aggregation!r}, expected one of {LOG_AGGREGATIONS}")
         cls = get_endpoint_class(spec.get("kind"))
         ep = cls(
             spec["key"],
@@ -166,6 +270,7 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             value_type=value_type,
             unit=spec.get("unit"),
             values=spec.get("values"),
+            log_aggregation=log_aggregation,
         )
         endpoints.append(ep)
         if "default" in spec:
@@ -247,25 +352,33 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str) 
     return Condition(device_id=device_id, endpoint_key=endpoint_key, changed=spec.get("changed", True))
 
 
-def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task]):
+def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task],
+                   extensions: dict[str, object]):
     """Build one `action:`/`actions[]` YAML entry into an Action instance,
-    dispatching on `kind` (via the task-kind registry). `create_task` is
-    handled specially since it needs `flat`/`tasks` rather than a target
-    device/endpoint. Raises ConfigError on a missing/unregistered kind or an
-    action device that doesn't exist."""
+    dispatching on `kind` (via the task-kind registry). An action kind with
+    `requires_device = False` (e.g. create_task, log_db) has no single
+    target device/endpoint -- it's built from `flat`/`tasks`/`extensions`
+    instead, so it can act on the task list itself or look up a named
+    extension instance (see core.config._load_extensions). Raises
+    ConfigError on a missing/unregistered kind, an action device that
+    doesn't exist, or (for a non-device kind) a spec missing one of that
+    kind's own required constructor arguments (e.g. create_task's
+    `specs`)."""
     kind = spec.get("kind")
     if kind is None:
         raise ConfigError(f"task {task_tag!r}: action requires a 'kind'")
+    try:
+        action_cls = get_task_kind_class(kind)
+    except KeyError as exc:
+        raise ConfigError(f"task {task_tag!r}: {exc}") from None
 
-    if kind == "create_task":
+    extra = {k: v for k, v in spec.items() if k not in ("kind", "device")}
+
+    if not getattr(action_cls, "requires_device", True):
         try:
-            action_cls = get_task_kind_class(kind)
-        except KeyError as exc:
-            raise ConfigError(f"task {task_tag!r}: {exc}") from None
-        specs = spec.get("specs")
-        if not isinstance(specs, dict):
-            raise ConfigError(f"task {task_tag!r}: create_task action requires a 'specs' mapping")
-        return action_cls(specs=specs, flat=flat, tasks=tasks)
+            return action_cls(flat=flat, tasks=tasks, extensions=extensions, **extra)
+        except TypeError as exc:
+            raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
 
     # allow_bare=True: an action's device may omit the endpoint (e.g.
     # "meteo-bern" rather than "meteo-bern.temperature") -- the Action
@@ -274,15 +387,11 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     device_id, endpoint_key = resolve_endpoint_ref(spec["device"], allow_bare=True)
     if device_id not in flat:
         raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
-    try:
-        action_cls = get_task_kind_class(kind)
-    except KeyError as exc:
-        raise ConfigError(f"task {task_tag!r}: {exc}") from None
-    extra = {k: v for k, v in spec.items() if k not in ("kind", "device")}
     return action_cls(device_id=device_id, endpoint_key=endpoint_key, **extra)
 
 
-def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task]) -> Task:
+def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
+                 extensions: dict[str, object]) -> Task:
     """Build one `tasks:` YAML entry (or a `create_task` action's nested
     `specs:`) into a Task. Requires exactly one of `condition` or `time` to
     determine how the task fires, and exactly one of `action`/`actions`."""
@@ -309,9 +418,9 @@ def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task]) -> Task
         action_specs = entry["actions"]
         if not isinstance(action_specs, list) or not action_specs:
             raise ConfigError(f"task {tag!r}: 'actions' must be a non-empty list")
-        actions = [_build_action(spec, flat, tag, tasks) for spec in action_specs]
+        actions = [_build_action(spec, flat, tag, tasks, extensions) for spec in action_specs]
     else:
-        actions = [_build_action(entry["action"], flat, tag, tasks)]
+        actions = [_build_action(entry["action"], flat, tag, tasks, extensions)]
 
     return Task(
         tag,
@@ -329,7 +438,7 @@ class System:
 
     def __init__(self, heartbeat: float, roots: list[Device], devices: dict[str, Device],
                  tasks: list[Task] | None = None, max_workers: int | None = None,
-                 fetch_timeout: float | None = None):
+                 fetch_timeout: float | None = None, tick_hooks: list | None = None):
         self.heartbeat = heartbeat
         self.roots = roots
         self.devices = devices
@@ -339,6 +448,11 @@ class System:
         # long a tick waits on any one device before moving on. Both optional.
         self.max_workers = max_workers
         self.fetch_timeout = fetch_timeout
+        # Per-tick callables auto-collected from configured extension
+        # instances that expose an on_tick(devices) method (see
+        # _load_extensions/load_system) -- passed straight to
+        # Scheduler(tick_hooks=...).
+        self.tick_hooks = tick_hooks or []
 
     def scheduled_devices(self) -> dict[str, Device]:
         """Return the subset of `devices` that have an update_interval (i.e.
@@ -349,10 +463,12 @@ class System:
 def load_system(path: str | Path, log_levels_override: dict | None = None) -> System:
     """Load and build a complete System from a system YAML file at `path`.
 
-    Configures logging and discovers device modules as a side effect, then
-    builds the device tree, resolves each device's params/endpoints/interval
-    against its module, and builds tasks. `log_levels_override` (e.g. from
-    CLI flags) is applied on top of the file's own `log_levels:` section.
+    Configures logging and discovers device modules/extensions as a side
+    effect, then builds the device tree, resolves each device's
+    params/endpoints/interval against its module, builds every configured
+    extension instance (see _load_extensions), and builds tasks.
+    `log_levels_override` (e.g. from CLI flags) is applied on top of the
+    file's own `log_levels:` section.
     """
     with open(path, "r") as f:
         raw = yaml.safe_load(f) or {}
@@ -361,6 +477,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     log_levels.update(log_levels_override or {})
     configure_logging(raw.get("log"), log_levels)
     discover_modules()
+    discover_extensions()
 
     intervals_map = raw.get("intervals") or {}
     modules_config = raw.get("modules") or {}
@@ -379,9 +496,12 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         for entry in raw.get("devices", [])
     ]
 
+    extensions_registry = _load_extensions(raw, flat)
+    tick_hooks = [obj.on_tick for obj in extensions_registry.values() if hasattr(obj, "on_tick")]
+
     tasks: list[Task] = []
     for entry in raw.get("tasks", []):
-        tasks.append(_build_task(entry, flat, tasks))
+        tasks.append(_build_task(entry, flat, tasks, extensions_registry))
 
     tags = [t.tag for t in tasks]
     duplicates = {t for t in tags if tags.count(t) > 1}
@@ -389,4 +509,4 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         raise ConfigError(f"duplicate task tag(s): {sorted(duplicates)}")
 
     return System(heartbeat=heartbeat, roots=roots, devices=flat, tasks=tasks,
-                  max_workers=max_workers, fetch_timeout=fetch_timeout)
+                  max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks)

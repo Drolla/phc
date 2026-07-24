@@ -43,7 +43,8 @@ def main(argv=None):
 
     system = load_system(args.config, log_levels_override=log_levels_override)
     scheduler = Scheduler(system.devices, tasks=system.tasks, heartbeat=system.heartbeat,
-                          max_workers=system.max_workers, fetch_timeout=system.fetch_timeout)
+                          max_workers=system.max_workers, fetch_timeout=system.fetch_timeout,
+                          tick_hooks=system.tick_hooks)
 
     logger.info("phc started: %d device(s), %d scheduled, %d task(s), heartbeat=%.3fs",
                 len(system.devices), len(system.scheduled_devices()), len(system.tasks),

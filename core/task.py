@@ -150,17 +150,19 @@ class CreateTaskAction(Action):
 
     requires_device = False
 
-    def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"], **params):
+    def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"],
+                 extensions: dict | None = None, **params):
         super().__init__(device_id="", endpoint_key="", **params)
         self._specs = specs
         self._flat = flat
         self._tasks = tasks
+        self._extensions = extensions if extensions is not None else {}
 
     def perform(self, devices: dict[str, Device]) -> None:
         """Parse `specs` into a Task and (re-)register it in the live task list."""
         from core.config import _build_task  # local import: avoid config<->task import cycle
 
-        new_task = _build_task(self._specs, self._flat, self._tasks)
+        new_task = _build_task(self._specs, self._flat, self._tasks, self._extensions)
         existing = next((t for t in self._tasks if t.tag == new_task.tag), None)
         if existing is not None:
             self._tasks.remove(existing)
