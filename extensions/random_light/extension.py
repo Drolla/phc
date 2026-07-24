@@ -1,11 +1,11 @@
 """random_light extension wiring: parses an extensions.random_light.<instance>'s
 `lights` list against the live device tree, builds a RandomLightController
 (the pure algorithm, see random_light.py), and registers the "random_light"
-task action kind so a hand-authored `tasks:` entry can run its periodic
-randomize pass (or force every light on/off directly) on its own schedule --
-see core.config._load_extensions for how configure() is invoked, and
-core.registry.discover_extensions() for how this module's
-@register_task_kind decorator gets imported at startup."""
+task action kind so a `tasks:` entry can run the periodic randomize pass
+(or force every light on/off) on its own schedule -- see
+core.config._load_extensions for configure()'s call site, and
+core.registry.discover_extensions() for how @register_task_kind here gets
+picked up at startup."""
 
 import re
 import time
@@ -83,17 +83,15 @@ def _resolve_optional_ref(spec, flat: dict[str, Device], instance_key: str, labe
 def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "RandomLightInstance":
     """Extension entry point (see core.config._load_extensions): parse and
     validate every configured light against `flat`, plus optional
-    enable_ref/pause_ref gating and the sun device (only required to exist
-    if some light's *effective* windows -- its own, or the instance-level
-    default it falls back to -- actually reference it).
+    enable_ref/pause_ref gating and the sun device (only required if some
+    light's *effective* windows -- its own, or the instance default it
+    falls back to -- reference it).
 
     `windows`/`min_interval`/`probability_on` are declared, defaulted
-    extension parameters (see extension.yaml), so `_merge_extension_params`
-    guarantees `params[...]` already holds either the instance's own value
-    or extension.yaml's default -- read directly, no `.get()` fallback,
-    matching extensions/logdb's convention. Each light entry may still
-    override any of the three individually; the pre-parsed instance-level
-    values are the fallback -- the extension-default/instance-level/
+    extension parameters (extension.yaml), so `params[...]` already holds
+    the instance's value or extension.yaml's default by the time this
+    runs (read directly, no `.get()`, matching extensions/logdb). Each
+    light may still override any of the three -- the extension/instance/
     per-light cascade."""
     default_label = f"instance {instance_key!r} default"
     default_windows, default_needs_sun = _parse_windows(params["windows"], default_label)
@@ -150,13 +148,11 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "Rand
 class RandomLightInstance:
     """One configured random_light instance: a RandomLightController (the
     pure algorithm) plus the resolved device targets and optional gating
-    refs. apply() is called by RandomLightAction.perform() (see below),
-    which runs in the Scheduler's task pass (pass 2), so writes issued
-    here are automatically collected/batched via core.device's
-    _write_collector, exactly like any other Action -- no special
-    handling needed (contrast with an on_tick tick hook, which runs in
-    pass 4, outside that context; this instance deliberately has no
-    on_tick)."""
+    refs. apply() is called by RandomLightAction.perform() (below), which
+    runs in the Scheduler's task pass (pass 2) -- so writes here are
+    automatically batched via core.device's _write_collector, like any
+    other Action (unlike an on_tick hook, which runs in pass 4, outside
+    that context; this instance has no on_tick)."""
 
     def __init__(self, controller: RandomLightController, targets: dict[str, tuple[str, str]],
                  sun_device_id: str | None, enable_ref: tuple[str, str] | None,
@@ -173,14 +169,13 @@ class RandomLightInstance:
         return devices[device_id].get(endpoint_key)
 
     def apply(self, devices: dict[str, Device], force: int | None = None) -> None:
-        """force=None: run the gated periodic randomize pass -- a no-op
-        (no lights touched) if pause_ref currently reads 1, or enable_ref
-        is set and doesn't currently read 1. force=0/1: bypass
-        pause_ref/enable_ref/windows entirely, forcing every light to that
-        value -- for the surrounding system's own explicit on/off calls
-        (arm, disarm, alarm) to use directly. Reads current light states
-        and sunrise/sunset fresh every call (never cached); writes only
-        the lights whose decided target differs from their current state."""
+        """force=None: run the gated periodic randomize pass -- a no-op if
+        pause_ref reads 1, or enable_ref is set and doesn't read 1.
+        force=0/1: bypass pause_ref/enable_ref/windows entirely, forcing
+        every light to that value -- for a surrounding system's own on/off
+        calls (arm, disarm, alarm). Reads current states and sunrise/sunset
+        fresh each call (never cached); writes only lights whose target
+        differs from their current state."""
         if force is None:
             if self._pause_ref is not None and self._read(devices, self._pause_ref) == 1:
                 return

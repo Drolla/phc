@@ -1,19 +1,17 @@
 description: >
   Random light control: an extensions.random_light.<instance> entry
   randomizes a set of "light" devices on/off within configured time
-  windows. Each light needs only `device`; `windows`/`min_interval`/
-  `probability_on` are optional per light and fall back to this instance's
-  own `windows`/`min_interval`/`probability_on` (below) when omitted,
-  which fall back to this file's defaults -- a 3-tier cascade: extension
-  default -> instance -> per-light. A `kind: random_light` task's periodic
-  firing (no `force:`) randomizes every light currently inside its window
-  -- forcing lights outside their window off -- gated by optional
-  enable_ref/pause_ref; if no light ends up on, one `default`-flagged
-  light is chosen at random and forced on (still subject to its own
-  window). A `kind: random_light, force: 0`/`force: 1` action bypasses
-  everything to force every configured light to that value immediately --
-  for a surrounding system (e.g. surveillance/alarm) to call directly,
-  mirroring a previous Tcl system's thc::RandomLight::Control.
+  windows, to make an empty house look occupied. Each light needs only
+  `device`; `windows`/`min_interval`/`probability_on` fall back to this
+  instance's own values (below) when omitted, which fall back to this
+  file's defaults -- extension default -> instance -> per-light. A
+  `kind: random_light` task's periodic firing (no `force:`) randomizes
+  every light currently inside its window, forcing lights outside it off,
+  gated by optional enable_ref/pause_ref; if no light ends up on, one
+  `default`-flagged light is switched on instead (still subject to its own
+  window). A `kind: random_light, force: 0`/`force: 1` action bypasses all
+  of that, forcing every configured light to that value immediately -- for
+  a surrounding system (e.g. surveillance/alarm) to call directly.
 
 parameters:
   - name: lights

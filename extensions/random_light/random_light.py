@@ -1,5 +1,4 @@
-"""Random light control: the pure, framework-agnostic algorithm (port of a
-previous Tcl-based home automation system's thc_RandomLight module).
+"""Random light control: the pure, framework-agnostic decision algorithm.
 Decoupled from core.device/core.task -- callers pass plain
 {light_id: 0|1|None} state dicts and sunrise/sunset timestamps, and get
 back a plain {light_id: 0|1} target dict. See extensions/random_light/
@@ -76,8 +75,7 @@ class Light:
 
 class RandomLightController:
     """Owns every configured light's static Light config plus the mutable
-    per-light "next switch time" bookkeeping (mirrors the previous Tcl
-    system's NextSwitchTime array) for one extension instance."""
+    per-light "next switch time" bookkeeping, for one extension instance."""
 
     def __init__(self, lights: dict[str, Light], random_func: Callable[[], float] = random.random):
         self._lights = lights
@@ -94,7 +92,8 @@ class RandomLightController:
         decide_all()'s own top-level `force`, which bypasses windows
         entirely. `current_state=None` (never observed) is treated as
         "off" for branch selection. A forced call never touches
-        next_switch_time, matching the Tcl original's Force bypass."""
+        next_switch_time -- the schedule it left behind still applies
+        once the light is no longer forced."""
         light = self._lights[light_id]
         if not light.in_window(now, sunrise, sunset):
             self._next_switch_time.pop(light_id, None)
