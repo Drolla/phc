@@ -8,21 +8,26 @@ safe for multi-process use.
 CSV format (see _reconcile_header/_replay for the full algorithm):
 
     phc-logdb,version=1
-    time,house.desk_lamp/power,house.desk_lamp/brightness,living_light/state<padding...>
-    F,1721830000.0,1.0,80.0,0.0
-    D,1721830030.0,,,1.0
-    D,1721830060.0,0.0,nan,
-    F,1721833000.0,0.0,nan,1.0
+    type,time,house.desk_lamp/power,house.desk_lamp/brightness,living_light/state<padding...>
+    F,1721830000,1,80,0
+    D,1721830030,,,1
+    D,1721830060,0,nan,
+    F,1721833000,0,nan,1
 
 Line 1 is a short fixed info line. Line 2 is the label header, padded with
 trailing spaces to a reserved width so it can be rewritten in place if new
 labels are added later (see _reconcile_header) -- labels only ever grow,
-never shrink. Each data row is explicitly marked full ("F", every cell
-populated) or delta ("D", a blank cell means "unchanged since the previous
-row", "nan" marks an explicit transition to no-data). Marking rows
-explicitly (rather than inferring "full" from a row-count parity) is
-required because header growth can sacrifice leading rows (see below),
-which would otherwise desync any inferred parity.
+never shrink. Its first two columns, "type" and "time", are fixed and not
+part of the label set. Each data row is explicitly marked full ("F",
+every cell populated) or delta ("D", a blank cell means "unchanged since
+the previous row", "nan" marks an explicit transition to no-data), and
+its time column is a whole-second Unix timestamp (sub-second precision is
+not logged). A value cell with no fractional part is written without a
+decimal point (e.g. "80" not "80.0") to save space -- float(cell) parses
+either form identically on reload, so this is a pure formatting choice.
+Marking rows explicitly (rather than inferring "full" from a row-count
+parity) is required because header growth can sacrifice leading rows (see
+below), which would otherwise desync any inferred parity.
 """
 
 import array
@@ -100,11 +105,14 @@ class LogDb:
     def log(self, timestamp: float, values: dict[str, float]) -> None:
         """Append one sample row. `values` maps a subset (or all) of
         self.labels to a numeric reading; any configured label not present
-        this call is stored as NaN ("no data this sample"). Trims per
-        max_records/max_age (with slack), then writes exactly one row to
-        the CSV, flushed immediately -- at realistic sample intervals
-        (seconds to minutes, not a hot loop) the extra syscall per row is
-        negligible next to the crash-safety it buys."""
+        this call is stored as NaN ("no data this sample"). `timestamp` is
+        truncated to whole seconds -- sub-second precision isn't useful at
+        logdb's sample-interval scale and would otherwise bloat every row.
+        Trims per max_records/max_age (with slack), then writes exactly one
+        row to the CSV, flushed immediately -- at realistic sample
+        intervals (seconds to minutes, not a hot loop) the extra syscall
+        per row is negligible next to the crash-safety it buys."""
+        timestamp = int(timestamp)
         unknown = set(values) - set(self._columns)
         if unknown:
             logger.warning("logdb %s: ignoring unknown label(s) %s", self.csv_path, sorted(unknown))
@@ -141,9 +149,9 @@ class LogDb:
             for col in self._columns.values():
                 del col[:cutoff]
 
-    def _write_row(self, timestamp: float) -> None:
+    def _write_row(self, timestamp: int) -> None:
         full = self._rows_since_full == 0
-        cells = ["F" if full else "D", repr(timestamp)]
+        cells = ["F" if full else "D", str(timestamp)]
         for label in self.labels:
             value = self._columns[label][-1]
             if full:
@@ -160,7 +168,11 @@ class LogDb:
 
     @staticmethod
     def _fmt(value: float) -> str:
-        return "nan" if math.isnan(value) else repr(value)
+        if math.isnan(value):
+            return "nan"
+        if value == int(value):
+            return str(int(value))
+        return repr(value)
 
     # ---------- query API ----------
 
@@ -208,7 +220,7 @@ class LogDb:
 
     def _write_fresh_header(self, labels: list[str]) -> None:
         info = f"{_INFO_LINE_PREFIX}{_VERSION}\n".encode("utf-8")
-        content = "time," + ",".join(labels)
+        content = "type,time," + ",".join(labels)
         width = self._desired_header_width(len(content.encode("utf-8")) + 1)
         with open(self.csv_path, "wb") as f:
             f.write(info)
@@ -262,7 +274,7 @@ class LogDb:
 
         header_start = len(info_line)
         header_text = header_line.decode("utf-8").rstrip("\n").rstrip(" ")
-        persisted_labels = header_text.split(",")[1:]
+        persisted_labels = header_text.split(",")[2:]
 
         new_labels = [l for l in configured_labels if l not in persisted_labels]
         combined_labels = persisted_labels + new_labels
@@ -271,7 +283,7 @@ class LogDb:
             self._data_start = data_start
             return combined_labels
 
-        new_content = "time," + ",".join(combined_labels)
+        new_content = "type,time," + ",".join(combined_labels)
         needed = len(new_content.encode("utf-8")) + 1
         old_header_width = len(header_line)
 

@@ -75,14 +75,14 @@ devices:
 extensions:
   logdb:
     house_log:
-      allow: ["house.*/*", "living_light/state"]
-      csv_path: "data/house_log.csv"
+      selectors: ["house.*/*", "living_light/state"]
+      csv_path: "logs/house_log.csv"
       max_records: 50000
       full_vector_interval: 50
 
     living_room_log:
-      allow: ["living_light/*"]
-      csv_path: "data/living_room_log.csv"
+      selectors: ["living_light/*"]
+      csv_path: "logs/living_room_log.csv"
       max_records: 5000
 
 tasks:

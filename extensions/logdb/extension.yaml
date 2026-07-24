@@ -7,10 +7,10 @@ description: >
   Endpoint.log_aggregation), so brief events between samples aren't lost.
 
 parameters:
-  - name: allow
+  - name: selectors
     override: required
     description: >
-      List of "<device-glob>/<endpoint-glob>" allow-list patterns (glob
+      List of "<device-glob>/<endpoint-glob>" selector patterns (glob
       wildcards, e.g. "house.desk_lamp/*", "*/*"), or bare "*" for
       everything. Device globs match a device's qualified id (dot-joined,
       e.g. "house.desk_lamp"); "*" in a device glob matches across "."

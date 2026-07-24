@@ -49,7 +49,7 @@ def test_first_row_is_always_full(tmp_path):
     db.log(1.0, {"a": 1.0, "b": 2.0})
     db.close()
     lines = path.read_text().splitlines()
-    assert lines[2] == "F,1.0,1.0,2.0"
+    assert lines[2] == "F,1,1,2"
 
 
 def test_unchanged_value_is_blank_in_delta_row(tmp_path):
@@ -59,7 +59,7 @@ def test_unchanged_value_is_blank_in_delta_row(tmp_path):
     db.log(2.0, {"a": 1.0, "b": 3.0})
     db.close()
     lines = path.read_text().splitlines()
-    assert lines[3] == "D,2.0,,3.0"
+    assert lines[3] == "D,2,,3"
 
 
 def test_missing_value_written_as_nan_transition(tmp_path):
@@ -69,7 +69,7 @@ def test_missing_value_written_as_nan_transition(tmp_path):
     db.log(2.0, {"a": 1.0})  # b missing this sample
     db.close()
     lines = path.read_text().splitlines()
-    assert lines[3] == "D,2.0,,nan"
+    assert lines[3] == "D,2,,nan"
 
 
 def test_still_missing_value_stays_blank(tmp_path):
@@ -79,8 +79,8 @@ def test_still_missing_value_stays_blank(tmp_path):
     db.log(2.0, {"a": 1.0})
     db.close()
     lines = path.read_text().splitlines()
-    assert lines[2] == "F,1.0,1.0,nan"
-    assert lines[3] == "D,2.0,,"
+    assert lines[2] == "F,1,1,nan"
+    assert lines[3] == "D,2,,"
 
 
 def test_full_vector_row_recurs_every_interval(tmp_path):

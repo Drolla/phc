@@ -1,51 +1,20 @@
 """logdb extension wiring: resolves an extensions.logdb.<instance>'s
-`allow` allow-list against the live device tree, subscribes every matched
+`selectors` list against the live device tree, subscribes every matched
 endpoint for sticky log tracking, builds a LogDb store, and registers the
 "log_db" task action kind so a hand-authored `tasks:` entry can sample it
 on its own schedule -- see core.config._load_extensions for how
 configure() is invoked, and core.registry.discover_extensions() for how
 this module's @register_task_kind decorator gets imported at startup."""
 
-import fnmatch
 import time
 
 from core.config import ConfigError
 from core.device import Device
 from core.intervals import parse_duration
 from core.registry import register_task_kind
+from core.selectors import resolve_selectors
 from core.task import Action
 from extensions.logdb.logdb import LogDb
-
-
-def _resolve_allow_list(patterns: list[str], flat: dict[str, Device]) -> list[tuple[str, str]]:
-    """Expand allow-list patterns into a sorted, deduplicated list of
-    (qualified_id, endpoint_key) pairs, matched against every readable
-    endpoint of every device in `flat` (the full flat tree, not just
-    roots). "*" alone is shorthand for "*/*" (device-glob/endpoint-glob);
-    any other pattern must contain exactly one "/". fnmatch's "*" is not
-    "."-aware, so e.g. "house.*/*" matches every descendant under house at
-    any nesting depth, not just direct children -- intentional."""
-    device_endpoint_globs = []
-    for pattern in patterns:
-        if pattern == "*":
-            device_endpoint_globs.append(("*", "*"))
-            continue
-        if pattern.count("/") != 1:
-            raise ConfigError(
-                f"extension logdb: invalid allow pattern {pattern!r}, expected "
-                f"'<device-glob>/<endpoint-glob>' or bare '*'")
-        device_glob, _, endpoint_glob = pattern.partition("/")
-        device_endpoint_globs.append((device_glob, endpoint_glob))
-
-    pairs = set()
-    for qualified_id, device in flat.items():
-        for endpoint_key, endpoint in device.endpoints.items():
-            if not endpoint.readable:
-                continue
-            if any(fnmatch.fnmatchcase(qualified_id, dg) and fnmatch.fnmatchcase(endpoint_key, eg)
-                   for dg, eg in device_endpoint_globs):
-                pairs.add((qualified_id, endpoint_key))
-    return sorted(pairs)
 
 
 class LogDbInstance:
@@ -97,10 +66,10 @@ class LogDbInstance:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str) -> LogDbInstance:
     """Extension entry point (see core.config._load_extensions): resolve the
-    allow-list once against the static device tree, subscribe every
+    selectors once against the static device tree, subscribe every
     resolved endpoint for sticky log tracking under `instance_key`, and
     open/restore the CSV-backed store."""
-    pairs = _resolve_allow_list(params["allow"], flat)
+    pairs = resolve_selectors(params["selectors"], flat)
     for qualified_id, endpoint_key in pairs:
         flat[qualified_id].endpoint(endpoint_key).subscribe_log(instance_key)
     labels = [f"{qid}/{key}" for qid, key in pairs]

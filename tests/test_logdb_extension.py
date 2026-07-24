@@ -1,6 +1,7 @@
-"""Tests for extensions.logdb.extension: allow-list resolution, sticky-value
-subscription/read/invalidate wiring, configure(), and LogDbAction, plus an
-end-to-end test through core.config.load_system()."""
+"""Tests for extensions.logdb.extension: sticky-value subscription/read/
+invalidate wiring, configure(), and LogDbAction, plus an end-to-end test
+through core.config.load_system(). Selector pattern resolution itself is
+tested in tests/test_selectors.py (core.selectors.resolve_selectors)."""
 
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from core.endpoint import Endpoint
 from core.registry import discover_extensions
 from core.scheduler import Scheduler
 from devices.virtual.device import VirtualDevice
-from extensions.logdb.extension import LogDbAction, _resolve_allow_list, configure
+from extensions.logdb.extension import LogDbAction, configure
 from tests.conftest import fetch_sync
 
 
@@ -32,61 +33,12 @@ def _house(**endpoint_kwargs):
     return flat
 
 
-# ---------- _resolve_allow_list ----------
-
-def test_resolve_allow_list_specific_device_wildcard_endpoint():
-    flat = _house()
-    pairs = _resolve_allow_list(["house.desk_lamp/*"], flat)
-    assert pairs == [("house.desk_lamp", "brightness"), ("house.desk_lamp", "power")]
-
-
-def test_resolve_allow_list_wildcard_wildcard_matches_everything():
-    flat = _house()
-    pairs = _resolve_allow_list(["*/*"], flat)
-    assert ("house.desk_lamp", "power") in pairs
-    assert ("house.desk_lamp", "brightness") in pairs
-    assert ("living_light", "state") in pairs
-
-
-def test_resolve_allow_list_bare_star_same_as_wildcard_wildcard():
-    flat = _house()
-    assert _resolve_allow_list(["*"], flat) == _resolve_allow_list(["*/*"], flat)
-
-
-def test_resolve_allow_list_device_glob_crosses_dot_boundary():
-    flat = _house()
-    pairs = _resolve_allow_list(["house.*/power"], flat)
-    assert pairs == [("house.desk_lamp", "power")]
-
-
-def test_resolve_allow_list_non_matching_pattern_yields_empty():
-    flat = _house()
-    assert _resolve_allow_list(["nonexistent/*"], flat) == []
-
-
-def test_resolve_allow_list_excludes_non_readable_endpoints():
-    flat = _house(readable=False)
-    pairs = _resolve_allow_list(["house.desk_lamp/*"], flat)
-    assert ("house.desk_lamp", "power") not in pairs
-    assert ("house.desk_lamp", "brightness") in pairs
-
-
-def test_resolve_allow_list_invalid_pattern_no_slash_raises():
-    with pytest.raises(ConfigError):
-        _resolve_allow_list(["bogus"], _house())
-
-
-def test_resolve_allow_list_invalid_pattern_multiple_slashes_raises():
-    with pytest.raises(ConfigError):
-        _resolve_allow_list(["a/b/c"], _house())
-
-
 # ---------- configure() ----------
 
 def test_configure_subscribes_resolved_endpoints_and_builds_store(tmp_path):
     flat = _house()
     params = {
-        "allow": ["house.desk_lamp/*"],
+        "selectors": ["house.desk_lamp/*"],
         "csv_path": str(tmp_path / "log.csv"),
         "full_vector_interval": 100,
         "max_records": None,
@@ -109,7 +61,7 @@ def test_configure_subscribes_resolved_endpoints_and_builds_store(tmp_path):
 def test_on_tick_advances_sticky_value_per_log_aggregation(tmp_path):
     flat = _house()
     params = {
-        "allow": ["house.desk_lamp/power"],
+        "selectors": ["house.desk_lamp/power"],
         "csv_path": str(tmp_path / "log.csv"),
         "full_vector_interval": 100,
         "max_records": None,
@@ -133,7 +85,7 @@ def test_on_tick_advances_sticky_value_per_log_aggregation(tmp_path):
 def test_sample_reads_sticky_value_and_invalidates(tmp_path):
     flat = _house()
     params = {
-        "allow": ["house.desk_lamp/power"],
+        "selectors": ["house.desk_lamp/power"],
         "csv_path": str(tmp_path / "log.csv"),
         "full_vector_interval": 100,
         "max_records": None,
@@ -159,7 +111,7 @@ def test_sample_reads_sticky_value_and_invalidates(tmp_path):
 def test_sample_reports_no_data_when_sticky_value_still_none(tmp_path):
     flat = _house()
     params = {
-        "allow": ["house.desk_lamp/power"],
+        "selectors": ["house.desk_lamp/power"],
         "csv_path": str(tmp_path / "log.csv"),
         "full_vector_interval": 100,
         "max_records": None,
@@ -180,7 +132,7 @@ def test_sample_converts_bool_to_zero_one(tmp_path):
         Endpoint("state", writable=True, value_type="bool"),
     ])}
     params = {
-        "allow": ["living_light/state"],
+        "selectors": ["living_light/state"],
         "csv_path": str(tmp_path / "log.csv"),
         "full_vector_interval": 100,
         "max_records": None,
@@ -203,11 +155,11 @@ def test_two_instances_sampling_same_endpoint_track_independent_sticky_values(tm
     flat = _house()
     lamp = flat["house.desk_lamp"]
     fast_params = {
-        "allow": ["house.desk_lamp/power"], "csv_path": str(tmp_path / "fast.csv"),
+        "selectors": ["house.desk_lamp/power"], "csv_path": str(tmp_path / "fast.csv"),
         "full_vector_interval": 100, "max_records": None, "max_age": None, "header_reserve_bytes": None,
     }
     slow_params = {
-        "allow": ["house.desk_lamp/power"], "csv_path": str(tmp_path / "slow.csv"),
+        "selectors": ["house.desk_lamp/power"], "csv_path": str(tmp_path / "slow.csv"),
         "full_vector_interval": 100, "max_records": None, "max_age": None, "header_reserve_bytes": None,
     }
     fast = configure(fast_params, flat, "logdb.fast")
@@ -236,7 +188,7 @@ def test_two_instances_sampling_same_endpoint_track_independent_sticky_values(tm
 def test_log_db_action_delegates_to_instance_sample(tmp_path):
     flat = _house()
     params = {
-        "allow": ["house.desk_lamp/power"],
+        "selectors": ["house.desk_lamp/power"],
         "csv_path": str(tmp_path / "log.csv"),
         "full_vector_interval": 100,
         "max_records": None,
@@ -288,7 +240,7 @@ devices:
 extensions:
   logdb:
     house_log:
-      allow: ["alarm/state"]
+      selectors: ["alarm/state"]
       csv_path: "{csv_path.as_posix()}"
       max_records: 1000
 
@@ -321,7 +273,7 @@ tasks:
 
     scheduler.tick(now=31.0)    # log_house task fires (due at +1s, repeat 30s): samples sticky max
 
-    rows = [r for r in csv_path.read_text().splitlines() if r and not r.startswith(("phc-logdb", "time,"))]
+    rows = [r for r in csv_path.read_text().splitlines() if r and not r.startswith(("phc-logdb", "type,"))]
     assert len(rows) == 1
     logged_row = rows[0]
-    assert logged_row.split(",")[-1] == "1.0"  # sticky max captured the pulse, not the reverted value
+    assert logged_row.split(",")[-1] == "1"  # sticky max captured the pulse, not the reverted value

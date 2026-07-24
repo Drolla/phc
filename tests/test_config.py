@@ -797,7 +797,7 @@ devices:
 extensions:
   logdb:
     house_log:
-      allow: ["alarm/state"]
+      selectors: ["alarm/state"]
       csv_path: "{(tmp_path / 'log.csv').as_posix()}"
 tasks:
   - tag: log_house
