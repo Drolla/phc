@@ -1,0 +1,143 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+
+# Mirrors a previous Tcl-based home automation system's surveillance job
+# set: arming/disarming toggles a control device (in real use, driven by a
+# tag reader or a UI switch -- here, toggle surveillance.armed directly to
+# exercise it); while armed, motion raises the alarm (at most once every 5
+# minutes) and schedules timed follow-ups; disarming clears the siren/lights
+# and cancels any pending follow-ups. See condition.expr/refs, kind: script,
+# min_interval, and kind: kill_task.
+devices:
+  - id: surveillance
+    module: virtual
+    name: Surveillance control
+    update: 2s
+    endpoints:
+      # No `default:` here (unlike the other endpoints below): a seeded
+      # default commits an initial change event at config-load time, which
+      # would still be visible -- and spuriously fire this condition -- on
+      # the Scheduler's very first tick (task pass runs before that tick's
+      # own commit clears it). armed/motion are watched by a `changed`
+      # condition, so they start truly unset instead.
+      - key: armed
+        writable: true
+        type: int
+        values: { 0: "disarmed", 1: "armed" }
+
+  - id: hallway_motion
+    module: virtual
+    name: Hallway motion sensor
+    update: 2s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "clear", 1: "detected" }
+
+  - id: siren
+    module: virtual
+    name: Siren
+    update: 2s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: hallway_light
+    module: virtual
+    name: Hallway light
+    update: 2s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: alarm
+    module: virtual
+    name: Alarm active flag
+    update: 2s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "clear", 1: "active" }
+        default: 0
+
+tasks:
+  - tag: surveillance_enable
+    description: "Arming resets the alarm flag"
+    condition:
+      refs: { armed: "surveillance.armed" }
+      expr: "armed.changed and armed.state == 1"
+    action:
+      kind: script
+      code: |
+        log('surveillance enabled')
+        set_state('alarm.state', 0)
+
+  - tag: surveillance_disable
+    description: "Disarming clears the siren/lights and cancels pending follow-ups"
+    condition:
+      # No refs: here (unlike surveillance_enable, above) -- state()/
+      # changed() take the "device.endpoint" ref inline, as an alternative
+      # to binding it to a short name first.
+      expr: "changed('surveillance.armed') and state('surveillance.armed') == 0"
+    action:
+      kind: script
+      code: |
+        log('surveillance disabled')
+        set_state('siren.state', 0)
+        set_state('hallway_light.state', 0)
+        set_state('alarm.state', 0)
+        kill_task('surv_*')
+
+  - tag: surveillance_random_light
+    description: "While armed and not alarmed, flicker the hallway light at random"
+    time: +5s
+    repeat: 20s
+    action:
+      kind: script
+      code: |
+        if state('surveillance.armed') == 1 and state('alarm.state') != 1:
+            set_state('hallway_light.state', 1 - state('hallway_light.state'))
+
+  - tag: surveillance_intrusion
+    description: "Motion while armed raises the alarm, at most once per 5 minutes"
+    condition:
+      refs: { armed: "surveillance.armed", motion: "hallway_motion.state" }
+      expr: "armed.state == 1 and motion.changed and motion.state == 1"
+    min_interval: 5m
+    action:
+      kind: script
+      code: |
+        log('intrusion detected')
+        set_state('alarm.state', 1)
+        set_state('siren.state', 1)
+        create_task({
+            'tag': 'surv_alert_log',
+            'time': '+2s',
+            'action': { 'kind': 'log', 'device': 'alarm.state', 'message': 'alert: intrusion detected' },
+        })
+        create_task({
+            'tag': 'surv_siren_off',
+            'time': '+3m',
+            'action': { 'kind': 'set', 'device': 'siren.state', 'value': 0 },
+        })
+        create_task({
+            'tag': 'surv_light_off',
+            'time': '+45m',
+            'actions': [
+                { 'kind': 'set', 'device': 'hallway_light.state', 'value': 0 },
+                { 'kind': 'set', 'device': 'alarm.state', 'value': 0 },
+            ],
+        })
