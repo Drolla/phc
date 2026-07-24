@@ -21,12 +21,13 @@ _SUN_BOUND_RE = re.compile(r"^(sunrise|sunset)([+-].+)?$")
 _FIXED_BOUND_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
-def _parse_window_bound(spec: str, light_ref: str) -> WindowBound:
+def _parse_window_bound(spec: str, label: str) -> WindowBound:
     """Parse one window "start"/"end" value: "HH:MM" (fixed local time) or
     "sunrise"/"sunset" optionally offset by a duration string (e.g.
     "sunset+12m", "sunrise-18m" -- core.intervals.parse_duration doesn't
     accept a leading sign, so the sign is split off here before parsing
-    the magnitude)."""
+    the magnitude). `label` (e.g. "light 'a.b'" or "instance 'x.y'
+    default") only flavors the error message."""
     sun_match = _SUN_BOUND_RE.match(spec)
     if sun_match:
         anchor, offset_spec = sun_match.groups()
@@ -40,8 +41,32 @@ def _parse_window_bound(spec: str, light_ref: str) -> WindowBound:
         hour, minute = (int(g) for g in fixed_match.groups())
         return WindowBound.fixed(hour, minute)
     raise ConfigError(
-        f"random_light: light {light_ref!r}: invalid window bound {spec!r}, expected "
+        f"random_light: {label}: invalid window bound {spec!r}, expected "
         f'"HH:MM" or "sunrise"/"sunset" optionally offset (e.g. "sunset+12m")')
+
+
+def _parse_windows(window_specs, label: str) -> tuple[list[tuple[WindowBound, WindowBound]], bool]:
+    """Parse a `windows:` list (either a light's own, or the instance-level
+    default) into resolved (start, end) WindowBound pairs, plus whether any
+    bound in it is sun-anchored. `label` (e.g. "light 'a.b'" or "instance
+    'x.y' default") only flavors error messages."""
+    if not isinstance(window_specs, list) or not window_specs:
+        raise ConfigError(f"random_light: {label}: 'windows' must be a non-empty list")
+    windows = []
+    needs_sun = False
+    for window_spec in window_specs:
+        start = _parse_window_bound(str(window_spec["start"]), label)
+        end = _parse_window_bound(str(window_spec["end"]), label)
+        windows.append((start, end))
+        needs_sun = needs_sun or start.kind == "sun" or end.kind == "sun"
+    return windows, needs_sun
+
+
+def _parse_probability(value, label: str) -> float:
+    probability_on = float(value)
+    if not 0.0 <= probability_on <= 1.0:
+        raise ConfigError(f"random_light: {label}: probability_on must be between 0 and 1")
+    return probability_on
 
 
 def _resolve_optional_ref(spec, flat: dict[str, Device], instance_key: str, label: str):
@@ -59,8 +84,22 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "Rand
     """Extension entry point (see core.config._load_extensions): parse and
     validate every configured light against `flat`, plus optional
     enable_ref/pause_ref gating and the sun device (only required to exist
-    if some light's window actually references it -- see
-    _parse_window_bound)."""
+    if some light's *effective* windows -- its own, or the instance-level
+    default it falls back to -- actually reference it).
+
+    `windows`/`min_interval`/`probability_on` are declared, defaulted
+    extension parameters (see extension.yaml), so `_merge_extension_params`
+    guarantees `params[...]` already holds either the instance's own value
+    or extension.yaml's default -- read directly, no `.get()` fallback,
+    matching extensions/logdb's convention. Each light entry may still
+    override any of the three individually; the pre-parsed instance-level
+    values are the fallback -- the extension-default/instance-level/
+    per-light cascade."""
+    default_label = f"instance {instance_key!r} default"
+    default_windows, default_needs_sun = _parse_windows(params["windows"], default_label)
+    default_min_interval = parse_duration(params["min_interval"])
+    default_probability_on = _parse_probability(params["probability_on"], default_label)
+
     lights_spec = params.get("lights")
     if not isinstance(lights_spec, list) or not lights_spec:
         raise ConfigError(f"random_light instance {instance_key!r}: 'lights' must be a non-empty list")
@@ -82,23 +121,15 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "Rand
         if not endpoint.writable:
             raise ConfigError(f"random_light instance {instance_key!r}: light endpoint {ref!r} is not writable")
 
-        window_specs = entry.get("windows")
-        if not isinstance(window_specs, list) or not window_specs:
-            raise ConfigError(
-                f"random_light instance {instance_key!r}: light {ref!r}: 'windows' must be a non-empty list")
-        windows = []
-        for window_spec in window_specs:
-            start = _parse_window_bound(str(window_spec["start"]), ref)
-            end = _parse_window_bound(str(window_spec["end"]), ref)
-            windows.append((start, end))
-            if start.kind == "sun" or end.kind == "sun":
-                needs_sun = True
+        if "windows" in entry:
+            windows, light_needs_sun = _parse_windows(entry["windows"], f"light {ref!r}")
+        else:
+            windows, light_needs_sun = default_windows, default_needs_sun
+        needs_sun = needs_sun or light_needs_sun
 
-        min_interval = parse_duration(entry.get("min_interval", "30m"))
-        probability_on = float(entry.get("probability_on", 0.5))
-        if not 0.0 <= probability_on <= 1.0:
-            raise ConfigError(
-                f"random_light instance {instance_key!r}: light {ref!r}: probability_on must be between 0 and 1")
+        min_interval = parse_duration(entry["min_interval"]) if "min_interval" in entry else default_min_interval
+        probability_on = (_parse_probability(entry["probability_on"], f"light {ref!r}")
+                           if "probability_on" in entry else default_probability_on)
 
         lights[ref] = Light(id=ref, windows=windows, min_interval=min_interval,
                              probability_on=probability_on, is_default=bool(entry.get("default", False)))
