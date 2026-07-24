@@ -65,6 +65,17 @@ devices:
         values: { 0: "off", 1: "on" }
         default: 0
 
+  - id: porch_light
+    module: virtual
+    name: Porch light
+    update: 2s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
   - id: alarm
     module: virtual
     name: Alarm active flag
@@ -76,17 +87,42 @@ devices:
         values: { 0: "clear", 1: "active" }
         default: 0
 
+# Randomizes the hallway/porch lights while armed (enable_ref) and not
+# alarmed (pause_ref) -- see extensions/random_light. Fixed "HH:MM" windows
+# only here (no sun-relative bounds), so no `sun` device is needed.
+extensions:
+  random_light:
+    house:
+      enable_ref: "surveillance.armed"
+      pause_ref: "alarm.state"
+      lights:
+        - device: "hallway_light.state"
+          windows:
+            - { start: "19:00", end: "23:30" }
+            - { start: "06:00", end: "08:00" }
+          min_interval: 15m
+          probability_on: 0.4
+          default: true
+        - device: "porch_light.state"
+          windows:
+            - { start: "20:00", end: "23:00" }
+          min_interval: 25m
+          probability_on: 0.3
+
 tasks:
   - tag: surveillance_enable
-    description: "Arming resets the alarm flag"
+    description: "Arming resets the alarm flag and forces lights off before random control takes over"
     condition:
       refs: { armed: "surveillance.armed" }
       expr: "armed.changed and armed.state == 1"
-    action:
-      kind: script
-      code: |
-        log('surveillance enabled')
-        set_state('alarm.state', 0)
+    actions:
+      - kind: script
+        code: |
+          log('surveillance enabled')
+          set_state('alarm.state', 0)
+      - kind: random_light
+        instance: "random_light.house"
+        force: 0
 
   - tag: surveillance_disable
     description: "Disarming clears the siren/lights and cancels pending follow-ups"
@@ -95,24 +131,23 @@ tasks:
       # changed() take the "device.endpoint" ref inline, as an alternative
       # to binding it to a short name first.
       expr: "changed('surveillance.armed') and state('surveillance.armed') == 0"
-    action:
-      kind: script
-      code: |
-        log('surveillance disabled')
-        set_state('siren.state', 0)
-        set_state('hallway_light.state', 0)
-        set_state('alarm.state', 0)
-        kill_task('surv_*')
+    actions:
+      - kind: script
+        code: |
+          log('surveillance disabled')
+          set_state('siren.state', 0)
+          set_state('hallway_light.state', 0)
+          set_state('alarm.state', 0)
+          kill_task('surv_*')
+      - kind: random_light
+        instance: "random_light.house"
+        force: 0
 
   - tag: surveillance_random_light
-    description: "While armed and not alarmed, flicker the hallway light at random"
+    description: "While armed and not alarmed, randomize the hallway/porch lights"
     time: +5s
-    repeat: 20s
-    action:
-      kind: script
-      code: |
-        if state('surveillance.armed') == 1 and state('alarm.state') != 1:
-            set_state('hallway_light.state', 1 - state('hallway_light.state'))
+    repeat: 1m
+    action: { kind: random_light, instance: "random_light.house" }
 
   - tag: surveillance_intrusion
     description: "Motion while armed raises the alarm, at most once per 5 minutes"
@@ -120,27 +155,31 @@ tasks:
       refs: { armed: "surveillance.armed", motion: "hallway_motion.state" }
       expr: "armed.state == 1 and motion.changed and motion.state == 1"
     min_interval: 5m
-    action:
-      kind: script
-      code: |
-        log('intrusion detected')
-        set_state('alarm.state', 1)
-        set_state('siren.state', 1)
-        create_task({
-            'tag': 'surv_alert_log',
-            'time': '+2s',
-            'action': { 'kind': 'log', 'device': 'alarm.state', 'message': 'alert: intrusion detected' },
-        })
-        create_task({
-            'tag': 'surv_siren_off',
-            'time': '+3m',
-            'action': { 'kind': 'set', 'device': 'siren.state', 'value': 0 },
-        })
-        create_task({
-            'tag': 'surv_light_off',
-            'time': '+45m',
-            'actions': [
-                { 'kind': 'set', 'device': 'hallway_light.state', 'value': 0 },
-                { 'kind': 'set', 'device': 'alarm.state', 'value': 0 },
-            ],
-        })
+    actions:
+      - kind: script
+        code: |
+          log('intrusion detected')
+          set_state('alarm.state', 1)
+          set_state('siren.state', 1)
+          create_task({
+              'tag': 'surv_alert_log',
+              'time': '+2s',
+              'action': { 'kind': 'log', 'device': 'alarm.state', 'message': 'alert: intrusion detected' },
+          })
+          create_task({
+              'tag': 'surv_siren_off',
+              'time': '+3m',
+              'action': { 'kind': 'set', 'device': 'siren.state', 'value': 0 },
+          })
+          create_task({
+              'tag': 'surv_light_off',
+              'time': '+45m',
+              'actions': [
+                  { 'kind': 'set', 'device': 'hallway_light.state', 'value': 0 },
+                  { 'kind': 'set', 'device': 'alarm.state', 'value': 0 },
+                  { 'kind': 'random_light', 'instance': 'random_light.house', 'force': 0 },
+              ],
+          })
+      - kind: random_light
+        instance: "random_light.house"
+        force: 1
