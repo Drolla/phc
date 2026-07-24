@@ -88,8 +88,10 @@ tasks:
   - tag: surveillance_disable
     description: "Disarming clears the siren/lights and cancels pending follow-ups"
     condition:
-      refs: { armed: "surveillance.armed" }
-      expr: "armed.changed and armed.state == 0"
+      # No refs: here (unlike surveillance_enable, above) -- state()/
+      # changed() take the "device.endpoint" ref inline, as an alternative
+      # to binding it to a short name first.
+      expr: "changed('surveillance.armed') and state('surveillance.armed') == 0"
     action:
       kind: script
       code: |
