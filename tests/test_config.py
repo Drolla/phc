@@ -783,3 +783,26 @@ def test_load_extensions_rejects_non_mapping_instances():
 def test_load_extensions_rejects_unknown_extension_name():
     with pytest.raises(ConfigError):
         _load_extensions({"extensions": {"nonexistent": {"an_instance": {}}}}, {})
+
+
+def test_load_system_log_db_action_unknown_instance_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text(f"""
+heartbeat: 1s
+devices:
+  - id: alarm
+    module: virtual
+    update: 1s
+    endpoints: [{{ key: state, writable: true, type: int, default: 0 }}]
+extensions:
+  logdb:
+    house_log:
+      allow: ["alarm/state"]
+      csv_path: "{(tmp_path / 'log.csv').as_posix()}"
+tasks:
+  - tag: log_house
+    time: "+1s"
+    action: {{ kind: log_db, instance: "logdb.nonexistent" }}
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)

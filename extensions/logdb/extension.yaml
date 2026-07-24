@@ -1,0 +1,52 @@
+description: >
+  Periodic logging database: an extensions.logdb.<instance> entry defines
+  one CSV-backed, in-memory-buffered log of numeric device endpoint state,
+  sampled whenever a task with `kind: log_db, instance: "logdb.<instance>"`
+  fires. Only int/float values are stored (bool -> 0/1, str/other skipped).
+  Each sampled endpoint is subscribed for sticky min/max tracking (see
+  Endpoint.log_aggregation), so brief events between samples aren't lost.
+
+parameters:
+  - name: allow
+    override: required
+    description: >
+      List of "<device-glob>/<endpoint-glob>" allow-list patterns (glob
+      wildcards, e.g. "house.desk_lamp/*", "*/*"), or bare "*" for
+      everything. Device globs match a device's qualified id (dot-joined,
+      e.g. "house.desk_lamp"); "*" in a device glob matches across "."
+      boundaries too (i.e. matches at any depth), which is intentional.
+
+  - name: csv_path
+    override: required
+    description: CSV file path (resolved relative to the current working directory).
+
+  - name: full_vector_interval
+    override: allowed
+    default: 100
+    description: >
+      Write a full snapshot row every N samples; rows in between store only
+      changed columns. Bounds both restore-scan cost and how much history a
+      header-growth event (see logdb.py) can ever need to sacrifice.
+
+  - name: max_records
+    override: allowed
+    default: 100000
+    description: >
+      Maximum records kept in memory/considered for restore (oldest
+      trimmed first). null = unbounded by count.
+
+  - name: max_age
+    override: allowed
+    default: null
+    description: >
+      Maximum age of kept records (duration string, e.g. "30D"). null =
+      unbounded by age.
+
+  - name: header_reserve_bytes
+    override: allowed
+    default: null
+    description: >
+      Bytes reserved for the CSV label header line, allowing it to grow in
+      place as new devices/endpoints are added to `allow` across restarts
+      without rewriting the whole file. null = auto (2x the initial header
+      line length, minimum 512).
