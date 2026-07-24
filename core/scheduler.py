@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Callable
 
 from core.device import Device, _write_collector
 from core.task import Task
@@ -32,20 +33,23 @@ class Scheduler:
     native async I/O, awaited directly without a thread.
 
     The tick's structure is unchanged and stays deterministic: fetch (pass 1)
-    -> tasks (pass 2) -> commit/events (pass 3). Only the I/O inside passes 1
-    and 2 is parallelized; the task pass and the whole commit pass run
-    single-threaded on the loop, so the Device/Endpoint public API and the
-    one-tick event-lag semantics are preserved.
+    -> tasks (pass 2) -> commit/events (pass 3) -> tick hooks (pass 4). Only
+    the I/O inside passes 1 and 2 is parallelized; the task pass and the
+    whole commit pass run single-threaded on the loop, so the
+    Device/Endpoint public API and the one-tick event-lag semantics are
+    preserved.
     """
 
     def __init__(self, devices: dict[str, Device], tasks: list[Task] | None = None,
                  heartbeat: float = 1.0, max_workers: int | None = None,
-                 fetch_timeout: float | None = None):
+                 fetch_timeout: float | None = None,
+                 tick_hooks: list[Callable[[dict[str, Device]], None]] | None = None):
         self._devices = devices
         self._tasks = tasks if tasks is not None else []
         self.heartbeat = heartbeat
         self.fetch_timeout = fetch_timeout
         self._max_workers = max_workers
+        self._tick_hooks = tick_hooks if tick_hooks is not None else []
         self._running = False
 
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -141,6 +145,16 @@ class Scheduler:
             finally:
                 if qualified_id in due_ids:
                     device.mark_run(now)
+
+        # Pass 4: run per-tick hooks (e.g. a logger's sticky-value tracking,
+        # see extensions.logdb) now that this tick's state is fully
+        # committed -- unlike tasks (pass 2), a hook always observes THIS
+        # tick's freshest state, not the previous tick's.
+        for hook in self._tick_hooks:
+            try:
+                hook(self._devices)
+            except Exception:
+                logger.exception("tick hook %r failed", hook)
 
     # ---------- concurrent I/O helpers ----------
 
