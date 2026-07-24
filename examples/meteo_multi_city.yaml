@@ -10,7 +10,7 @@ intervals:
   weather: 10m
 
 # All meteoswiss devices below poll the same published CSV
-# (data_url/cache_time are `scope: module` in modules/meteoswiss/module.yaml
+# (data_url/cache_time are `scope: module` in devices/meteoswiss/module.yaml
 # -- one shared value for every station, not per device). Setting cache_time
 # here, once, means the five stations below coalesce into a single shared
 # HTTP fetch per cache window instead of five independent downloads.

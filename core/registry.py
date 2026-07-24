@@ -1,6 +1,6 @@
 """Plugin registry: Device/Endpoint/Action classes register themselves here by
 name (via @register_module/@register_endpoint_kind/@register_task_kind), and
-discover_modules() imports every modules/<name>/device.py so that registration
+discover_modules() imports every devices/<name>/device.py so that registration
 happens automatically at startup."""
 
 import importlib
@@ -64,8 +64,8 @@ def get_task_kind_class(kind: str) -> type:
         raise KeyError(f"no task action kind registered as {kind!r}") from None
 
 
-def discover_modules(package_name: str = "modules") -> None:
-    """Import every modules/<name>/device.py so its @register_module decorator
+def discover_modules(package_name: str = "devices") -> None:
+    """Import every devices/<name>/device.py so its @register_module decorator
     runs and populates the registry. Idempotent: re-importing is a no-op."""
     package = importlib.import_module(package_name)
     for _finder, name, is_pkg in pkgutil.iter_modules(package.__path__, package_name + "."):

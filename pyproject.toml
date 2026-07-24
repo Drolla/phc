@@ -18,7 +18,7 @@ dev = [
 py-modules = ["phc"]
 
 [tool.setuptools.packages.find]
-include = ["core*", "modules*"]
+include = ["core*", "devices*", "extensions*"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

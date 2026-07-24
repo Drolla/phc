@@ -9,7 +9,7 @@ from core.task import (
     Condition, CreateTaskAction, LogAction, SetAction, Task, ToggleAction,
     resolve_endpoint_ref,
 )
-from modules.virtual.device import VirtualDevice
+from devices.virtual.device import VirtualDevice
 from tests.conftest import fetch_sync
 
 
