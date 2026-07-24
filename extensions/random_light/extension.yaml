@@ -1,0 +1,59 @@
+description: >
+  Random light control: an extensions.random_light.<instance> entry defines
+  a set of "light" devices, each with time-of-day (or sunrise/sunset-
+  relative) on/off windows, a minimum switch interval, and a probability of
+  being on. A `kind: random_light` task's periodic firing (no `force:`)
+  randomizes every light currently inside its window -- forcing lights
+  outside their window off -- gated by optional enable_ref/pause_ref; if no
+  light ends up on, one `default`-flagged light is chosen at random and
+  forced on (still subject to its own window). A `kind: random_light,
+  force: 0`/`force: 1` action bypasses everything (windows, probability,
+  enable_ref/pause_ref) to force every configured light to that value
+  immediately -- for a surrounding system (e.g. surveillance/alarm) to call
+  directly, mirroring a previous Tcl system's thc::RandomLight::Control.
+
+parameters:
+  - name: lights
+    override: required
+    description: >
+      Non-empty list of per-light configs, each: {device: "<device>.
+      <endpoint>", windows: [{start, end}, ...], min_interval,
+      probability_on, default}. `device` must reference a writable
+      endpoint. `windows` is a non-empty list of {start, end} pairs, each
+      bound either "HH:MM" (today, local time) or "sunrise"/"sunset"
+      optionally offset by a duration string (e.g. "sunset+12m",
+      "sunrise-18m" -- offsets accept whole-integer duration tokens only,
+      e.g. "18m" not "0.3h"; see core.intervals.parse_duration). A pair
+      whose bounds can't both be resolved "today" (e.g. polar day/night,
+      or an end before its start -- no midnight-wraparound support, use
+      two same-day pairs instead) is skipped, not treated as an error.
+      `min_interval` (default "30m") is a duration string: roughly how
+      long a light stays in one state before randomly re-evaluating.
+      `probability_on` (default 0.5) is a 0..1 probability of being on;
+      0.0/1.0 pin the light to always off/on whenever inside its window.
+      `default` (default false) flags this light eligible to be
+      force-switched on if, after a pass, no light ended up on.
+
+  - name: sun_device
+    override: allowed
+    default: "sun"
+    description: >
+      Device id of the sun device (see devices/sun) providing sunrise/
+      sunset. Only required to exist if at least one light's window
+      actually references sunrise/sunset.
+
+  - name: enable_ref
+    override: allowed
+    default: null
+    description: >
+      Optional "<device>.<endpoint>" ref; the periodic randomize pass
+      (force: omitted) only runs when this endpoint's current value == 1.
+      null = always enabled.
+
+  - name: pause_ref
+    override: allowed
+    default: null
+    description: >
+      Optional "<device>.<endpoint>" ref; the periodic randomize pass is
+      skipped entirely (no lights touched) when this endpoint's current
+      value == 1. null = never paused.
