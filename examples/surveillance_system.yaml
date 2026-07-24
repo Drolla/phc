@@ -87,22 +87,31 @@ devices:
         values: { 0: "clear", 1: "active" }
         default: 0
 
+  - id: sun
+    module: sun
+    name: Sun
+    update: 1h
+    params:
+      latitude: 47.3769
+      longitude: 8.5417
+      timezone: Europe/Zurich
+
 # Randomizes the hallway/porch lights while armed (enable_ref) and not
-# alarmed (pause_ref) -- see extensions/random_light. Fixed "HH:MM" windows
-# only here (no sun-relative bounds), so no `sun` device is needed.
+# alarmed (pause_ref) -- see extensions/random_light.
 extensions:
   random_light:
     house:
       enable_ref: "surveillance.armed"
       pause_ref: "alarm.state"
       lights:
+        # hallway_light sets neither windows/min_interval/probability_on of
+        # its own -- it inherits extensions/random_light/extension.yaml's
+        # own default windows (a fixed evening cutoff, sunset-relative
+        # start; a fixed morning start, sunrise-relative end), demonstrating
+        # the extension-default -> instance -> per-light cascade.
         - device: "hallway_light.state"
-          windows:
-            - { start: "19:00", end: "23:30" }
-            - { start: "06:00", end: "08:00" }
-          min_interval: 15m
-          probability_on: 0.4
           default: true
+        # porch_light overrides all three per-light instead.
         - device: "porch_light.state"
           windows:
             - { start: "20:00", end: "23:00" }
