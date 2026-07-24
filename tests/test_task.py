@@ -5,9 +5,10 @@ import logging
 import pytest
 
 from core.endpoint import Endpoint
+from core.scripting import compile_expression
 from core.task import (
-    Condition, CreateTaskAction, LogAction, SetAction, Task, ToggleAction,
-    resolve_endpoint_ref,
+    Condition, CreateTaskAction, ExprCondition, KillTaskAction, LogAction, ScriptAction,
+    SetAction, Task, ToggleAction, kill_tasks, register_task, resolve_endpoint_ref,
 )
 from devices.virtual.device import VirtualDevice
 from tests.conftest import fetch_sync
@@ -352,3 +353,205 @@ def test_create_task_action_replaces_existing_same_tag_task():
     assert len(tasks) == 1
     assert tasks[0] is not old_task
     assert tasks[0].tag == "clear_alert"
+
+
+# ---------- register_task / kill_tasks ----------
+
+def test_register_task_threads_sticky_endpoints_into_dynamically_created_task():
+    light = _light("off")
+    flat = {"living_light": light}
+    tasks: list[Task] = []
+    sticky_endpoints: set = set()
+    specs = {
+        "tag": "watch",
+        "condition": {"refs": {"s": "living_light.state"}, "expr": "s.changed"},
+        "action": {"kind": "log", "device": "living_light.state", "message": "x"},
+    }
+
+    register_task(specs, flat, tasks, {}, sticky_endpoints)
+
+    assert tasks[0].tag == "watch"
+    assert light.endpoint("state") in sticky_endpoints
+
+
+def test_kill_tasks_removes_multiple_matching_tags():
+    tasks = [Task("a", due_time=1.0, actions=[]), Task("b", due_time=1.0, actions=[]),
+              Task("c", due_time=1.0, actions=[])]
+    removed = kill_tasks(["a", "c"], tasks)
+    assert removed == 2
+    assert [t.tag for t in tasks] == ["b"]
+
+
+def test_kill_tasks_glob_pattern():
+    tasks = [Task("surv_a", due_time=1.0, actions=[]), Task("surv_b", due_time=1.0, actions=[]),
+              Task("keep", due_time=1.0, actions=[])]
+    removed = kill_tasks(["surv_*"], tasks)
+    assert removed == 2
+    assert [t.tag for t in tasks] == ["keep"]
+
+
+def test_kill_tasks_no_match_is_noop():
+    tasks = [Task("a", due_time=1.0, actions=[])]
+    assert kill_tasks(["zzz*"], tasks) == 0
+    assert len(tasks) == 1
+
+
+def test_kill_task_action_removes_matching_tags():
+    tasks = [Task("a", due_time=1.0, actions=[]), Task("b", due_time=1.0, actions=[])]
+    action = KillTaskAction(tags=["a"], flat={}, tasks=tasks)
+    action.perform({})
+    assert [t.tag for t in tasks] == ["b"]
+
+
+# ---------- ExprCondition ----------
+
+def test_expr_condition_refs_attribute_form():
+    light = _light("off")
+    fetch_sync(light)
+    light.update_state()  # settle: clear the event from the initial set()
+    devices = {"living_light": light}
+    compiled = compile_expression("sensor.changed and sensor.state == 'on'")
+    condition = ExprCondition(compiled=compiled, refs={"sensor": "living_light.state"},
+                               task_tag="report", flat=devices)
+    assert condition.evaluate(devices) is False
+
+    light.set("on")
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is True
+
+
+def test_expr_condition_inline_state_call_without_refs():
+    light = _light("off")
+    devices = {"living_light": light}
+    compiled = compile_expression("state('living_light.state') == 'off'")
+    condition = ExprCondition(compiled=compiled, refs={}, task_tag="report", flat=devices)
+    assert condition.evaluate(devices) is True
+
+
+def test_expr_condition_combines_multiple_devices():
+    light = _light("on")
+    lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True)])
+    lamp.set("off")
+    fetch_sync(lamp)
+    lamp.update_state()
+    devices = {"living_light": light, "desk_lamp": lamp}
+    compiled = compile_expression(
+        "state('living_light.state') == 'on' and state('desk_lamp.power') == 'off'")
+    condition = ExprCondition(compiled=compiled, refs={}, task_tag="t", flat=devices)
+    assert condition.evaluate(devices) is True
+
+
+def test_expr_condition_reads_sticky_value():
+    light = _light("off")
+    fetch_sync(light)
+    light.update_state()
+    devices = {"living_light": light}
+    endpoint = light.endpoint("state")
+    endpoint.subscribe_log("report")
+    endpoint.update_log_value()
+    compiled = compile_expression("s.sticky == 'off'")
+    condition = ExprCondition(compiled=compiled, refs={"s": "living_light.state"},
+                               task_tag="report", flat=devices)
+    assert condition.evaluate(devices) is True
+
+
+# ---------- ScriptAction ----------
+
+def test_script_action_set_state_and_log(task_log):
+    light = _light("off")
+    devices = {"living_light": light}
+    action = ScriptAction(code="set_state('living_light.state', 'on')\nlog('set to on')",
+                           task_tag="t", flat=devices, tasks=[])
+    action.perform(devices)
+    fetch_sync(light)
+    light.update_state()
+    assert light.get() == "on"
+    assert "set to on" in task_log.text
+
+
+def test_script_action_create_task_appends_to_list():
+    light = _light("off")
+    flat = {"living_light": light}
+    tasks: list[Task] = []
+    code = ("create_task({'tag': 'clear_alert', 'time': '+1s', "
+            "'action': {'kind': 'set', 'device': 'living_light.state', 'value': 'off'}})")
+    action = ScriptAction(code=code, task_tag="t", flat=flat, tasks=tasks)
+    action.perform(flat)
+    assert len(tasks) == 1
+    assert tasks[0].tag == "clear_alert"
+
+
+def test_script_action_kill_task_removes_matching_tag():
+    flat: dict = {}
+    tasks = [Task("alert_a", due_time=1.0, actions=[]), Task("keep_me", due_time=1.0, actions=[])]
+    action = ScriptAction(code="kill_task('alert_a')", task_tag="t", flat=flat, tasks=tasks)
+    action.perform({})
+    assert [t.tag for t in tasks] == ["keep_me"]
+
+
+def test_script_action_reset_sticky():
+    light = _light("off")
+    devices = {"living_light": light}
+    endpoint = light.endpoint("state")
+    endpoint.subscribe_log("t")
+    endpoint.update_log_value()
+    assert endpoint.get_log_value("t") == "off"
+
+    action = ScriptAction(code="reset_sticky('living_light.state')", task_tag="t", flat=devices, tasks=[])
+    action.perform(devices)
+    assert endpoint.get_log_value("t") is None
+
+
+def test_script_action_if_and_for_over_devices_selector(task_log):
+    light = _light("off")
+    lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True)])
+    lamp.set("off")
+    fetch_sync(lamp)
+    lamp.update_state()
+    flat = {"living_light": light, "desk_lamp": lamp}
+    code = "for ref in devices('*/*'):\n    if state(ref) == 'off':\n        log(ref)"
+    action = ScriptAction(code=code, task_tag="t", flat=flat, tasks=[])
+    action.perform(flat)
+    assert "desk_lamp.power" in task_log.text
+    assert "living_light.state" in task_log.text
+
+
+# ---------- Task.min_interval ----------
+
+def test_min_interval_blocks_refire_within_cooldown():
+    light = _light("off")
+    devices = {"living_light": light}
+    task = Task("blink", due_time=0.0, repeat=0.0, min_interval=5.0,
+                actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+
+    assert task.run(0.0, devices) is True
+    assert task.run(1.0, devices) is False  # still cooling down
+    assert task.run(5.0, devices) is True  # cooldown elapsed
+
+
+def test_min_interval_debounces_condition_task(task_log):
+    light = _light("off")
+    fetch_sync(light)
+    light.update_state()  # settle
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
+    task = Task("report", due_time=float("-inf"), condition=condition, min_interval=10.0,
+                actions=[LogAction(device_id="living_light", endpoint_key="state",
+                                    message="changed to {state}")])
+
+    light.set("on")
+    fetch_sync(light)
+    light.update_state()
+    assert task.run(1.0, devices) is True
+    assert "changed to on" in task_log.text
+
+    light.set("off")
+    fetch_sync(light)
+    light.update_state()
+    assert task.run(2.0, devices) is False  # condition holds again, but still cooling down
+
+    light.set("on")
+    fetch_sync(light)
+    light.update_state()
+    assert task.run(11.0, devices) is True  # cooldown elapsed

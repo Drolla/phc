@@ -13,7 +13,8 @@ from core.intervals import parse_duration, parse_time
 from core.logging_setup import configure_logging
 from core.registry import (discover_extensions, discover_modules, get_device_class,
                             get_endpoint_class, get_task_kind_class)
-from core.task import Task, Condition, resolve_endpoint_ref
+from core import scripting
+from core.task import Condition, ExprCondition, Task, resolve_endpoint_ref
 
 _DEVICES_DIR = Path(__file__).resolve().parent.parent / "devices"
 _EXTENSIONS_DIR = Path(__file__).resolve().parent.parent / "extensions"
@@ -341,11 +342,42 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     return device
 
 
-def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str) -> Condition | None:
-    """Build a task's `condition:` YAML entry into a Condition, or None if
-    absent. Raises ConfigError if the referenced device doesn't exist."""
+def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
+                      sticky_endpoints: set) -> Condition | ExprCondition | None:
+    """Build a task's `condition:` YAML entry into a Condition or
+    ExprCondition, or None if absent. Requires exactly one of `device` (the
+    {device, changed} shorthand) or `expr` (a restricted-Python boolean
+    expression, see core.scripting). Raises ConfigError if a referenced
+    device doesn't exist or `expr` violates the sandbox whitelist.
+
+    For `expr`, every endpoint it references -- via `refs:` or inline as a
+    string literal (`state("house.motion1.state")`, see
+    scripting.Compiled.referenced_paths) -- is subscribed for sticky log
+    tracking under `task_tag` and added to `sticky_endpoints`, so
+    load_system()'s tick hook keeps its sticky() window advancing every
+    tick regardless of when/whether this condition is evaluated."""
     if spec is None:
         return None
+    has_device = "device" in spec
+    has_expr = "expr" in spec
+    if has_device == has_expr:
+        raise ConfigError(f"task {task_tag!r}: condition requires exactly one of 'device' or 'expr'")
+
+    if has_expr:
+        try:
+            compiled = scripting.compile_expression(spec["expr"])
+        except scripting.ScriptError as exc:
+            raise ConfigError(f"task {task_tag!r}: {exc}") from None
+        refs = spec.get("refs", {})
+        for ref in set(refs.values()) | compiled.referenced_paths:
+            device_id, endpoint_key = resolve_endpoint_ref(ref)
+            if device_id not in flat:
+                raise ConfigError(f"task {task_tag!r}: condition device {device_id!r} not found")
+            endpoint = flat[device_id].endpoint(endpoint_key)
+            endpoint.subscribe_log(task_tag)
+            sticky_endpoints.add(endpoint)
+        return ExprCondition(compiled=compiled, refs=refs, task_tag=task_tag, flat=flat)
+
     device_id, endpoint_key = resolve_endpoint_ref(spec["device"])
     if device_id not in flat:
         raise ConfigError(f"task {task_tag!r}: condition device {device_id!r} not found")
@@ -353,17 +385,19 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str) 
 
 
 def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task],
-                   extensions: dict[str, object]):
+                   extensions: dict[str, object], sticky_endpoints: set):
     """Build one `action:`/`actions[]` YAML entry into an Action instance,
     dispatching on `kind` (via the task-kind registry). An action kind with
-    `requires_device = False` (e.g. create_task, log_db) has no single
-    target device/endpoint -- it's built from `flat`/`tasks`/`extensions`
-    instead, so it can act on the task list itself or look up a named
-    extension instance (see core.config._load_extensions). Raises
+    `requires_device = False` (e.g. create_task, script, log_db) has no
+    single target device/endpoint -- it's built from
+    `flat`/`tasks`/`extensions`/`task_tag`/`sticky_endpoints` instead, so it
+    can act on the task list itself, look up a named extension instance
+    (see core.config._load_extensions), or (kind: script) run against the
+    shared rule namespace (see core.task._build_rule_namespace). Raises
     ConfigError on a missing/unregistered kind, an action device that
-    doesn't exist, or (for a non-device kind) a spec missing one of that
-    kind's own required constructor arguments (e.g. create_task's
-    `specs`)."""
+    doesn't exist, a spec missing one of that kind's own required
+    constructor arguments (e.g. create_task's `specs`), or -- for kind:
+    script -- a `code:` block that violates the sandbox whitelist."""
     kind = spec.get("kind")
     if kind is None:
         raise ConfigError(f"task {task_tag!r}: action requires a 'kind'")
@@ -376,9 +410,22 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
 
     if not getattr(action_cls, "requires_device", True):
         try:
-            return action_cls(flat=flat, tasks=tasks, extensions=extensions, **extra)
-        except TypeError as exc:
+            action = action_cls(flat=flat, tasks=tasks, extensions=extensions, task_tag=task_tag,
+                                 sticky_endpoints=sticky_endpoints, **extra)
+        except (TypeError, scripting.ScriptError) as exc:
             raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
+        if kind == "script":
+            # See _build_condition's expr handling, above -- same
+            # referenced-path validation/sticky-subscription, for a script
+            # action's code instead of a condition's expr.
+            for ref in set(action.refs.values()) | action.compiled.referenced_paths:
+                device_id, endpoint_key = resolve_endpoint_ref(ref)
+                if device_id not in flat:
+                    raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
+                endpoint = flat[device_id].endpoint(endpoint_key)
+                endpoint.subscribe_log(task_tag)
+                sticky_endpoints.add(endpoint)
+        return action
 
     # allow_bare=True: an action's device may omit the endpoint (e.g.
     # "meteo-bern" rather than "meteo-bern.temperature") -- the Action
@@ -391,15 +438,19 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
 
 
 def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
-                 extensions: dict[str, object]) -> Task:
-    """Build one `tasks:` YAML entry (or a `create_task` action's nested
-    `specs:`) into a Task. Requires exactly one of `condition` or `time` to
-    determine how the task fires, and exactly one of `action`/`actions`."""
+                 extensions: dict[str, object], sticky_endpoints: set) -> Task:
+    """Build one `tasks:` YAML entry (or a `create_task`/script action's
+    nested spec) into a Task. Requires exactly one of `condition` or `time`
+    to determine how the task fires, and exactly one of `action`/`actions`.
+    `min_interval` (optional, default 0: no cooldown) is parsed the same way
+    as `repeat` -- see Task's class docstring."""
     tag = entry["tag"]
     repeat_spec = entry.get("repeat", 0)
     repeat_seconds = parse_duration(repeat_spec) if repeat_spec else 0.0
+    min_interval_spec = entry.get("min_interval", 0)
+    min_interval = parse_duration(min_interval_spec) if min_interval_spec else 0.0
 
-    condition = _build_condition(entry.get("condition"), flat, tag)
+    condition = _build_condition(entry.get("condition"), flat, tag, sticky_endpoints)
 
     if condition is not None:
         due_time = float("-inf")
@@ -418,18 +469,35 @@ def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
         action_specs = entry["actions"]
         if not isinstance(action_specs, list) or not action_specs:
             raise ConfigError(f"task {tag!r}: 'actions' must be a non-empty list")
-        actions = [_build_action(spec, flat, tag, tasks, extensions) for spec in action_specs]
+        actions = [_build_action(spec, flat, tag, tasks, extensions, sticky_endpoints)
+                   for spec in action_specs]
     else:
-        actions = [_build_action(entry["action"], flat, tag, tasks, extensions)]
+        actions = [_build_action(entry["action"], flat, tag, tasks, extensions, sticky_endpoints)]
 
     return Task(
         tag,
         description=entry.get("description", ""),
         due_time=due_time,
         repeat=repeat_seconds,
+        min_interval=min_interval,
         condition=condition,
         actions=actions,
     )
+
+
+def _make_sticky_tick_hook(sticky_endpoints: set):
+    """Build a tick hook (see Scheduler pass 4) that advances every rule-
+    referenced endpoint's sticky min/max window each tick -- the same
+    mechanism extensions.logdb uses for its own subscriptions (see
+    LogDbInstance.on_tick), but for condition.expr's/kind:script's
+    sticky()/reset_sticky() (see core.task._build_rule_namespace). Closes
+    over the SAME set object _build_condition/_build_action populate, so a
+    task created later at runtime (via create_task) that adds to it is
+    picked up automatically on the next tick -- no re-registration needed."""
+    def _hook(devices: dict[str, Device]) -> None:
+        for endpoint in sticky_endpoints:
+            endpoint.update_log_value()
+    return _hook
 
 
 class System:
@@ -500,8 +568,11 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     tick_hooks = [obj.on_tick for obj in extensions_registry.values() if hasattr(obj, "on_tick")]
 
     tasks: list[Task] = []
+    sticky_endpoints: set = set()
     for entry in raw.get("tasks", []):
-        tasks.append(_build_task(entry, flat, tasks, extensions_registry))
+        tasks.append(_build_task(entry, flat, tasks, extensions_registry, sticky_endpoints))
+    if sticky_endpoints:
+        tick_hooks.append(_make_sticky_tick_hook(sticky_endpoints))
 
     tags = [t.tag for t in tasks]
     duplicates = {t for t in tags if tags.count(t) > 1}

@@ -116,7 +116,16 @@ class Scheduler:
         self._log_task_countdown(now)
         token = _write_collector.set([])
         try:
-            for task in self._tasks:
+            # Snapshot the list: a create_task/kill_task action firing this
+            # tick mutates self._tasks in place (see core.task.register_task/
+            # kill_tasks) -- iterating that same live list would risk
+            # "list changed size during iteration" and non-deterministic
+            # same-tick-vs-next-tick firing for the newly spawned/removed
+            # task. A once-per-tick snapshot means such mutations only take
+            # effect starting the next tick, consistent with tasks only ever
+            # observing state committed by the PREVIOUS tick (see Task's
+            # class docstring).
+            for task in list(self._tasks):
                 if task.due(now):
                     try:
                         fired = task.run(now, self._devices)

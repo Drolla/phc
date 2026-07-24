@@ -785,6 +785,236 @@ def test_load_extensions_rejects_unknown_extension_name():
         _load_extensions({"extensions": {"nonexistent": {"an_instance": {}}}}, {})
 
 
+def test_load_system_condition_expr_builds_expr_condition(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    update: 1s
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: report
+    condition:
+      refs: { s: "living_light.state" }
+      expr: "s.changed"
+    action: { kind: log, device: "living_light.state", message: "changed" }
+""")
+    system = load_system(system_yaml)
+    from core.task import ExprCondition
+    task = next(t for t in system.tasks if t.tag == "report")
+    assert isinstance(task.condition, ExprCondition)
+
+
+def test_load_system_condition_requires_exactly_one_of_device_or_expr(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    condition: {}
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_condition_rejects_both_device_and_expr(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    condition: { device: "living_light.state", expr: "True" }
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_condition_expr_bad_syntax_raises_config_error(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    condition: { expr: "__import__('os')" }
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_condition_expr_unknown_device_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    condition: { expr: "state('nonexistent.state') == 1" }
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_condition_expr_registers_sticky_tick_hook(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    update: 1s
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: report
+    condition: { expr: "sticky('living_light.state') == 'off'" }
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    system = load_system(system_yaml)
+    assert len(system.tick_hooks) >= 1
+
+
+# ---------- Task.min_interval ----------
+
+def test_load_system_task_min_interval_parsed(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: report
+    min_interval: 5s
+    condition: { device: "living_light.state", changed: true }
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    system = load_system(system_yaml)
+    task = next(t for t in system.tasks if t.tag == "report")
+    assert task.min_interval == 5.0
+
+
+def test_load_system_task_min_interval_defaults_to_zero(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: report
+    time: "+1s"
+    action: { kind: log, device: "living_light.state", message: "x" }
+""")
+    system = load_system(system_yaml)
+    task = next(t for t in system.tasks if t.tag == "report")
+    assert task.min_interval == 0.0
+
+
+# ---------- kind: script / kind: kill_task ----------
+
+def test_load_system_script_action_builds(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    update: 1s
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: react
+    time: "+1s"
+    action:
+      kind: script
+      code: |
+        set_state('living_light.state', 'on')
+        log('done')
+""")
+    system = load_system(system_yaml)
+    from core.task import ScriptAction
+    task = next(t for t in system.tasks if t.tag == "react")
+    assert isinstance(task.actions[0], ScriptAction)
+
+
+def test_load_system_script_action_bad_syntax_raises_config_error(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: react
+    time: "+1s"
+    action:
+      kind: script
+      code: "import os"
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_script_action_unknown_referenced_device_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: react
+    time: "+1s"
+    action:
+      kind: script
+      code: "set_state('nonexistent.state', 'on')"
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_kill_task_action_builds(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: disable
+    time: "+1s"
+    action: { kind: kill_task, tags: ["surveillance_*"] }
+""")
+    system = load_system(system_yaml)
+    from core.task import KillTaskAction
+    task = next(t for t in system.tasks if t.tag == "disable")
+    assert isinstance(task.actions[0], KillTaskAction)
+
+
 def test_load_system_log_db_action_unknown_instance_raises(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text(f"""

@@ -1,9 +1,11 @@
 """Task system: conditions that gate actions, and the actions (set, toggle,
-log, create_task) a Task can perform against devices."""
+log, create_task, kill_task, script) a Task can perform against devices."""
 
+import fnmatch
 import logging
 import math
 
+from core import scripting
 from core.device import Device
 from core.registry import register_task_kind
 
@@ -54,6 +56,39 @@ class Condition:
         return device.get_event(self.endpoint_key) is not None
 
 
+class ExprCondition:
+    """Gates a Task on a restricted-Python boolean expression (see
+    core.scripting) instead of Condition's single-endpoint `changed` flag --
+    e.g. combining several devices' state with `and`/`or`/comparisons, or
+    reading a sticky min/max window. Duck-typed to the same evaluate(devices)
+    signature as Condition (Task.run() only ever calls
+    self.condition.evaluate(devices)), so no shared base class is needed.
+
+    `refs` (optional) binds short names to endpoints for the attribute-access
+    form (`sensor_a.state`); the same endpoints are also reachable inline via
+    `state("house.motion1.state")` etc. without any `refs:` entry -- see
+    _build_rule_namespace. Built with `writable=False` (no set_state/
+    create_task/kill_task/reset_sticky): a condition may be evaluated every
+    tick regardless of whether its task ends up firing, so it stays
+    side-effect-free by construction, not by convention."""
+
+    def __init__(self, *, compiled: scripting.Compiled, refs: dict[str, str],
+                 task_tag: str, flat: dict[str, Device]):
+        self._compiled = compiled
+        self._refs = refs
+        self._task_tag = task_tag
+        self._flat = flat
+
+    def evaluate(self, devices: dict[str, Device]) -> bool:
+        namespace = _build_rule_namespace(devices=devices, flat=self._flat, tasks=None,
+                                           extensions=None, sticky_endpoints=None,
+                                           task_tag=self._task_tag, writable=False)
+        for name, ref in self._refs.items():
+            device_id, endpoint_key = resolve_endpoint_ref(ref)
+            namespace[name] = scripting.EndpointRef(device_id, endpoint_key, devices, self._task_tag)
+        return bool(scripting.evaluate_expression(self._compiled, namespace))
+
+
 class Action:
     """Base class for a task's effect. One concrete subclass per `kind`,
     registered via @register_task_kind, analogous to Endpoint subclasses
@@ -64,8 +99,8 @@ class Action:
     `device:` key before construction). An action with no single target
     (e.g. CreateTaskAction, which acts on the task list itself) sets this
     False, opting out of that device resolution -- _build_action then
-    passes it `flat`/`tasks`/`extensions` instead of `device_id`/
-    `endpoint_key`."""
+    passes it `flat`/`tasks`/`extensions`/`task_tag`/`sticky_endpoints`
+    instead of `device_id`/`endpoint_key`."""
 
     kind: str = "generic"
     requires_device: bool = True
@@ -132,6 +167,38 @@ class LogAction(Action):
         logger.info(message)
 
 
+def register_task(specs: dict, flat: dict[str, Device], tasks: list["Task"],
+                   extensions: dict[str, object], sticky_endpoints: set) -> "Task":
+    """Build `specs` (same shape as a top-level tasks[] entry) into a Task
+    and (re-)register it in the live `tasks` list, replacing any existing
+    task with the same tag rather than duplicating it -- so a repeatedly-
+    firing trigger re-arms the same spawned task instead of accumulating one
+    per firing. Shared by CreateTaskAction and the script sandbox's
+    create_task() function (see _build_rule_namespace)."""
+    from core.config import _build_task  # local import: avoid config<->task import cycle
+
+    new_task = _build_task(specs, flat, tasks, extensions, sticky_endpoints)
+    existing = next((t for t in tasks if t.tag == new_task.tag), None)
+    if existing is not None:
+        tasks.remove(existing)
+        logger.info("task %s: replacing existing task", new_task.tag)
+    tasks.append(new_task)
+    logger.info("task %s created", new_task.tag)
+    return new_task
+
+
+def kill_tasks(patterns, tasks: list["Task"]) -> int:
+    """Remove every task from `tasks` whose tag matches any of `patterns`
+    (fnmatch glob, same convention as core.selectors -- an exact tag is also
+    a valid glob), logging each removal. Returns the number removed. Shared
+    by KillTaskAction and the script sandbox's kill_task() function."""
+    to_remove = [t for t in tasks if any(fnmatch.fnmatchcase(t.tag, p) for p in patterns)]
+    for t in to_remove:
+        tasks.remove(t)
+        logger.info("task %s killed", t.tag)
+    return len(to_remove)
+
+
 @register_task_kind("create_task")
 class CreateTaskAction(Action):
     """Builds a new Task from a nested `specs:` task definition (same shape
@@ -151,24 +218,135 @@ class CreateTaskAction(Action):
     requires_device = False
 
     def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"],
-                 extensions: dict | None = None, **params):
+                 extensions: dict | None = None, sticky_endpoints: set | None = None, **params):
         super().__init__(device_id="", endpoint_key="", **params)
         self._specs = specs
         self._flat = flat
         self._tasks = tasks
         self._extensions = extensions if extensions is not None else {}
+        self._sticky_endpoints = sticky_endpoints if sticky_endpoints is not None else set()
 
     def perform(self, devices: dict[str, Device]) -> None:
-        """Parse `specs` into a Task and (re-)register it in the live task list."""
-        from core.config import _build_task  # local import: avoid config<->task import cycle
+        register_task(self._specs, self._flat, self._tasks, self._extensions, self._sticky_endpoints)
 
-        new_task = _build_task(self._specs, self._flat, self._tasks, self._extensions)
-        existing = next((t for t in self._tasks if t.tag == new_task.tag), None)
-        if existing is not None:
-            self._tasks.remove(existing)
-            logger.info("task %s: replacing existing task", new_task.tag)
-        self._tasks.append(new_task)
-        logger.info("task %s created", new_task.tag)
+
+@register_task_kind("kill_task")
+class KillTaskAction(Action):
+    """Removes every task whose tag matches any of `tags` (fnmatch glob) from
+    the live task list -- the declarative counterpart to create_task, and
+    the structural equivalent of the previous Tcl system's `KillJob`."""
+
+    requires_device = False
+
+    def __init__(self, *, tags: list[str], flat: dict[str, Device] | None = None,
+                 tasks: list["Task"], extensions: dict | None = None, **params):
+        super().__init__(device_id="", endpoint_key="", **params)
+        self._tags = tags
+        self._tasks = tasks
+
+    def perform(self, devices: dict[str, Device]) -> None:
+        kill_tasks(self._tags, self._tasks)
+
+
+def _selector_refs(pattern: str, flat: dict[str, Device]) -> list[str]:
+    """The `devices(pattern)` namespace function: expand a selector pattern
+    (see core.selectors) into "<qualified_id>.<endpoint_key>" ref strings,
+    usable as a `for` target or passed straight to state()/changed()/etc."""
+    from core.selectors import resolve_selectors  # local import: avoid cycle (see core/scripting.py)
+
+    return [f"{device_id}.{endpoint_key}" for device_id, endpoint_key in resolve_selectors([pattern], flat)]
+
+
+def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device],
+                           tasks: list["Task"] | None, extensions: dict[str, object] | None,
+                           sticky_endpoints: set | None, task_tag: str, writable: bool) -> dict:
+    """The one place that defines what a condition's `expr:` or a script
+    action's `code:` can call -- both ExprCondition.evaluate() and
+    ScriptAction.perform() build their namespace here, the former with
+    `writable=False`, so the two surfaces can never drift apart in what they
+    expose and a new function only needs to be added once.
+
+    Always available (read-only): state/changed/text/event/sticky (each
+    takes a "device.endpoint" ref string) and devices(pattern) (a selector,
+    see core.selectors). Only when `writable` (scripted actions): set_state,
+    create_task/kill_task (spawn/remove tagged tasks -- see register_task/
+    kill_tasks above), reset_sticky, and log. `sticky`/`reset_sticky` are
+    keyed by `task_tag` as the Endpoint.subscribe_log() subscriber id (see
+    core.endpoint) -- core.config subscribes every referenced endpoint under
+    that same id at config-build time."""
+
+    def _ref(ref: str) -> scripting.EndpointRef:
+        device_id, endpoint_key = resolve_endpoint_ref(ref)
+        return scripting.EndpointRef(device_id, endpoint_key, devices, task_tag)
+
+    namespace = {
+        "state": lambda ref: _ref(ref).state,
+        "changed": lambda ref: _ref(ref).changed,
+        "text": lambda ref: _ref(ref).text,
+        "event": lambda ref: _ref(ref).event,
+        "sticky": lambda ref: _ref(ref).sticky,
+        "devices": lambda pattern: _selector_refs(pattern, flat),
+    }
+    if not writable:
+        return namespace
+
+    def _set_state(ref: str, value) -> None:
+        device_id, endpoint_key = resolve_endpoint_ref(ref)
+        devices[device_id].set_text(value, name=endpoint_key)
+
+    def _reset_sticky(ref: str) -> None:
+        device_id, endpoint_key = resolve_endpoint_ref(ref)
+        devices[device_id].endpoint(endpoint_key).invalidate_log_value(task_tag)
+
+    namespace.update({
+        "set_state": _set_state,
+        "create_task": lambda spec: register_task(spec, flat, tasks, extensions, sticky_endpoints),
+        "kill_task": lambda *tags: kill_tasks(tags, tasks),
+        "reset_sticky": _reset_sticky,
+        "log": lambda msg: logger.info(msg),
+    })
+    return namespace
+
+
+@register_task_kind("script")
+class ScriptAction(Action):
+    """Runs a restricted-Python script (see core.scripting) against the
+    shared rule namespace (_build_rule_namespace, above) when this task
+    fires -- the escape hatch for multi-step scenarios: reading/writing
+    device state, spawning/killing tagged sub-tasks, and reading/resetting
+    sticky min/max values from one script body, mirroring what the previous
+    Tcl system's job script bodies could do.
+
+    `compiled`/`refs` are public (not `_compiled`/`_refs`) so
+    core.config._build_action can inspect `compiled.referenced_paths` and
+    `refs` after construction, to validate/subscribe every endpoint this
+    script references -- the same way _build_condition does for
+    ExprCondition (see core.scripting's referenced_paths)."""
+
+    requires_device = False
+
+    def __init__(self, *, code: str, task_tag: str, flat: dict[str, Device],
+                 tasks: list["Task"], extensions: dict[str, object] | None = None,
+                 sticky_endpoints: set | None = None, refs: dict[str, str] | None = None,
+                 **params):
+        super().__init__(device_id="", endpoint_key="", **params)
+        self.compiled = scripting.compile_script(code)
+        self.refs = refs or {}
+        self._task_tag = task_tag
+        self._flat = flat
+        self._tasks = tasks
+        self._extensions = extensions if extensions is not None else {}
+        self._sticky_endpoints = sticky_endpoints if sticky_endpoints is not None else set()
+
+    def perform(self, devices: dict[str, Device]) -> None:
+        namespace = _build_rule_namespace(devices=devices, flat=self._flat, tasks=self._tasks,
+                                           extensions=self._extensions,
+                                           sticky_endpoints=self._sticky_endpoints,
+                                           task_tag=self._task_tag, writable=True)
+        for name, ref in self.refs.items():
+            device_id, endpoint_key = resolve_endpoint_ref(ref)
+            namespace[name] = scripting.EndpointRef(device_id, endpoint_key, devices, self._task_tag)
+        scripting.run_script(self.compiled, namespace)
 
 
 class Task:
@@ -186,17 +364,28 @@ class Task:
         reached. If repeat > 0, mark_run() advances due_time by whole
         multiples of repeat (mirrors parse_time's own repeat-rollforward,
         so a stalled process catches up instead of firing a burst). If
-        repeat <= 0, the task fires at most once (due_time -> +inf)."""
+        repeat <= 0, the task fires at most once (due_time -> +inf).
+
+    `min_interval` (default 0: no cooldown) is a retrigger cooldown applied
+    uniformly to both modes: once fired, run() won't fire again until at
+    least `min_interval` seconds have passed, regardless of how often the
+    condition holds or due_time is reached in between -- mirrors the
+    previous Tcl system's job `-min_interval`, primarily useful for
+    debouncing a `changed`/`expr` condition that could otherwise re-fire
+    every tick it holds."""
 
     def __init__(self, tag: str, *, description: str = "", due_time: float,
-                 repeat: float = 0.0, condition: Condition | None = None,
+                 repeat: float = 0.0, min_interval: float = 0.0,
+                 condition: Condition | ExprCondition | None = None,
                  actions: list[Action]):
         self.tag = tag
         self.description = description
         self.due_time = due_time
         self.repeat = repeat
+        self.min_interval = min_interval
         self.condition = condition
         self.actions = actions
+        self._last_fired = float("-inf")
 
     def due(self, now: float) -> bool:
         """True if run() should be called this tick: always True for
@@ -207,16 +396,18 @@ class Task:
         return now >= self.due_time
 
     def run(self, now: float, devices: dict[str, Device]) -> bool:
-        """Perform all actions, in order, if due. Returns True iff the
-        actions ran this call (always True for time-driven tasks; for
-        condition-driven tasks, only when the condition holds). The
-        condition/due-ness is checked once per call, not per action --
-        every action in the list fires unconditionally once that gate
-        passes."""
+        """Perform all actions, in order, if due and not cooling down.
+        Returns True iff the actions ran this call. The condition/due-ness
+        and min_interval gates are both checked once per call, not per
+        action -- every action in the list fires unconditionally once both
+        gates pass."""
         if self.condition is not None and not self.condition.evaluate(devices):
+            return False
+        if self.min_interval and (now - self._last_fired) < self.min_interval:
             return False
         for action in self.actions:
             action.perform(devices)
+        self._last_fired = now
         return True
 
     def mark_run(self, now: float) -> None:

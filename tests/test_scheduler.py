@@ -12,6 +12,7 @@ from tests.conftest import fetch_sync
 
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_system.yaml"
+SURVEILLANCE_EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "surveillance_system.yaml"
 
 
 @pytest.fixture
@@ -90,6 +91,51 @@ def test_end_to_end_nested_desk_lamp():
     assert desk_lamp.get("brightness") == 75
     assert desk_lamp.get("power") == 0
     assert desk_lamp.get_text("power") == "off"
+
+
+def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
+    """Round-trip the condition.expr/kind:script/min_interval/create_task/
+    kind:kill_task example (examples/surveillance_system.yaml) through the
+    Scheduler: arming enables the sub-tasks' effects, motion raises the
+    alarm and schedules timed follow-ups (once, thanks to min_interval),
+    and disarming tears them back down -- mirroring the previous Tcl
+    system's surveillance job set end to end."""
+    system = load_system(SURVEILLANCE_EXAMPLE)
+    scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
+
+    t = 0.0
+    scheduler.tick(now=t)  # settle initial (unset) state
+
+    system.devices["surveillance"].set(1)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "surveillance enabled" in task_log.text
+    assert system.devices["alarm"].get() == 0
+
+    system.devices["hallway_motion"].set(1)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "intrusion detected" in task_log.text
+    spawned_tags = {"surv_alert_log", "surv_siren_off", "surv_light_off"}
+    assert spawned_tags <= {task.tag for task in system.tasks}
+
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)  # let the alarm/siren writes settle onto the devices
+    assert system.devices["alarm"].get() == 1
+    assert system.devices["siren"].get() == 1
+
+    system.devices["surveillance"].set(0)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "surveillance disabled" in task_log.text
+    assert spawned_tags.isdisjoint({task.tag for task in system.tasks})
+    assert system.devices["alarm"].get() == 0
+    assert system.devices["siren"].get() == 0
+    assert system.devices["hallway_light"].get() == 0
 
 
 def test_scheduler_runs_blink_task_and_reschedules():
@@ -242,7 +288,7 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
     assert clear_alert_tasks[0] is not first_spawned
 
 
-def test_scheduler_newly_created_task_visible_within_same_tick_if_already_due():
+def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
     from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
     from core.task import CreateTaskAction
@@ -253,14 +299,18 @@ def test_scheduler_newly_created_task_visible_within_same_tick_if_already_due():
 
     tasks: list[Task] = []
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    # Nested spec is a condition-driven task (always due), not time-driven,
-    # so it is trivially "due" the instant it's appended -- confirms
-    # CPython's index-based list iteration makes an appended task visible
-    # within the SAME tick's remaining pass 2 loop.
+    # Nested spec is a condition-driven task (always due), not time-driven --
+    # if a task appended mid-tick were visible within that same tick's
+    # remaining pass 2 loop, this would fire immediately. Instead,
+    # _tick_async snapshots self._tasks once per tick (`for task in
+    # list(self._tasks)`, see core/scheduler.py) specifically so a
+    # create_task/kill_task action's same-tick mutation only takes effect
+    # starting the NEXT tick -- deterministic, and consistent with tasks
+    # only ever observing state committed by the previous tick.
     specs = {
         "tag": "clear_alert",
         "condition": {"device": "living_light.state", "changed": False},
-        "action": {"kind": "set", "device": "living_light.state", "value": "off"},
+        "action": {"kind": "log", "device": "living_light.state", "message": "clear_alert ran"},
     }
     trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
@@ -270,16 +320,58 @@ def test_scheduler_newly_created_task_visible_within_same_tick_if_already_due():
 
     light.set("on")
     scheduler.tick(now=0.0)
-    scheduler.tick(now=1.0)  # create_task fires; spawned task is unconditionally due,
-    # and (per CPython's index-based list iteration) runs within this SAME
-    # tick's pass 2, staging a pending "off" write on the virtual device's
-    # own buffer -- but VirtualDevice only drains that buffer via receive(),
-    # which only runs on the device's own next due fetch (matching the
-    # one-tick lag documented in test_scheduler_runs_blink_task_and_reschedules).
+    scheduler.tick(now=1.0)  # raise_alert fires, spawns clear_alert
+
     assert "clear_alert" in [t.tag for t in tasks]
+    assert "clear_alert ran" not in task_log.text  # not run within the tick it was created
 
     scheduler.tick(now=2.0)
-    assert light.get() == "off"
+    assert "clear_alert ran" in task_log.text  # runs starting the next tick
+
+
+def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log):
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+    from core.task import ScriptAction
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    flat = {"living_light": light}
+    tasks: list[Task] = []
+
+    trigger_condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
+    code = (
+        "create_task({'tag': 'spawned', "
+        "'condition': {'device': 'living_light.state', 'changed': False}, "
+        "'action': {'kind': 'log', 'device': 'living_light.state', 'message': 'spawned ran'}})\n"
+        "kill_task('victim')"
+    )
+    spawner = Task("spawner", due_time=float("-inf"), condition=trigger_condition,
+                    actions=[ScriptAction(code=code, task_tag="spawner", flat=flat, tasks=tasks)])
+    victim = Task("victim", due_time=float("-inf"),
+                   condition=Condition(device_id="living_light", endpoint_key="state", changed=False),
+                   actions=[LogAction(device_id="living_light", endpoint_key="state", message="victim ran")])
+    # "spawner" ordered before "victim": within the same tick, spawner's
+    # kill_task('victim') mutates the LIVE list, but this tick's pass 2 loop
+    # already snapshotted it (see core/scheduler.py's `list(self._tasks)`),
+    # so victim -- already in that snapshot -- still runs this tick; only
+    # from the NEXT tick's fresh snapshot is it actually gone.
+    tasks.extend([spawner, victim])
+
+    scheduler = Scheduler(flat, tasks=tasks)
+
+    light.set("on")
+    scheduler.tick(now=0.0)
+    scheduler.tick(now=1.0)  # spawner fires: creates "spawned", kills "victim"
+
+    assert "victim ran" in task_log.text  # was in this tick's snapshot -> still ran
+    assert "spawned ran" not in task_log.text  # wasn't in this tick's snapshot -> didn't run
+    assert [t.tag for t in tasks] == ["spawner", "spawned"]  # live list already updated
+
+    task_log.clear()
+    scheduler.tick(now=2.0)
+    assert "spawned ran" in task_log.text  # now included in the fresh snapshot
+    assert "victim ran" not in task_log.text  # gone for good
 
 
 # ---------- tick_hooks ----------
