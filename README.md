@@ -10,8 +10,8 @@ state, all on a fixed-heartbeat scheduler.
 
 - **Device** — a node in a tree that exposes zero or more **endpoints**
   (readable/writable state) and may have child devices. Devices are backed
-  by a plugin **module** (e.g. `meteoswiss`, `open_meteo`, `sun`,
-  `virtual`, `host`), declared in a system YAML file.
+  by a plugin **module** (e.g. `meteoswiss`, `open_meteo`, `waveplus_bridge`,
+  `sun`, `virtual`, `host`), declared in a system YAML file.
 - **Module** — a device plugin: a `devices/<name>/device.py` (the `Device`
   subclass) plus a `devices/<name>/module.yaml` describing its parameters
   and endpoints declaratively. Modules are discovered automatically at
