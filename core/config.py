@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from core.device import Device
-from core.endpoint import Endpoint
+from core.endpoint import VALUE_TYPES, Endpoint
 from core.intervals import parse_duration, parse_time
 from core.logging_setup import configure_logging
 from core.registry import discover_modules, get_device_class, get_endpoint_class, get_task_kind_class
@@ -151,6 +151,11 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
     endpoints = []
     seeds = []
     for spec in merged_specs:
+        value_type = spec.get("type")
+        if value_type is not None and value_type not in VALUE_TYPES:
+            raise ConfigError(
+                f"device {device_id!r}: endpoint {spec['key']!r} has invalid type "
+                f"{value_type!r}, expected one of {VALUE_TYPES}")
         cls = get_endpoint_class(spec.get("kind"))
         ep = cls(
             spec["key"],
@@ -158,6 +163,9 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             writable=spec.get("writable", False),
             parameters=spec.get("parameters"),
             description=spec.get("description", ""),
+            value_type=value_type,
+            unit=spec.get("unit"),
+            values=spec.get("values"),
         )
         endpoints.append(ep)
         if "default" in spec:

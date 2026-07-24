@@ -17,7 +17,7 @@ import pytest
 from core.device import Device, _write_collector
 from core.endpoint import Endpoint
 from core.scheduler import Scheduler
-from core.task import Task, TurnOnAction
+from core.task import SetAction, Task
 
 
 class SleepReadDevice(Device):
@@ -80,7 +80,7 @@ def test_writes_run_concurrently():
         for i in range(3)
     }
     tasks = [Task(f"on{i}", due_time=0.0,
-                  actions=[TurnOnAction(device_id=f"w{i}", endpoint_key="state")])
+                  actions=[SetAction(device_id=f"w{i}", endpoint_key="state", value="on")])
              for i in range(3)]
     scheduler = Scheduler(devices, tasks=tasks)
 

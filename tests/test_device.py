@@ -161,3 +161,50 @@ def test_update_time_aggregates_max_across_endpoints_and_children():
     child.update_state()
     assert parent.get_update_time() == child.get_update_time()
     assert parent.get_update_time() > 0.0
+
+
+# ---------- get_text / set_text ----------
+
+def test_get_text_set_text_single_endpoint_shortcut():
+    ep = Endpoint("state", writable=True, value_type="int", values={0: "off", 1: "on"})
+    device = EchoDevice("light", endpoints=[ep])
+
+    device.set_text("on")
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get() == 1
+    assert device.get_text() == "on"
+
+
+def test_get_text_set_text_by_name():
+    power = Endpoint("power", writable=True, value_type="int", values={0: "off", 1: "on"})
+    brightness = Endpoint("brightness", writable=True, value_type="int", unit="%")
+    device = EchoDevice("lamp", endpoints=[power, brightness])
+
+    device.set_text("on", name="power")
+    device.set_text("80", name="brightness")
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get_text("power") == "on"
+    assert device.get_text("brightness") == "80 %"
+    assert device.get("brightness") == 80
+
+
+def test_set_text_on_readonly_endpoint_raises():
+    ep = Endpoint("temp", writable=False, value_type="float")
+    device = EchoDevice("d", endpoints=[ep])
+    with pytest.raises(AttributeError):
+        device.set_text("21.0")
+
+
+def test_get_text_recurses_into_children():
+    child = make_single_endpoint_device("a")
+    parent = Device("house", children=[child])
+
+    child.set("on")
+    fetch_sync(child)
+    child.update_state()
+
+    assert parent.get_text()["a_dev"] == "on"

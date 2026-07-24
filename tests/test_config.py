@@ -207,6 +207,26 @@ def test_merge_endpoints_instance_parameters_merge_per_key():
     assert endpoints[0].parameters == {"column": "tre200s0", "unit": "F"}
 
 
+def test_merge_endpoints_parses_type_unit_values():
+    module = ModuleDescriptor("m", {
+        "endpoints": [
+            {"key": "state", "type": "int", "unit": "%", "values": {0: "off", 1: "on"}},
+        ]
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev")
+    assert endpoints[0].value_type == "int"
+    assert endpoints[0].unit == "%"
+    assert endpoints[0].values == {0: "off", 1: "on"}
+
+
+def test_merge_endpoints_rejects_invalid_type():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "state", "type": "bogus"}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev")
+
+
 def test_resolve_interval_module_default_when_no_instance_override():
     module = ModuleDescriptor("m", {"update": "10s"})
     seconds = _resolve_interval(module, {}, {})
@@ -468,7 +488,7 @@ devices:
 tasks:
   - tag: lamp_on
     time: "+1s"
-    action: { kind: turn_on, device: "house.desk_lamp.power" }
+    action: { kind: set, device: "house.desk_lamp.power", value: "on" }
 """)
     system = load_system(system_yaml)
     task = next(t for t in system.tasks if t.tag == "lamp_on")
@@ -491,8 +511,8 @@ tasks:
   - tag: both
     time: "+1s"
     actions:
-      - { kind: turn_on, device: "living_light.state" }
-      - { kind: turn_on, device: "desk_lamp.power" }
+      - { kind: set, device: "living_light.state", value: "on" }
+      - { kind: set, device: "desk_lamp.power", value: "on" }
 """)
     system = load_system(system_yaml)
     task = next(t for t in system.tasks if t.tag == "both")
@@ -512,9 +532,9 @@ devices:
 tasks:
   - tag: bad
     time: "+1s"
-    action: { kind: turn_on, device: "living_light.state" }
+    action: { kind: set, device: "living_light.state", value: "on" }
     actions:
-      - { kind: turn_on, device: "living_light.state" }
+      - { kind: set, device: "living_light.state", value: "on" }
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
@@ -570,7 +590,7 @@ tasks:
       specs:
         tag: clear_alert
         time: "+1s"
-        action: { kind: turn_off, device: "living_light.state" }
+        action: { kind: set, device: "living_light.state", value: "off" }
 """)
     system = load_system(system_yaml)
     task = next(t for t in system.tasks if t.tag == "raise_alert")
@@ -595,7 +615,7 @@ tasks:
       specs:
         tag: clear_alert
         time: "+1s"
-        action: { kind: turn_off, device: "nonexistent.state" }
+        action: { kind: set, device: "nonexistent.state", value: "off" }
 """)
     # Lazy validation: the nested spec references an unknown device, but
     # since create_task only builds it when it actually fires, load_system()

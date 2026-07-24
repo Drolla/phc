@@ -1,5 +1,5 @@
-"""Task system: conditions that gate actions, and the actions (turn_on,
-turn_off, toggle, log, create_task) a Task can perform against devices."""
+"""Task system: conditions that gate actions, and the actions (set, toggle,
+log, create_task) a Task can perform against devices."""
 
 import logging
 import math
@@ -71,45 +71,55 @@ class Action:
         raise NotImplementedError
 
 
-@register_task_kind("turn_on")
-class TurnOnAction(Action):
-    """Set the target endpoint/device to "on"."""
+@register_task_kind("set")
+class SetAction(Action):
+    """Set the target endpoint/device to `value`, a raw value (e.g. 0, 1,
+    22.5) or display text (e.g. "on", "off") -- translated into the
+    endpoint's raw value via Endpoint.from_text() (see core/endpoint.py),
+    so a `values`-mapped endpoint accepts either its raw keys or their text
+    labels. An endpoint with no declared type/values passes `value` through
+    unchanged, same as writing it directly via device.set()."""
 
     def perform(self, devices: dict[str, Device]) -> None:
-        devices[self.device_id].set("on", name=self.endpoint_key)
-
-
-@register_task_kind("turn_off")
-class TurnOffAction(Action):
-    """Set the target endpoint/device to "off"."""
-
-    def perform(self, devices: dict[str, Device]) -> None:
-        devices[self.device_id].set("off", name=self.endpoint_key)
+        devices[self.device_id].set_text(self.params["value"], name=self.endpoint_key)
 
 
 @register_task_kind("toggle")
 class ToggleAction(Action):
-    """Flip the target endpoint/device between "on" and "off"."""
+    """Flip the target endpoint between its two declared `values` (e.g.
+    0/1 for a {0: "off", 1: "on"} mapping), or between the literal strings
+    "on"/"off" as a fallback for an endpoint with no such two-entry mapping
+    (including a bare device reference with no single endpoint to inspect)."""
 
     def perform(self, devices: dict[str, Device]) -> None:
         device = devices[self.device_id]
+        ep = device.endpoint(self.endpoint_key) if self.endpoint_key else None
+        if ep is not None and ep.values is not None and len(ep.values) == 2:
+            other = next(raw for raw in ep.values if raw != ep.get())
+            device.set(other, name=self.endpoint_key)
+            return
         current = device.get(self.endpoint_key)
         device.set("off" if current == "on" else "on", name=self.endpoint_key)
 
 
 @register_task_kind("log")
 class LogAction(Action):
-    """Log `message` (a str.format() template with `state` available), formatted
-    against the target endpoint's/device's current value."""
+    """Log `message` (a str.format() template with `state`/`text` available),
+    formatted against the target endpoint's/device's current value."""
 
     def perform(self, devices: dict[str, Device]) -> None:
         """If endpoint_key is None (device given without an endpoint, e.g.
-        `device: "meteo-bern"`), device.get(None) already reports every
-        endpoint (and child) as a dict -- so `state` prints the whole
-        device's state rather than a single value."""
+        `device: "meteo-bern"`), device.get(None)/get_text(None) already
+        report every endpoint (and child) as a dict -- so `state`/`text`
+        print the whole device's state rather than a single value.
+
+        `state` is the raw value (as before); `text` is the endpoint's
+        formatted display text (see Endpoint.to_text), e.g. "on" for a
+        `values`-mapped endpoint whose raw state is 1."""
         device = devices[self.device_id]
         state = device.get(self.endpoint_key)
-        message = self.params.get("message", "").format(state=state)
+        text = device.get_text(self.endpoint_key)
+        message = self.params.get("message", "").format(state=state, text=text)
         logger.info(message)
 
 
