@@ -71,6 +71,16 @@ def test_resolve_endpoint_ref_allow_bare_still_splits_dotted_ref():
     assert resolve_endpoint_ref("living_light.state", allow_bare=True) == ("living_light", "state")
 
 
+# ---------- Action.requires_device ----------
+
+def test_action_requires_device_defaults_true():
+    assert SetAction(device_id="living_light", endpoint_key="state", value="on").requires_device is True
+
+
+def test_create_task_action_requires_device_is_false():
+    assert CreateTaskAction(specs={}, flat={}, tasks=[]).requires_device is False
+
+
 # ---------- default actions ----------
 
 def test_set_action_untyped_passes_value_through():

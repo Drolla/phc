@@ -280,3 +280,58 @@ def test_scheduler_newly_created_task_visible_within_same_tick_if_already_due():
 
     scheduler.tick(now=2.0)
     assert light.get() == "off"
+
+
+# ---------- tick_hooks ----------
+
+def test_tick_hook_runs_once_per_tick_with_devices():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    calls = []
+    scheduler = Scheduler({"living_light": light}, tick_hooks=[lambda devices: calls.append(devices)])
+
+    scheduler.tick(now=0.0)
+    assert len(calls) == 1
+    assert calls[0] == {"living_light": light}
+
+    scheduler.tick(now=1.0)
+    assert len(calls) == 2
+
+
+def test_tick_hook_observes_this_ticks_freshly_committed_state():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    observed = []
+    scheduler = Scheduler({"living_light": light},
+                           tick_hooks=[lambda devices: observed.append(devices["living_light"].get())])
+
+    light.set("on")
+    scheduler.tick(now=0.0)
+    # Unlike a task (which sees the PREVIOUS tick's commit, see
+    # test_scheduler_runs_condition_task_only_on_change_tick above), a tick
+    # hook runs after pass 3 and so observes THIS tick's own fresh commit.
+    assert observed == ["on"]
+
+
+def test_tick_hook_exception_is_caught_and_does_not_stop_other_hooks():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    calls = []
+
+    def failing_hook(devices):
+        raise RuntimeError("boom")
+
+    scheduler = Scheduler({"living_light": light},
+                           tick_hooks=[failing_hook, lambda devices: calls.append(devices)])
+
+    scheduler.tick(now=0.0)  # must not raise
+    assert len(calls) == 1

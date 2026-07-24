@@ -57,9 +57,18 @@ class Condition:
 class Action:
     """Base class for a task's effect. One concrete subclass per `kind`,
     registered via @register_task_kind, analogous to Endpoint subclasses
-    registered via @register_endpoint_kind."""
+    registered via @register_endpoint_kind.
+
+    requires_device: True for the common case of an action that targets one
+    device/endpoint (resolved by core.config._build_action from the YAML
+    `device:` key before construction). An action with no single target
+    (e.g. CreateTaskAction, which acts on the task list itself) sets this
+    False, opting out of that device resolution -- _build_action then
+    passes it `flat`/`tasks`/`extensions` instead of `device_id`/
+    `endpoint_key`."""
 
     kind: str = "generic"
+    requires_device: bool = True
 
     def __init__(self, *, device_id: str, endpoint_key: str | None, **params):
         self.device_id = device_id
@@ -139,17 +148,21 @@ class CreateTaskAction(Action):
     hold many times over the process's lifetime) re-arms the same spawned
     task instead of accumulating one per firing."""
 
-    def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"], **params):
+    requires_device = False
+
+    def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"],
+                 extensions: dict | None = None, **params):
         super().__init__(device_id="", endpoint_key="", **params)
         self._specs = specs
         self._flat = flat
         self._tasks = tasks
+        self._extensions = extensions if extensions is not None else {}
 
     def perform(self, devices: dict[str, Device]) -> None:
         """Parse `specs` into a Task and (re-)register it in the live task list."""
         from core.config import _build_task  # local import: avoid config<->task import cycle
 
-        new_task = _build_task(self._specs, self._flat, self._tasks)
+        new_task = _build_task(self._specs, self._flat, self._tasks, self._extensions)
         existing = next((t for t in self._tasks if t.tag == new_task.tag), None)
         if existing is not None:
             self._tasks.remove(existing)

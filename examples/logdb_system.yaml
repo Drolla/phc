@@ -1,0 +1,105 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+
+intervals:
+  fast: 3s
+
+devices:
+  - id: living_light
+    module: virtual
+    name: Living Room Light
+    update: fast
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+        # log_aggregation defaults to "max" -- a brief "on" pulse between
+        # two log samples is still captured (see the logdb extension below).
+
+  - id: house
+    module: host
+    name: Whole House
+    children:
+      - id: kitchen
+        module: host
+        name: Kitchen
+        children:
+          - id: kitchen_light
+            module: virtual
+            update: 5s
+            endpoints:
+              - key: state
+                writable: true
+                type: int
+                values: { 0: "off", 1: "on" }
+                default: 0
+
+      - id: hallway_light
+        module: virtual
+        update: fast
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            default: 0
+
+      - id: desk_lamp
+        module: virtual
+        update: fast
+        endpoints:
+          - key: power
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+            log_aggregation: max
+          - key: brightness
+            writable: true
+            type: int
+            unit: "%"
+            default: 0
+            # brightness dips are as interesting as spikes, so track the
+            # minimum seen between log samples instead of the default max.
+            log_aggregation: min
+
+# Two independently-scheduled logdb instances: a frequent one covering
+# everything under house/ plus the living room light, and a slower one
+# demonstrating a second, separately-configured CSV file.
+extensions:
+  logdb:
+    house_log:
+      selectors: ["house.*/*", "living_light/state"]
+      csv_path: "logs/house_log.csv"
+      max_records: 50000
+      full_vector_interval: 50
+
+    living_room_log:
+      selectors: ["living_light/*"]
+      csv_path: "logs/living_room_log.csv"
+      max_records: 5000
+
+tasks:
+  - tag: blink
+    description: "Toggle the light every 10s"
+    time: +1s
+    repeat: 10s
+    action: { kind: toggle, device: "living_light.state" }
+
+  - tag: log_house
+    description: "Log the whole house's state every 30s"
+    time: +5s
+    repeat: 30s
+    action: { kind: log_db, instance: "logdb.house_log" }
+
+  - tag: log_living_room
+    description: "Log just the living room light every 5s"
+    time: +2s
+    repeat: 5s
+    action: { kind: log_db, instance: "logdb.living_room_log" }

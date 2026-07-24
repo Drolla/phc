@@ -2,7 +2,8 @@
 
 import pytest
 
-from core.config import (ConfigError, ModuleDescriptor, _merge_endpoints, _merge_params,
+from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _load_extensions,
+                          _merge_endpoints, _merge_extension_params, _merge_params,
                           _resolve_interval, _resolve_module_params, load_system)
 
 
@@ -167,6 +168,30 @@ def test_resolve_module_params_ignores_unrelated_modules_config_when_no_module_s
         ]
     })
     assert _resolve_module_params(module, {"other": {"params": {"x": 1}}}) == {}
+
+
+def test_merge_endpoints_defaults_log_aggregation_to_max():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "state"}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev")
+    assert endpoints[0].log_aggregation == "max"
+
+
+def test_merge_endpoints_accepts_explicit_log_aggregation():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "state", "log_aggregation": "min"}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev")
+    assert endpoints[0].log_aggregation == "min"
+
+
+def test_merge_endpoints_rejects_invalid_log_aggregation():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "state", "log_aggregation": "bogus"}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev")
 
 
 def test_merge_endpoints_static_module_with_instance_default_override():
@@ -687,6 +712,97 @@ tasks:
   - tag: dup
     time: "+2s"
     action: { kind: toggle, device: "living_light.state" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+# ---------- ExtensionDescriptor / _merge_extension_params ----------
+
+def test_merge_extension_params_uses_default_when_no_override():
+    descriptor = ExtensionDescriptor("logdb", {
+        "parameters": [{"name": "max_records", "override": "allowed", "default": 100000}],
+    })
+    merged = _merge_extension_params(descriptor, {}, "logdb.house_log")
+    assert merged == {"max_records": 100000}
+
+
+def test_merge_extension_params_instance_overrides_allowed():
+    descriptor = ExtensionDescriptor("logdb", {
+        "parameters": [{"name": "max_records", "override": "allowed", "default": 100000}],
+    })
+    merged = _merge_extension_params(descriptor, {"max_records": 500}, "logdb.house_log")
+    assert merged == {"max_records": 500}
+
+
+def test_merge_extension_params_none_override_rejects_instance_value():
+    descriptor = ExtensionDescriptor("logdb", {
+        "parameters": [{"name": "csv_path", "override": "none", "default": "log.csv"}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_extension_params(descriptor, {"csv_path": "evil.csv"}, "logdb.house_log")
+
+
+def test_merge_extension_params_required_missing_raises():
+    descriptor = ExtensionDescriptor("logdb", {
+        "parameters": [{"name": "allow", "override": "required"}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_extension_params(descriptor, {}, "logdb.house_log")
+
+
+def test_merge_extension_params_required_supplied_ok():
+    descriptor = ExtensionDescriptor("logdb", {
+        "parameters": [{"name": "allow", "override": "required"}],
+    })
+    merged = _merge_extension_params(descriptor, {"allow": ["*"]}, "logdb.house_log")
+    assert merged == {"allow": ["*"]}
+
+
+def test_merge_extension_params_unknown_param_raises():
+    descriptor = ExtensionDescriptor("logdb", {"parameters": []})
+    with pytest.raises(ConfigError):
+        _merge_extension_params(descriptor, {"bogus": 1}, "logdb.house_log")
+
+
+# ---------- _load_extensions ----------
+
+def test_load_extensions_returns_empty_dict_when_no_extensions_key():
+    assert _load_extensions({}, {}) == {}
+
+
+def test_load_extensions_returns_empty_dict_when_extensions_key_empty():
+    assert _load_extensions({"extensions": {}}, {}) == {}
+
+
+def test_load_extensions_rejects_non_mapping_instances():
+    with pytest.raises(ConfigError):
+        _load_extensions({"extensions": {"logdb": "not-a-mapping"}}, {})
+
+
+def test_load_extensions_rejects_unknown_extension_name():
+    with pytest.raises(ConfigError):
+        _load_extensions({"extensions": {"nonexistent": {"an_instance": {}}}}, {})
+
+
+def test_load_system_log_db_action_unknown_instance_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text(f"""
+heartbeat: 1s
+devices:
+  - id: alarm
+    module: virtual
+    update: 1s
+    endpoints: [{{ key: state, writable: true, type: int, default: 0 }}]
+extensions:
+  logdb:
+    house_log:
+      selectors: ["alarm/state"]
+      csv_path: "{(tmp_path / 'log.csv').as_posix()}"
+tasks:
+  - tag: log_house
+    time: "+1s"
+    action: {{ kind: log_db, instance: "logdb.nonexistent" }}
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
