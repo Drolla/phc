@@ -13,8 +13,8 @@ import pytest
 
 from core.endpoint import Endpoint
 from core.scheduler import Scheduler
-from modules.meteoswiss import device as meteoswiss_device
-from modules.meteoswiss.device import MeteoSwissDevice
+from devices.meteoswiss import device as meteoswiss_device
+from devices.meteoswiss.device import MeteoSwissDevice
 
 
 CSV = (

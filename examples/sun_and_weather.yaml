@@ -15,7 +15,7 @@ intervals:
 # meteoswiss are plain HTTP calls to free public APIs.
 
 # All meteoswiss devices below poll the same published CSV
-# (data_url/cache_time are `scope: module` in modules/meteoswiss/module.yaml
+# (data_url/cache_time are `scope: module` in devices/meteoswiss/module.yaml
 # -- one shared value for every station, not per device).
 modules:
   meteoswiss:

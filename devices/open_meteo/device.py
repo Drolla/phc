@@ -13,7 +13,7 @@ from core.registry import register_module
 # Shared across every OpenMeteoDevice instance, keyed by full request URL
 # (which already encodes lat/lon, so co-located devices coalesce into one
 # HTTP GET instead of each independently re-downloading the identical
-# response -- same pattern as modules/meteoswiss's _csv_cache, just keyed
+# response -- same pattern as devices/meteoswiss's _csv_cache, just keyed
 # more finely since each location has its own URL here).
 _response_cache: dict[str, tuple[float, dict]] = {}   # url -> (fetched_at, current)
 _response_cache_lock = asyncio.Lock()

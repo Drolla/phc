@@ -1,5 +1,5 @@
 """SunDevice is pure computation (astral against latitude/longitude + the
-system clock), so these tests monkeypatch modules.sun.device._now to a fixed
+system clock), so these tests monkeypatch devices.sun.device._now to a fixed
 reference time instead of depending on the wall clock -- deterministic
 without needing to mock astral itself.
 """
@@ -9,8 +9,8 @@ from zoneinfo import ZoneInfo
 
 from core.endpoint import Endpoint
 from core.scheduler import Scheduler
-from modules.sun import device as sun_device
-from modules.sun.device import SunDevice
+from devices.sun import device as sun_device
+from devices.sun.device import SunDevice
 
 _ZURICH = ZoneInfo("Europe/Zurich")
 _ENDPOINT_KEYS = ["sunrise", "sunset", "solar_noon", "dawn", "dusk", "elevation", "azimuth", "is_daylight"]

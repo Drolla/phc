@@ -1,4 +1,4 @@
-"""Device: the base class every device module (modules/<name>/device.py) subclasses."""
+"""Device: the base class every device module (devices/<name>/device.py) subclasses."""
 
 import asyncio
 from contextvars import ContextVar

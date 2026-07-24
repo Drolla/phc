@@ -15,8 +15,8 @@ import pytest
 
 from core.endpoint import Endpoint
 from core.scheduler import Scheduler
-from modules.open_meteo import device as open_meteo_device
-from modules.open_meteo.device import OpenMeteoDevice
+from devices.open_meteo import device as open_meteo_device
+from devices.open_meteo.device import OpenMeteoDevice
 
 CURRENT = {
     "temperature_2m": 22.5,

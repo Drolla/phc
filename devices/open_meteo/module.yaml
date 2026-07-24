@@ -1,7 +1,7 @@
 description: >
   Live current-conditions weather for any location worldwide, from the free
   Open-Meteo forecast API (https://open-meteo.com, no API key required).
-  Unlike modules/meteoswiss, which only covers the Swiss weather-station
+  Unlike devices/meteoswiss, which only covers the Swiss weather-station
   network, this works anywhere -- set `latitude`/`longitude` to the location
   to track. One device per location.
 

@@ -12,8 +12,8 @@ state, all on a fixed-heartbeat scheduler.
   (readable/writable state) and may have child devices. Devices are backed
   by a plugin **module** (e.g. `meteoswiss`, `open_meteo`, `sun`,
   `virtual`, `host`), declared in a system YAML file.
-- **Module** — a device plugin: a `modules/<name>/device.py` (the `Device`
-  subclass) plus a `modules/<name>/module.yaml` describing its parameters
+- **Module** — a device plugin: a `devices/<name>/device.py` (the `Device`
+  subclass) plus a `devices/<name>/module.yaml` describing its parameters
   and endpoints declaratively. Modules are discovered automatically at
   startup.
 - **Task** — an automation triggered either by a schedule (`time`/`repeat`)
@@ -39,8 +39,12 @@ value as display text and to parse text (or a raw value/label, e.g. `1` or
 `{text}` placeholder and the `set` action's `value:` parameter.
 
 See [`examples/`](examples/) for complete system configurations, and the
-`module.yaml` file in each [`modules/`](modules/) subfolder for what
+`module.yaml` file in each [`devices/`](devices/) subfolder for what
 parameters/endpoints a given device module supports.
+
+[`extensions/`](extensions/) is the future home for non-device PHC
+extensions (logging/reporting backends, a GUI, etc.), following the same
+package-plus-descriptor pattern as device modules.
 
 ## Requirements
 
@@ -77,13 +81,13 @@ Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
 
 ## Adding a device module
 
-A new device type is a new `modules/<name>/` package containing:
+A new device type is a new `devices/<name>/` package containing:
 
 - `device.py` — a `Device` subclass decorated with `@register_module("<name>")`.
 - `module.yaml` — its declared parameters and endpoints.
 
-See any existing module (e.g. [`modules/virtual/`](modules/virtual/)) for
-the minimal shape, or [`modules/meteoswiss/`](modules/meteoswiss/) for a
+See any existing module (e.g. [`devices/virtual/`](devices/virtual/)) for
+the minimal shape, or [`devices/meteoswiss/`](devices/meteoswiss/) for a
 fuller, network-backed example.
 
 ## Tests

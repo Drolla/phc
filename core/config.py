@@ -13,7 +13,7 @@ from core.logging_setup import configure_logging
 from core.registry import discover_modules, get_device_class, get_endpoint_class, get_task_kind_class
 from core.task import Task, Condition, resolve_endpoint_ref
 
-_MODULES_DIR = Path(__file__).resolve().parent.parent / "modules"
+_DEVICES_DIR = Path(__file__).resolve().parent.parent / "devices"
 
 
 class ConfigError(Exception):
@@ -39,7 +39,7 @@ def _load_module_descriptor(module_name: str) -> ModuleDescriptor:
     parsing its module.yaml on first use."""
     if module_name in _module_descriptors:
         return _module_descriptors[module_name]
-    module_yaml_path = _MODULES_DIR / module_name / "module.yaml"
+    module_yaml_path = _DEVICES_DIR / module_name / "module.yaml"
     if not module_yaml_path.exists():
         raise ConfigError(f"module {module_name!r} has no module.yaml at {module_yaml_path}")
     with open(module_yaml_path, "r") as f:

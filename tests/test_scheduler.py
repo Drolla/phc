@@ -30,7 +30,7 @@ def task_log(caplog):
 
 
 def test_scheduler_only_runs_due_devices():
-    from modules.virtual.device import VirtualDevice
+    from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
 
     fast = VirtualDevice("fast", endpoints=[Endpoint("state", writable=True)],
@@ -93,7 +93,7 @@ def test_end_to_end_nested_desk_lamp():
 
 
 def test_scheduler_runs_blink_task_and_reschedules():
-    from modules.virtual.device import VirtualDevice
+    from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
@@ -131,7 +131,7 @@ def test_scheduler_runs_blink_task_and_reschedules():
 
 
 def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
-    from modules.virtual.device import VirtualDevice
+    from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
@@ -166,7 +166,7 @@ def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
 
 
 def test_scheduler_create_task_action_spawns_task_that_later_fires():
-    from modules.virtual.device import VirtualDevice
+    from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
     from core.task import CreateTaskAction
 
@@ -206,7 +206,7 @@ def test_scheduler_create_task_action_spawns_task_that_later_fires():
 
 
 def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
-    from modules.virtual.device import VirtualDevice
+    from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
     from core.task import CreateTaskAction
 
@@ -243,7 +243,7 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
 
 
 def test_scheduler_newly_created_task_visible_within_same_tick_if_already_due():
-    from modules.virtual.device import VirtualDevice
+    from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
     from core.task import CreateTaskAction
 
