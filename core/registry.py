@@ -1,7 +1,9 @@
 """Plugin registry: Device/Endpoint/Action classes register themselves here by
-name (via @register_module/@register_endpoint_kind/@register_task_kind), and
-discover_modules() imports every devices/<name>/device.py so that registration
-happens automatically at startup."""
+name (via @register_module/@register_endpoint_kind/@register_task_kind).
+discover_modules() imports every devices/<name>/device.py, and
+discover_extensions() imports every extensions/<name>/extension.py, so that
+registration happens automatically at startup regardless of which package a
+plugin lives in."""
 
 import importlib
 import pkgutil
@@ -73,5 +75,20 @@ def discover_modules(package_name: str = "devices") -> None:
             continue
         try:
             importlib.import_module(name + ".device")
+        except ModuleNotFoundError:
+            continue
+
+
+def discover_extensions(package_name: str = "extensions") -> None:
+    """Import every extensions/<name>/extension.py so its @register_task_kind
+    (or other @register_*) decorators run and populate the registry. Mirrors
+    discover_modules(), but for extensions/'s extension.py convention (vs.
+    devices/'s device.py). Idempotent: re-importing is a no-op."""
+    package = importlib.import_module(package_name)
+    for _finder, name, is_pkg in pkgutil.iter_modules(package.__path__, package_name + "."):
+        if not is_pkg:
+            continue
+        try:
+            importlib.import_module(name + ".extension")
         except ModuleNotFoundError:
             continue
