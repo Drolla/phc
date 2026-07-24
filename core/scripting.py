@@ -14,6 +14,25 @@ instead of doing something surprising, not to sandbox an adversarial author."""
 
 import ast
 import builtins
+import logging
+
+logger = logging.getLogger("phc.scripting")
+
+# Cap for the single-line source snippet in a debug log message (see
+# _snippet(), used by compile_expression/compile_script) -- long enough to
+# recognize the expression/script at a glance, short enough to not flood
+# the log on every tick.
+_LOG_SNIPPET_LENGTH = 60
+
+
+def _snippet(source: str) -> str:
+    """Collapse `source` to one line (join()ing on whitespace, so a
+    multi-line script's newlines/indentation don't break up a log line) and
+    truncate to _LOG_SNIPPET_LENGTH characters."""
+    collapsed = " ".join(source.split())
+    if len(collapsed) > _LOG_SNIPPET_LENGTH:
+        return collapsed[:_LOG_SNIPPET_LENGTH] + "..."
+    return collapsed
 
 # Endpoint properties reachable via `.attr` on a bound EndpointRef (see below)
 # -- the only attribute names this sandbox permits at all.
@@ -101,34 +120,45 @@ class Compiled:
 def compile_expression(source: str) -> Compiled:
     """Validate and compile a condition's `expr:` source. Raises ScriptError
     on invalid syntax or a whitelist violation."""
+    logger.debug("compile expr: %s", _snippet(source))
     try:
         tree = ast.parse(source, mode="eval")
     except SyntaxError as exc:
         raise ScriptError(f"invalid expression syntax: {exc}") from None
-    return Compiled(compile(tree, "<condition-expr>", "eval"), _validate(tree))
+    compiled = Compiled(compile(tree, "<condition-expr>", "eval"), _validate(tree))
+    logger.debug("compile expr done: referenced path(s): %s", sorted(compiled.referenced_paths))
+    return compiled
 
 
 def compile_script(source: str) -> Compiled:
     """Validate and compile a script action's `code:` source. Raises
     ScriptError on invalid syntax or a whitelist violation."""
+    logger.debug("compile script: %s", _snippet(source))
     try:
         tree = ast.parse(source, mode="exec")
     except SyntaxError as exc:
         raise ScriptError(f"invalid script syntax: {exc}") from None
-    return Compiled(compile(tree, "<script-action>", "exec"), _validate(tree))
+    compiled = Compiled(compile(tree, "<script-action>", "exec"), _validate(tree))
+    logger.debug("compile script done: referenced path(s): %s", sorted(compiled.referenced_paths))
+    return compiled
 
 
 def evaluate_expression(compiled: Compiled, namespace: dict):
     """Evaluate a compile_expression() result against `namespace`. A runtime
     error (e.g. NameError for a typo'd ref) is not caught here -- it
     propagates to the caller, same as any other action/condition failure."""
-    return eval(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
+    logger.debug("evaluate expr: namespace %s", sorted(namespace))
+    result = eval(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
+    logger.debug("evaluate expr done: result %r", result)
+    return result
 
 
 def run_script(compiled: Compiled, namespace: dict) -> None:
     """Execute a compile_script() result against `namespace`. See
     evaluate_expression() re: runtime error handling."""
+    logger.debug("run script: namespace %s", sorted(namespace))
     exec(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
+    logger.debug("run script done")
 
 
 class EndpointRef:
