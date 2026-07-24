@@ -1,0 +1,99 @@
+description: >
+  Live radon and air-quality readings from an Airthings Wave Plus unit, via
+  a WavePlus_Bridge HTTP server (https://github.com/Drolla/WavePlus_Bridge)
+  that polls one or more Wave Plus units over BLE and re-exposes their
+  latest readings as JSON. One device per sensor unit -- set `sensor_id` to
+  the unit's name/serial as configured in the bridge. Multiple sensor units
+  behind the same bridge share one `base_url` and therefore one HTTP fetch
+  per cache window (see devices/waveplus_bridge/device.py).
+
+update: "1m"
+
+parameters:
+  - name: base_url
+    override: required
+    description: >
+      The WavePlus Bridge's data endpoint, e.g.
+      "http://192.168.1.26:80/data". Every sensor unit behind the same
+      bridge should use the same base_url -- their HTTP fetches then
+      automatically coalesce (see cache_time below).
+  - name: sensor_id
+    override: required
+    description: >
+      Which sensor unit's readings to select from the bridge's response --
+      the key under the JSON payload's "devices" object (the bridge's own
+      per-unit name or serial, as configured on the bridge itself).
+  - name: cache_time
+    override: allowed
+    default: "60s"
+    description: >
+      How long a fetched bridge response may be reused before re-fetching
+      (e.g. "60s", "5m" -- any value parse_duration accepts). All devices
+      sharing the same base_url share one cached fetch, so this is the
+      old THC module's min_update_period equivalent: it controls how often
+      the bridge is actually re-polled, independent of each device's own
+      `update` interval. Set the same value on every device behind one
+      bridge to get full sharing.
+  - name: data_validity_time
+    override: allowed
+    default: "5m"
+    description: >
+      How long a sensor unit's own last reading (per the bridge's reported
+      current_time minus that unit's update_time) may be trusted before its
+      endpoints are reported as unavailable (None), even if the bridge
+      itself is reachable and responds normally. This catches a specific
+      Wave Plus unit going stale (e.g. dead battery, out of BLE range)
+      while the bridge and its other units keep working fine. If either
+      timestamp is missing from the response, this check is skipped (fails
+      open) rather than treated as stale.
+
+endpoints:
+  - key: temperature
+    readable: true
+    writable: false
+    type: float
+    unit: "°C"
+    description: Air temperature, degrees Celsius
+    parameters: { field: temperature }
+  - key: humidity
+    readable: true
+    writable: false
+    type: float
+    unit: "%"
+    description: Relative humidity, percent
+    parameters: { field: humidity }
+  - key: pressure
+    readable: true
+    writable: false
+    type: float
+    unit: hPa
+    description: Barometric pressure, hPa
+    parameters: { field: pressure }
+  - key: radon_st
+    readable: true
+    writable: false
+    type: int
+    unit: "Bq/m3"
+    description: Short-term (up to ~24h) average radon concentration, Bq/m3
+    parameters: { field: radon_st }
+  - key: radon_lt
+    readable: true
+    writable: false
+    type: int
+    unit: "Bq/m3"
+    description: Long-term (up to ~1 year) average radon concentration, Bq/m3
+    parameters: { field: radon_lt }
+  - key: co2
+    readable: true
+    writable: false
+    type: float
+    unit: ppm
+    description: CO2 concentration, ppm
+    parameters: { field: co2 }
+  - key: voc
+    readable: true
+    writable: false
+    type: float
+    unit: ppb
+    description: Total volatile organic compounds (TVOC), ppb
+    parameters: { field: voc }
