@@ -160,3 +160,105 @@ def test_values_mapping_from_text_accepts_label_or_raw():
 def test_to_text_accepts_explicit_value_argument():
     ep = Endpoint("state", value_type="int", values={0: "off", 1: "on"})
     assert ep.to_text(0) == "off"
+
+
+# ---------- sticky log values ----------
+
+def _commit(ep, value):
+    ep.set(value)
+    ep.update_state()
+
+
+def test_log_aggregation_defaults_to_max():
+    ep = Endpoint("state")
+    assert ep.log_aggregation == "max"
+
+
+def test_invalid_log_aggregation_raises():
+    with pytest.raises(ValueError):
+        Endpoint("state", log_aggregation="bogus")
+
+
+def test_get_log_value_none_before_subscribing():
+    ep = Endpoint("state")
+    assert ep.get_log_value("logger") is None
+
+
+def test_update_log_value_noop_without_subscribers():
+    ep = Endpoint("state")
+    _commit(ep, 5)
+    ep.update_log_value()  # must not raise
+    assert ep.get_log_value("logger") is None
+
+
+def test_update_log_value_noop_while_state_is_none():
+    ep = Endpoint("state")
+    ep.subscribe_log("logger")
+    ep.update_log_value()
+    assert ep.get_log_value("logger") is None
+
+
+def test_update_log_value_tracks_running_max_by_default():
+    ep = Endpoint("state", value_type="int")
+    ep.subscribe_log("logger")
+    _commit(ep, 3)
+    ep.update_log_value()
+    _commit(ep, 7)
+    ep.update_log_value()
+    _commit(ep, 2)
+    ep.update_log_value()
+    assert ep.get_log_value("logger") == 7
+
+
+def test_update_log_value_tracks_running_min_when_configured():
+    ep = Endpoint("state", value_type="int", log_aggregation="min")
+    ep.subscribe_log("logger")
+    _commit(ep, 3)
+    ep.update_log_value()
+    _commit(ep, 7)
+    ep.update_log_value()
+    _commit(ep, 2)
+    ep.update_log_value()
+    assert ep.get_log_value("logger") == 2
+
+
+def test_invalidate_log_value_resets_to_none_and_starts_fresh_window():
+    ep = Endpoint("state", value_type="int")
+    ep.subscribe_log("logger")
+    _commit(ep, 5)
+    ep.update_log_value()
+    ep.invalidate_log_value("logger")
+    assert ep.get_log_value("logger") is None
+
+    _commit(ep, 1)
+    ep.update_log_value()
+    assert ep.get_log_value("logger") == 1
+
+
+def test_multiple_subscribers_track_independent_sticky_values():
+    ep = Endpoint("state", value_type="int")
+    ep.subscribe_log("fast_logger")
+    ep.subscribe_log("slow_logger")
+
+    _commit(ep, 3)
+    ep.update_log_value()
+    ep.invalidate_log_value("fast_logger")  # fast_logger samples every tick
+
+    _commit(ep, 9)
+    ep.update_log_value()
+    ep.invalidate_log_value("fast_logger")
+
+    # fast_logger only ever saw one value at a time since each invalidation
+    assert ep.get_log_value("fast_logger") is None
+    # slow_logger accumulated the running max across both ticks, untouched
+    # by fast_logger's invalidations
+    assert ep.get_log_value("slow_logger") == 9
+
+
+def test_subscribe_log_is_idempotent_and_does_not_reset_sticky_value():
+    ep = Endpoint("state", value_type="int")
+    ep.subscribe_log("logger")
+    _commit(ep, 5)
+    ep.update_log_value()
+    ep.subscribe_log("logger")
+    assert ep.get_log_value("logger") == 5
