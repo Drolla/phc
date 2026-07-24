@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="Pylon Home Control logo" width="220">
+</p>
+
 # Pylon Home Control (PHC)
 
 Pylon Home Control (PHC) is a small, YAML-configured home automation
