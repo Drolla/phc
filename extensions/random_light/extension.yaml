@@ -1,0 +1,75 @@
+description: >
+  Random light control: an extensions.random_light.<instance> entry
+  randomizes a set of "light" devices on/off within configured time
+  windows, to make an empty house look occupied. Each light needs only
+  `device`; `windows`/`min_interval`/`probability_on` fall back to this
+  instance's own values (below) when omitted, which fall back to this
+  file's defaults -- extension default -> instance -> per-light. A
+  `kind: random_light` task's periodic firing (no `force:`) randomizes
+  every light currently inside its window, forcing lights outside it off,
+  gated by optional enable_ref/pause_ref; if no light ends up on, one
+  `default`-flagged light is switched on instead (still subject to its own
+  window). A `kind: random_light, force: 0`/`force: 1` action bypasses all
+  of that, forcing every configured light to that value immediately -- for
+  a surrounding system (e.g. surveillance/alarm) to call directly.
+
+parameters:
+  - name: lights
+    override: required
+    description: >
+      Non-empty list of {device, windows, min_interval, probability_on,
+      default}. `device` ("<device>.<endpoint>", writable) is required;
+      the rest are optional per light -- see the cascade above.
+      `default: true` flags a light eligible to be switched on if, after
+      a pass, no light ended up on.
+
+  - name: windows
+    override: allowed
+    default:
+      - { start: "sunset-1h", end: "23:00" }
+      - { start: "06:30", end: "sunrise+30m" }
+    description: >
+      Default windows for a light with none of its own. Non-empty list of
+      {start, end}, each bound "HH:MM" (local time) or "sunrise"/"sunset"
+      +/- a duration string (e.g. "sunset+12m"; whole-integer tokens
+      only, e.g. "18m" not "0.3h" -- see core.intervals.parse_duration).
+      A pair that can't be resolved "today" (polar day/night, or an end
+      before its start -- no midnight wraparound, use two same-day pairs
+      instead) is skipped, not an error.
+
+  - name: min_interval
+    override: allowed
+    default: "30m"
+    description: >
+      Default min_interval (duration string) for a light with none of its
+      own: roughly how long a light stays in one state before randomly
+      re-evaluating.
+
+  - name: probability_on
+    override: allowed
+    default: 0.5
+    description: >
+      Default probability_on (0..1) for a light with none of its own;
+      0.0/1.0 pin a light to always off/on whenever inside its window.
+
+  - name: sun_device
+    override: allowed
+    default: "sun"
+    description: >
+      Device id of the sun device (see devices/sun). Only required to
+      exist if a window actually in use (default or per-light) references
+      sunrise/sunset.
+
+  - name: enable_ref
+    override: allowed
+    default: null
+    description: >
+      Optional "<device>.<endpoint>" ref; the periodic pass (force:
+      omitted) only runs when this reads 1. null = always enabled.
+
+  - name: pause_ref
+    override: allowed
+    default: null
+    description: >
+      Optional "<device>.<endpoint>" ref; the periodic pass is skipped
+      entirely (no lights touched) when this reads 1. null = never paused.

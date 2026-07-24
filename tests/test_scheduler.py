@@ -126,6 +126,12 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
         scheduler.tick(now=t)  # let the alarm/siren writes settle onto the devices
     assert system.devices["alarm"].get() == 1
     assert system.devices["siren"].get() == 1
+    # kind:random_light, force:1 (surveillance_intrusion's second action)
+    # forces BOTH lights on as a deterrent -- porch_light is never touched
+    # by the script action itself, so this specifically exercises the
+    # random_light extension's force override.
+    assert system.devices["hallway_light"].get() == 1
+    assert system.devices["porch_light"].get() == 1
 
     system.devices["surveillance"].set(0)
     for _ in range(3):
@@ -136,6 +142,9 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     assert system.devices["alarm"].get() == 0
     assert system.devices["siren"].get() == 0
     assert system.devices["hallway_light"].get() == 0
+    # Only reachable via surveillance_disable's kind:random_light,
+    # force:0 action -- the script action never mentions porch_light.
+    assert system.devices["porch_light"].get() == 0
 
 
 def test_scheduler_runs_blink_task_and_reschedules():
