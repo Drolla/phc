@@ -7,6 +7,7 @@ AppRunner/TCPSite lifecycle, driven by core.scheduler.Scheduler's
 start_hooks/stop_hooks."""
 
 import asyncio
+import logging
 from pathlib import Path
 
 import jinja2
@@ -16,6 +17,8 @@ from core.device import Device
 from core.selectors import resolve_selectors
 from extensions.web_ui.panels import Panel
 from extensions.web_ui.widgets import describe_device, describe_endpoint
+
+logger = logging.getLogger("phc.web_ui")
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -30,8 +33,24 @@ REFRESH_INTERVAL = web.AppKey("phc_refresh_interval", float)
 JINJA_ENV = web.AppKey("phc_jinja_env", jinja2.Environment)
 
 
+@web.middleware
+async def _log_requests(request: web.Request, handler):
+    """Handlers here signal redirects/errors by raising web.HTTPException
+    subclasses (e.g. handle_index's HTTPFound, handle_page's HTTPNotFound)
+    rather than returning them, so those must be caught here to still log
+    their status before re-raising for aiohttp's own handling."""
+    logger.debug("%s %s", request.method, request.path)
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        logger.debug("%s %s -> %s", request.method, request.path, exc.status)
+        raise
+    logger.debug("%s %s -> %s", request.method, request.path, response.status)
+    return response
+
+
 def build_app(devices: dict[str, Device], pages: list, refresh_interval: float) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[_log_requests])
     app[DEVICES] = devices
     app[PAGES] = pages
     app[PAGES_BY_ID] = {page.id: page for page in pages}
@@ -148,8 +167,11 @@ async def handle_api_set(request: web.Request) -> web.Response:
     if not endpoint.writable:
         raise web.HTTPForbidden(text=f"endpoint {endpoint_key!r} is read-only")
 
+    logger.debug("web_ui set %s/%s = %r", device_id, endpoint_key, text)
     try:
         await asyncio.to_thread(device.set_text, text, endpoint_key)
     except (ValueError, TypeError) as exc:
+        logger.debug("web_ui set %s/%s failed: %s", device_id, endpoint_key, exc)
         raise web.HTTPBadRequest(text=str(exc))
+    logger.debug("web_ui set %s/%s succeeded", device_id, endpoint_key)
     return web.Response(status=204)
