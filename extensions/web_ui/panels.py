@@ -12,9 +12,13 @@ and add the matching branch to templates/_macros.html's render_panel
 macro -- not implemented here, this module only documents the extension
 point."""
 
+import logging
+
 from core.config import ConfigError
 from core.device import Device
 from core.selectors import resolve_selectors
+
+logger = logging.getLogger("phc.web_ui")
 
 _panel_kinds: dict[str, type["Panel"]] = {}
 
@@ -30,10 +34,12 @@ def register_panel_kind(kind: str):
 
 def get_panel_kind_class(kind: str) -> type["Panel"]:
     try:
-        return _panel_kinds[kind]
+        cls = _panel_kinds[kind]
     except KeyError:
         raise ConfigError(
             f"web_ui panel: unknown kind {kind!r}; available: {sorted(_panel_kinds)}") from None
+    logger.debug("web_ui panel kind %r -> %s", kind, cls.__name__)
+    return cls
 
 
 class Panel:
