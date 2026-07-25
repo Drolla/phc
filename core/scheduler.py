@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from typing import Awaitable, Callable
 
 from core.device import Device, _write_collector
 from core.task import Task
@@ -38,18 +38,34 @@ class Scheduler:
     whole commit pass run single-threaded on the loop, so the
     Device/Endpoint public API and the one-tick event-lag semantics are
     preserved.
+
+    start_hooks/stop_hooks are a separate, one-time (not per-tick) lifecycle:
+    each runs exactly once, around run_forever()'s tick loop -- for a
+    long-lived resource tied to the scheduler's own loop (e.g.
+    extensions.web_ui's aiohttp server) that needs to start once before the
+    first tick and stop once after the last. See tick_hooks for the
+    per-tick equivalent.
     """
 
     def __init__(self, devices: dict[str, Device], tasks: list[Task] | None = None,
                  heartbeat: float = 1.0, max_workers: int | None = None,
                  fetch_timeout: float | None = None,
-                 tick_hooks: list[Callable[[dict[str, Device]], None]] | None = None):
+                 tick_hooks: list[Callable[[dict[str, Device]], None]] | None = None,
+                 start_hooks: list[Callable[[dict[str, Device]], Awaitable[None]]] | None = None,
+                 stop_hooks: list[Callable[[dict[str, Device]], Awaitable[None]]] | None = None):
         self._devices = devices
         self._tasks = tasks if tasks is not None else []
         self.heartbeat = heartbeat
         self.fetch_timeout = fetch_timeout
         self._max_workers = max_workers
         self._tick_hooks = tick_hooks if tick_hooks is not None else []
+        # One-time async lifecycle hooks (e.g. extensions.web_ui starting/
+        # stopping its aiohttp server) -- unlike tick_hooks (once per tick),
+        # these run exactly once each, around run_forever()'s tick loop. See
+        # _run_async()/_run_hooks() below. Each hook is `async def
+        # hook(devices) -> None`.
+        self._start_hooks = start_hooks if start_hooks is not None else []
+        self._stop_hooks = stop_hooks if stop_hooks is not None else []
         self._running = False
 
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -88,7 +104,9 @@ class Scheduler:
     # ---------- tick ----------
 
     def tick(self, now: float | None = None):
-        """Run one tick synchronously (creating the runtime on first call)."""
+        """Run one tick synchronously (creating the runtime on first call).
+        Only calls _tick_async -- start_hooks/stop_hooks never run on this
+        path, only around run_forever()'s own loop (see _run_async())."""
         now = now if now is not None else time.time()
         self._ensure_runtime()
         self._loop.run_until_complete(self._tick_async(now))
@@ -232,10 +250,36 @@ class Scheduler:
             self.close()
 
     async def _run_async(self):
-        """Tick, sleep one heartbeat, repeat -- until self._running is False."""
-        while self._running:
-            await self._tick_async(time.time())
-            await asyncio.sleep(self.heartbeat)
+        """Run start_hooks once, then tick/sleep one heartbeat/repeat until
+        self._running is False, then run stop_hooks once -- all on the SAME
+        loop run_forever() drives, so a hook (e.g. extensions.web_ui binding
+        its aiohttp server) can freely use asyncio primitives tied to this
+        loop. stop_hooks run here, inside this coroutine's own finally --
+        NOT in run_forever()'s finally: self.close(), which only runs after
+        this coroutine returns and would already have started tearing the
+        loop down."""
+        await self._run_hooks(self._start_hooks, "start")
+        try:
+            while self._running:
+                await self._tick_async(time.time())
+                await asyncio.sleep(self.heartbeat)
+        finally:
+            await self._run_hooks(self._stop_hooks, "stop")
+
+    async def _run_hooks(self, hooks: list, label: str) -> None:
+        """Run every hook in `hooks` once, concurrently, each isolated so one
+        hook's failure/exception is logged and never blocks the others or
+        propagates -- mirrors the tick_hooks pass's per-hook isolation
+        (_tick_async, pass 4)."""
+        if hooks:
+            await asyncio.gather(*(self._run_one_hook(hook, label) for hook in hooks))
+
+    async def _run_one_hook(self, hook: Callable[[dict[str, Device]], Awaitable[None]],
+                             label: str) -> None:
+        try:
+            await hook(self._devices)
+        except Exception:
+            logger.exception("%s hook %r failed", label, hook)
 
     def stop(self):
         """Signal run_forever()'s loop to exit after its current tick/sleep."""

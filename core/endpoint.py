@@ -33,21 +33,27 @@ class Endpoint:
     "on"/"off" strings) keep working unchanged. Declaring `value_type`
     ("int", "float", "bool", or "str") opts an endpoint into the standard
     to_text()/from_text() formatting mechanism below, optionally combined
-    with `unit` (a display unit, e.g. "°C") and/or `values` (a raw value ->
-    text label mapping, e.g. {0: "off", 1: "on"})."""
+    with `unit` (a display unit, e.g. "°C"), `values` (a raw value -> text
+    label mapping, e.g. {0: "off", 1: "on"}), and/or `min`/`max` (a generic
+    numeric range hint, e.g. for a UI to render a bounded slider) -- like
+    `unit`/`values`, `min`/`max` are stored only, never enforced against
+    set()/from_text()."""
 
     kind: str = "generic"
 
     def __init__(self, key: str, *, readable: bool = True, writable: bool = False,
                  parameters: dict | None = None, description: str = "",
                  value_type: str | None = None, unit: str | None = None,
-                 values: dict | None = None, log_aggregation: str = "max"):
+                 values: dict | None = None, log_aggregation: str = "max",
+                 min: float | int | None = None, max: float | int | None = None):
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ValueError(f"endpoint {key!r}: invalid type {value_type!r}, "
                               f"expected one of {VALUE_TYPES}")
         if log_aggregation not in LOG_AGGREGATIONS:
             raise ValueError(f"endpoint {key!r}: invalid log_aggregation {log_aggregation!r}, "
                               f"expected one of {LOG_AGGREGATIONS}")
+        if min is not None and max is not None and min > max:
+            raise ValueError(f"endpoint {key!r}: min ({min!r}) is greater than max ({max!r})")
         self.key = key
         self.readable = readable
         self.writable = writable
@@ -60,6 +66,8 @@ class Endpoint:
         self.unit = unit
         self.values = values
         self.log_aggregation = log_aggregation
+        self.min = min
+        self.max = max
 
         self._next_state = None
         self._state = None
