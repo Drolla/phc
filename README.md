@@ -341,6 +341,32 @@ Useful flags:
 
 Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
 
+## Splitting configuration across files
+
+A system YAML can pull in another YAML file with `!include <relative-path>`,
+anywhere a value is expected -- a mapping value, a list item, nested
+arbitrarily deep:
+
+```yaml
+devices:
+  - !include common/living_light_device.yaml
+  - id: sun
+    module: sun
+    update: 1h
+    params: !include common/sun_zurich_params.yaml
+```
+
+The path is resolved relative to the file the `!include` appears in, not the
+root config or the current directory, so an included file can itself use
+`!include` to pull in further files. This is a plain substitution (the tagged
+node is replaced by the included file's parsed content) rather than a merge,
+so a shared fragment works best when it's either a fully self-contained block
+(e.g. a whole device) or a nested value that doesn't vary between the files
+including it (e.g. just the `params:` of a device whose other fields differ
+per file). See [`examples/common/`](examples/common/) for fragments shared
+between several of the example systems, and any example file under
+[`examples/`](examples/) that references them for real usage.
+
 ## Adding a device module
 
 A new device type is a new `devices/<name>/` package containing:

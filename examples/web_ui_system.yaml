@@ -62,10 +62,7 @@ devices:
     module: sun
     name: Sun
     update: 1m
-    params:
-      latitude: 47.3769
-      longitude: 8.5417
-      timezone: Europe/Zurich
+    params: !include common/sun_zurich_params.yaml
 
 extensions:
   # Feeds the "History" graph panel below -- see the log_db task at the
