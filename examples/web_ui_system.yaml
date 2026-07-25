@@ -16,6 +16,7 @@ log:
 
 log_levels:
   default: INFO
+  web_ui: DEBUG
 
 devices:
   - id: house
