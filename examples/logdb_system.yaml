@@ -64,6 +64,35 @@ extensions:
       csv_path: "logs/living_room_log.csv"
       max_records: 5000
 
+  # A history chart for desk_lamp, backed by the house_log instance above
+  # -- run this example and visit http://127.0.0.1:8080/ to see it. The
+  # decimation tiers keep the response bounded as house_log accumulates
+  # history: the newest 25h of samples are shown at full resolution,
+  # 25h-8D-old samples are averaged in groups of 3, and anything older
+  # than 8D in groups of 8 (see extensions/web_ui/extension.yaml's `pages`
+  # parameter for the full kind: graph reference).
+  web_ui:
+    demo:
+      host: "127.0.0.1"
+      port: 8080
+      pages:
+        - id: home
+          sections:
+            - id: history
+              title: Desk Lamp History
+              panels:
+                - kind: graph
+                  id: desk_lamp_history
+                  logdb_instance: "logdb.house_log"
+                  selectors: ["house.desk_lamp/*"]
+                  title: "Desk Lamp"
+                  window: 6h
+                  decimation:
+                    - older_than: 25h
+                      factor: 3
+                    - older_than: 8D
+                      factor: 8
+
 tasks:
   - tag: blink
     description: "Toggle the light every 10s"

@@ -246,20 +246,67 @@ every widget independently polls its own small HTML fragment on
 next scheduler tick commits it — there is no WebSocket/push channel).
 Interactivity is [HTMX](https://htmx.org) and styling is
 [PicoCSS](https://picocss.com) — both vendored, unmodified, single-file
-static assets (see `extensions/web_ui/static/`), so no project-authored
-JS or build tooling is needed.
+static assets (see `extensions/web_ui/static/`); the only project-authored
+JS is `graph.js`, the small script that mounts a `kind: graph` panel's
+chart (see below) — everything else needs none.
 
 A section's content is a list of **panels**, dispatched by `kind` (default
 `"devices"`, the widgets described above) through a small registry local
 to this extension (`extensions/web_ui/panels.py`), independent of
-`core/registry.py`. Only `kind: devices` ships today; it's a deliberately
-foreseen, not-yet-implemented extension point for a future non-device-tied
-panel (e.g. `kind: graph`, a time-series chart over a set of endpoints).
+`core/registry.py`.
+
+`kind: graph` renders a [Dygraphs](https://dygraphs.com) time-series chart
+over one or more endpoints' logged history, backed by a named
+`extensions/logdb` instance:
+
+```yaml
+extensions:
+  logdb:
+    house_log:
+      selectors: ["house.desk_lamp/*"]
+      csv_path: "logs/house_log.csv"
+
+  web_ui:
+    home:
+      pages:
+        - id: overview
+          sections:
+            - id: history
+              title: History
+              panels:
+                - kind: graph
+                  id: desk_lamp_history
+                  logdb_instance: "logdb.house_log"
+                  selectors: ["house.desk_lamp/*"]
+                  title: "Desk Lamp"
+                  window: 6h
+                  decimation:
+                    - older_than: 25h
+                      factor: 3
+                    - older_than: 8D
+                      factor: 8
+```
+
+`id` (required, unique across this web_ui instance) addresses the panel's
+own `GET /api/graph/{id}` JSON data route — fetched client-side by
+`graph.js`, not embedded in the page render. `logdb_instance` (required)
+is resolved lazily, at request time, so it may be declared either before
+or after this `web_ui:` instance. `selectors` picks which endpoints to
+plot (same syntax as `extensions/logdb`'s own `selectors`) — each must
+also be covered by the referenced logdb instance, or its series is empty.
+`window` (default `24h`) sets the chart's initial zoom; the full retained
+history is still fetched and pannable via the range selector. `decimation`
+(optional) is a list of `{older_than, factor}` tiers: samples older than
+`older_than` are averaged in groups of `factor`, bounding how much history
+data is shipped to the browser as it grows — see
+`extensions/logdb/logdb.py`'s `LogDb.get_decimated()`.
 
 There is no authentication — bind `host` to a trusted interface only
 (defaults to `127.0.0.1`, loopback-only). See
 [`examples/web_ui_system.yaml`](examples/web_ui_system.yaml) for a
-complete runnable example.
+complete runnable example, and
+[`examples/logdb_system.yaml`](examples/logdb_system.yaml) for `kind:
+graph` paired with the `logdb` instance it charts.
 
 ## Requirements
 

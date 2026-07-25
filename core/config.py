@@ -188,13 +188,21 @@ def _load_extensions(raw: dict, flat: dict[str, Device]) -> dict[str, object]:
     -- an extension may have zero, one, or several named instances (e.g.
     multiple independently-configured/scheduled logdb files). Each
     instance's params are merged against extensions/<name>/extension.yaml,
-    then handed to that package's configure(params, flat, instance_key)
-    entry point (instance_key = "<extension_name>.<instance_name>", used
-    both as the registry key below and as the sticky-log subscriber id --
-    see core.endpoint.Endpoint.subscribe_log). The returned object is
-    registered under instance_key so a hand-authored task action
-    (kind: log_db, instance: "logdb.house_log") can look it up, and -- if
-    it exposes an on_tick(devices) method -- is auto-collected as a
+    then handed to that package's configure(params, flat, instance_key,
+    extensions_registry) entry point (instance_key =
+    "<extension_name>.<instance_name>", used both as the registry key below
+    and as the sticky-log subscriber id -- see
+    core.endpoint.Endpoint.subscribe_log). extensions_registry is this same
+    `registry` dict, passed by reference and still growing as later
+    instances are configured -- an extension that only resolves a
+    cross-extension reference lazily (e.g. at HTTP-request time, well after
+    load_system() has returned, as extensions.web_ui's graph panels do) sees
+    the complete registry regardless of declaration order; one resolved
+    eagerly, during another extension's own configure() call, only sees
+    instances configured earlier in raw['extensions']'s iteration order. The
+    returned object is registered under instance_key so a hand-authored task
+    action (kind: log_db, instance: "logdb.house_log") can look it up, and
+    -- if it exposes an on_tick(devices) method -- is auto-collected as a
     Scheduler tick hook (see load_system()). Absence of extensions: (or of
     a given extension's key) means nothing of that kind is active --
     mirrors devices:/tasks: only building what's explicitly declared."""
@@ -210,7 +218,7 @@ def _load_extensions(raw: dict, flat: dict[str, Device]) -> dict[str, object]:
         for instance_name, instance_config in instances.items():
             key = f"{ext_name}.{instance_name}"
             params = _merge_extension_params(descriptor, instance_config or {}, key)
-            registry[key] = configure(params, flat, key)
+            registry[key] = configure(params, flat, key, registry)
     return registry
 
 
