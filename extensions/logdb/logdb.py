@@ -204,6 +204,84 @@ class LogDb:
             row[label] = self._columns[label][pos]
         return row
 
+    def get_decimated(self, labels: list[str] | None = None,
+                       decimation: list[tuple[float, int]] | None = None,
+                       now: float | None = None) -> list[dict[str, float]]:
+        """Like get_range() over the full retained window, but coarsens
+        older data by averaging consecutive samples within each decimation
+        tier -- trading resolution for a bounded response size on a UI's
+        full-history request (see extensions.web_ui.panels.GraphPanel).
+
+        `decimation` is a list of (age_seconds, factor) tuples: a sample's
+        age (`now` minus its timestamp) is compared against each tier's
+        age_seconds, and the tier with the *largest* age_seconds strictly
+        less than that age supplies its factor -- age at or under every
+        tier's threshold means factor 1 (undecimated). None or empty is
+        equivalent to get_range() over the whole window. `now` defaults to
+        time.time(); overridable for tests.
+
+        Groups are formed oldest-to-newest and always restart cleanly at a
+        tier boundary (never straddling two factors), each emitting one row
+        using the group's last (most recent) timestamp and, per label, the
+        average of its non-NaN values in the group (all-NaN emits NaN,
+        matching get_range()'s own "no data" convention). `labels` (default:
+        self.labels) is filtered down to labels this instance actually has,
+        so a caller-supplied label this instance never logs (e.g. a graph
+        panel selector matching more than one logdb instance covers) is
+        silently dropped rather than raising KeyError -- unlike get_at()/
+        get_range(), this is the first query method called with an
+        externally-derived label list that could mismatch."""
+        keys = [label for label in (labels if labels is not None else self.labels)
+                if label in self._columns]
+        n = len(self._times)
+        if n == 0:
+            return []
+        if now is None:
+            now = time.time()
+
+        # Largest age first: the oldest section of data is handled by the
+        # coarsest applicable tier. A tier with factor <= 1 is a no-op
+        # (factor 1 is already the default for anything not covered by a
+        # tier) and is dropped rather than risking a zero/negative-size
+        # group below.
+        tiers = sorted(((age, factor) for age, factor in (decimation or []) if factor > 1),
+                       key=lambda tier: tier[0], reverse=True)
+
+        # Precompute (section_start_index, factor) boundaries, oldest
+        # first, covering [0, n) with no gaps -- mirrors _maybe_trim's own
+        # bisect usage against the always-ascending _times.
+        boundaries: list[tuple[int, int]] = []
+        prev_index = 0
+        for age, factor in tiers:
+            cutoff = max(bisect.bisect_left(self._times, now - age), prev_index)
+            if cutoff > prev_index:
+                boundaries.append((prev_index, factor))
+                prev_index = cutoff
+        boundaries.append((prev_index, 1))
+
+        rows = []
+        for section, (start, factor) in enumerate(boundaries):
+            end = boundaries[section + 1][0] if section + 1 < len(boundaries) else n
+            pos = start
+            while pos < end:
+                group_end = min(pos + factor, end)
+                rows.append(self._averaged_row(pos, group_end, keys))
+                pos = group_end
+        return rows
+
+    def _averaged_row(self, start: int, end: int, keys: list[str]) -> dict[str, float]:
+        row = {"time": self._times[end - 1]}
+        for label in keys:
+            col = self._columns[label]
+            total, count = 0.0, 0
+            for pos in range(start, end):
+                value = col[pos]
+                if not math.isnan(value):
+                    total += value
+                    count += 1
+            row[label] = total / count if count else _NAN
+        return row
+
     # ---------- header reconciliation ----------
 
     def _desired_header_width(self, needed: int) -> int:

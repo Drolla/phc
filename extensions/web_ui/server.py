@@ -7,6 +7,7 @@ AppRunner/TCPSite lifecycle, driven by core.scheduler.Scheduler's
 start_hooks/stop_hooks."""
 
 import asyncio
+import math
 from pathlib import Path
 
 import jinja2
@@ -28,9 +29,20 @@ PAGES_BY_ID = web.AppKey("phc_pages_by_id", dict)
 ALL_PAIRS = web.AppKey("phc_all_pairs", set)
 REFRESH_INTERVAL = web.AppKey("phc_refresh_interval", float)
 JINJA_ENV = web.AppKey("phc_jinja_env", jinja2.Environment)
+# The live core.config._load_extensions registry (see extension.py's
+# WebUiInstance) -- lets a panel kind (e.g. "graph") resolve a reference to
+# another extension's instance lazily, per request, rather than at
+# configure()-time. See extensions/web_ui/panels.py's GraphPanel.
+EXTENSIONS_REGISTRY = web.AppKey("phc_extensions_registry", dict)
+# Every GraphPanel across all pages/sections, keyed by its own `id` --
+# addressed directly by GET /api/graph/{graph_id} (a graph panel's data
+# isn't embedded in its page's own render; the page just points the browser
+# at this route, see handle_graph_data and extensions/web_ui/static/graph.js).
+GRAPH_PANELS_BY_ID = web.AppKey("phc_graph_panels_by_id", dict)
 
 
-def build_app(devices: dict[str, Device], pages: list, refresh_interval: float) -> web.Application:
+def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
+              extensions_registry: dict) -> web.Application:
     app = web.Application()
     app[DEVICES] = devices
     app[PAGES] = pages
@@ -39,6 +51,12 @@ def build_app(devices: dict[str, Device], pages: list, refresh_interval: float) 
     # (narrower) selectors -- used by GET /api/tree, a generic read API.
     app[ALL_PAIRS] = set(resolve_selectors(["*"], devices))
     app[REFRESH_INTERVAL] = refresh_interval
+    app[EXTENSIONS_REGISTRY] = extensions_registry
+    app[GRAPH_PANELS_BY_ID] = {
+        panel.id: panel
+        for page in pages for section in page.sections for panel in section.panels
+        if panel.kind == "graph"
+    }
     app[JINJA_ENV] = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_TEMPLATES_DIR)),
         autoescape=jinja2.select_autoescape(["html"]),
@@ -48,6 +66,7 @@ def build_app(devices: dict[str, Device], pages: list, refresh_interval: float) 
     app.router.add_get("/page/{page_id}", handle_page)
     app.router.add_get("/api/tree", handle_api_tree)
     app.router.add_get("/widget/{device}/{endpoint}", handle_widget)
+    app.router.add_get("/api/graph/{graph_id}", handle_graph_data)
     app.router.add_post("/api/set", handle_api_set)
     app.router.add_static("/static/", _STATIC_DIR, name="static")
     return app
@@ -61,8 +80,11 @@ def _render_panel_data(panel: Panel, devices: dict[str, Device]) -> dict:
     """Panel.describe() gives the raw (kind, resolved-selection) shape from
     configure()-time; this turns it into what the "devices" branch of
     templates/_macros.html's render_panel macro actually needs -- a pruned
-    device tree scoped to the panel's own matched pairs. A future panel
-    kind (e.g. "graph") would add its own branch here."""
+    device tree scoped to the panel's own matched pairs. Any other kind's
+    describe() output (e.g. "graph") is already template-ready and passed
+    through unchanged -- only "devices" needs this device-tree pruning
+    step, since a graph panel's actual chart data is fetched separately by
+    the browser (see handle_graph_data), not embedded in the page render."""
     described = panel.describe()
     if described["kind"] == "devices":
         pairs = set(described["pairs"])
@@ -120,6 +142,38 @@ async def handle_widget(request: web.Request) -> web.Response:
     template = request.app[JINJA_ENV].get_template("_widget_only.html")
     html = template.render(ep=ep, refresh_interval=request.app[REFRESH_INTERVAL])
     return web.Response(text=html, content_type="text/html")
+
+
+async def handle_graph_data(request: web.Request) -> web.Response:
+    """History data for one GraphPanel (see extensions/web_ui/panels.py),
+    fetched client-side by extensions/web_ui/static/graph.js. The panel's
+    `logdb_instance` reference is resolved here, against the live
+    EXTENSIONS_REGISTRY, rather than at configure()-time -- see
+    GraphPanel's own docstring for why -- so an unresolvable instance
+    surfaces as a 404, not a config-time error."""
+    graph_id = request.match_info["graph_id"]
+    panel = request.app[GRAPH_PANELS_BY_ID].get(graph_id)
+    if panel is None:
+        raise web.HTTPNotFound(text=f"unknown graph {graph_id!r}")
+    instance = request.app[EXTENSIONS_REGISTRY].get(panel.logdb_instance)
+    if instance is None or not hasattr(instance, "store"):
+        raise web.HTTPNotFound(text=f"unknown logdb instance {panel.logdb_instance!r}")
+
+    rows = instance.store.get_decimated(labels=panel.labels, decimation=panel.decimation)
+    # json.dumps would otherwise emit a literal NaN token for a missing
+    # value -- not valid JSON, and fetch().json() throws on it in the
+    # browser -- so replace with None/null here.
+    wire_rows = [
+        [row["time"], *(None if (v := row.get(label)) is None or math.isnan(v) else v
+                         for label in panel.labels)]
+        for row in rows
+    ]
+    return web.json_response({
+        "labels": ["Time", *panel.series_titles],
+        "unit": panel.unit,
+        "window": panel.window,
+        "rows": wire_rows,
+    })
 
 
 async def handle_api_set(request: web.Request) -> web.Response:
