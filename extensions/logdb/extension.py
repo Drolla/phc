@@ -64,11 +64,15 @@ class LogDbInstance:
         self.store.log(now, values)
 
 
-def configure(params: dict, flat: dict[str, Device], instance_key: str) -> LogDbInstance:
+def configure(params: dict, flat: dict[str, Device], instance_key: str,
+              extensions_registry: dict | None = None) -> LogDbInstance:
     """Extension entry point (see core.config._load_extensions): resolve the
     selectors once against the static device tree, subscribe every
     resolved endpoint for sticky log tracking under `instance_key`, and
-    open/restore the CSV-backed store."""
+    open/restore the CSV-backed store. `extensions_registry` (see
+    core.config._load_extensions) is unused here -- logdb never references
+    another extension's instance; it's the one other extensions (e.g.
+    extensions.web_ui's graph panels) reference by name."""
     pairs = resolve_selectors(params["selectors"], flat)
     for qualified_id, endpoint_key in pairs:
         flat[qualified_id].endpoint(endpoint_key).subscribe_log(instance_key)

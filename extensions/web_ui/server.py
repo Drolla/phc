@@ -28,9 +28,15 @@ PAGES_BY_ID = web.AppKey("phc_pages_by_id", dict)
 ALL_PAIRS = web.AppKey("phc_all_pairs", set)
 REFRESH_INTERVAL = web.AppKey("phc_refresh_interval", float)
 JINJA_ENV = web.AppKey("phc_jinja_env", jinja2.Environment)
+# The live core.config._load_extensions registry (see extension.py's
+# WebUiInstance) -- lets a panel kind (e.g. "graph") resolve a reference to
+# another extension's instance lazily, per request, rather than at
+# configure()-time. See extensions/web_ui/panels.py's GraphPanel.
+EXTENSIONS_REGISTRY = web.AppKey("phc_extensions_registry", dict)
 
 
-def build_app(devices: dict[str, Device], pages: list, refresh_interval: float) -> web.Application:
+def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
+              extensions_registry: dict) -> web.Application:
     app = web.Application()
     app[DEVICES] = devices
     app[PAGES] = pages
@@ -39,6 +45,7 @@ def build_app(devices: dict[str, Device], pages: list, refresh_interval: float) 
     # (narrower) selectors -- used by GET /api/tree, a generic read API.
     app[ALL_PAIRS] = set(resolve_selectors(["*"], devices))
     app[REFRESH_INTERVAL] = refresh_interval
+    app[EXTENSIONS_REGISTRY] = extensions_registry
     app[JINJA_ENV] = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_TEMPLATES_DIR)),
         autoescape=jinja2.select_autoescape(["html"]),
