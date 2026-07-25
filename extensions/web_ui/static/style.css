@@ -1,29 +1,59 @@
-/* Small layout additions on top of PicoCSS (pico.min.css) -- Pico already
-   styles <details>/<summary>, inputs, selects, and checkboxes; this file
-   only adds the project-specific device-tree/widget-row layout. */
+/* Small layout additions on top of Bootstrap (bootstrap.min.css) -- Bootstrap
+   already styles inputs, selects, and checkboxes via its form-control
+   classes (see _macros.html); this file only adds the project-specific
+   device-tree/widget-row layout, plus native <details>/<summary> spacing
+   (Bootstrap doesn't style raw <details> any more than Pico did -- the
+   disclosure triangle is browser-default styling either way). */
 
+/* A section's top-level devices, and any device's own nested children, are
+   both "a list of sibling device cards" -- lay both out as a responsive
+   grid so cards reflow into as many columns as fit (no media query: the
+   browser recomputes the column count from each card's own minmax()
+   floor), collapsing to a single column once the viewport is too narrow
+   for a second one. auto-fit (not auto-fill): with auto-fill, a lone
+   device would still only occupy the first of several empty reserved
+   column tracks, staying narrow with blank space beside it; auto-fit
+   collapses empty tracks so a single card's 1fr stretches to fill the
+   row, while multiple cards still share the space and wrap normally. */
+.section-content,
+.children {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+  gap: 1rem;
+}
+
+/* Each device is now a grid item, so it needs to look like a self-contained
+   card (previously this was conveyed by indentation + a left border,
+   which only reads correctly in a single vertical stack). */
 .device {
-  margin-left: 1rem;
-  padding-left: 0.75rem;
-  border-left: 1px solid var(--pico-muted-border-color);
-  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
 }
 
 .device > h4 {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.device > .children {
+  margin-top: 0.75rem;
 }
 
 .endpoints {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
 }
 
 .widget {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-tertiary-bg);
 }
 
 .widget-label {
@@ -31,13 +61,43 @@
   font-weight: 600;
 }
 
+/* Bootstrap's form-control/form-select/form-range classes set width:100%,
+   which -- absent an override -- stretches them to fill the rest of the
+   flex row instead of sizing to their own purpose. */
 .widget-input {
   flex: 0 1 auto;
   margin: 0;
+  width: auto;
+  max-width: 14rem;
+}
+
+input[type="range"].widget-input {
+  max-width: 10rem;
+}
+
+/* Bootstrap's .form-switch positions its <input> via padding-left plus a
+   negative margin-left, assuming an adjacent <label> fills the rest of the
+   block. This project's switch has no inline label (.widget-label already
+   serves that role) -- neutralize that trick and let the parent .widget
+   flex row position the input directly. */
+.widget-input.form-check.form-switch {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  margin-bottom: 0;
+  padding-left: 0;
+}
+.widget-input.form-check.form-switch .form-check-input {
+  margin-left: 0;
 }
 
 .widget-value {
-  color: var(--pico-muted-color);
+  min-width: 3.5rem;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--bs-secondary-color);
 }
 
 .section {
@@ -55,4 +115,56 @@
 .graph-canvas {
   width: 100%;
   height: 300px;
+}
+
+/* Teal accent color, replacing Bootstrap's default blue. Link colors need
+   BOTH variable forms overridden: plain <a> tags use the rgb() triplet
+   (--bs-link-color-rgb), while .nav-link's --bs-nav-link-color instead
+   inherits the separate scalar (--bs-link-color) -- Bootstrap sets both
+   independently, not one derived from the other. The checked-switch,
+   range-thumb, and focus-ring colors, however, are hardcoded literal hex
+   values inside bootstrap.min.css itself (not variable-driven in this
+   Bootstrap version) -- since this file loads after bootstrap.min.css,
+   these same-specificity selectors win by source order and override them
+   directly, no !important needed. Tint values (focus border / active
+   thumb) mirror Bootstrap's own ~50%/~70% white-mix ratios for its
+   default blue, applied to the same teal base (#0d9488). */
+:root,
+[data-bs-theme="light"] {
+  --bs-link-color: #0d9488;
+  --bs-link-color-rgb: 13, 148, 136;
+  --bs-link-hover-color: #0b7a70;
+  --bs-link-hover-color-rgb: 11, 122, 112;
+}
+[data-bs-theme="dark"] {
+  --bs-link-color: #2dd4bf;
+  --bs-link-color-rgb: 45, 212, 191;
+  --bs-link-hover-color: #5eead4;
+  --bs-link-hover-color-rgb: 94, 234, 212;
+}
+
+.form-check-input:checked {
+  background-color: #0d9488;
+  border-color: #0d9488;
+}
+.form-check-input:focus,
+.form-select:focus,
+.form-control:focus {
+  border-color: #86cac4;
+  box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25);
+}
+.form-range::-webkit-slider-thumb {
+  background-color: #0d9488;
+}
+.form-range::-webkit-slider-thumb:active {
+  background-color: #b6dfdb;
+}
+.form-range::-moz-range-thumb {
+  background-color: #0d9488;
+}
+.form-range::-moz-range-thumb:active {
+  background-color: #b6dfdb;
+}
+.nav-link:focus-visible {
+  box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25);
 }

@@ -7,6 +7,7 @@ AppRunner/TCPSite lifecycle, driven by core.scheduler.Scheduler's
 start_hooks/stop_hooks."""
 
 import asyncio
+import logging
 import math
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from core.device import Device
 from core.selectors import resolve_selectors
 from extensions.web_ui.panels import Panel
 from extensions.web_ui.widgets import describe_device, describe_endpoint
+
+logger = logging.getLogger("phc.web_ui")
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -41,9 +44,31 @@ EXTENSIONS_REGISTRY = web.AppKey("phc_extensions_registry", dict)
 GRAPH_PANELS_BY_ID = web.AppKey("phc_graph_panels_by_id", dict)
 
 
+@web.middleware
+async def _log_requests(request: web.Request, handler):
+    """Handlers here signal redirects/errors by raising web.HTTPException
+    subclasses (e.g. handle_index's HTTPFound, handle_page's HTTPNotFound)
+    rather than returning them, so those must be caught here to still log
+    their status before re-raising for aiohttp's own handling."""
+    if request.method in ("POST", "PUT", "PATCH"):
+        # request.post() caches its result on `request`, so this doesn't
+        # consume anything the handler's own request.post() call still needs.
+        body = dict(await request.post())
+        logger.debug("%s %s %s", request.method, request.path, body)
+    else:
+        logger.debug("%s %s", request.method, request.path)
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        logger.debug("%s %s -> %s", request.method, request.path, exc.status)
+        raise
+    logger.debug("%s %s -> %s", request.method, request.path, response.status)
+    return response
+
+
 def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
               extensions_registry: dict) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[_log_requests])
     app[DEVICES] = devices
     app[PAGES] = pages
     app[PAGES_BY_ID] = {page.id: page for page in pages}
@@ -139,6 +164,7 @@ async def handle_widget(request: web.Request) -> web.Response:
     except KeyError:
         raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}")
     ep = describe_endpoint(device_id, endpoint)
+    logger.debug("web_ui widget %s/%s -> value=%r text=%r", device_id, endpoint_key, ep["value"], ep["text"])
     template = request.app[JINJA_ENV].get_template("_widget_only.html")
     html = template.render(ep=ep, refresh_interval=request.app[REFRESH_INTERVAL])
     return web.Response(text=html, content_type="text/html")
@@ -168,6 +194,7 @@ async def handle_graph_data(request: web.Request) -> web.Response:
                          for label in panel.labels)]
         for row in rows
     ]
+    logger.debug("web_ui graph %s -> %d row(s) from %s", graph_id, len(wire_rows), panel.logdb_instance)
     return web.json_response({
         "labels": ["Time", *panel.series_titles],
         "unit": panel.unit,
@@ -202,8 +229,11 @@ async def handle_api_set(request: web.Request) -> web.Response:
     if not endpoint.writable:
         raise web.HTTPForbidden(text=f"endpoint {endpoint_key!r} is read-only")
 
+    logger.debug("web_ui set %s/%s = %r", device_id, endpoint_key, text)
     try:
         await asyncio.to_thread(device.set_text, text, endpoint_key)
     except (ValueError, TypeError) as exc:
+        logger.debug("web_ui set %s/%s failed: %s", device_id, endpoint_key, exc)
         raise web.HTTPBadRequest(text=str(exc))
+    logger.debug("web_ui set %s/%s succeeded", device_id, endpoint_key)
     return web.Response(status=204)
