@@ -2,12 +2,14 @@
 #   python phc.py --config examples/web_ui_system.yaml
 # then open http://127.0.0.1:8080/ in a browser.
 #
-# Two pages, exercising every inferred widget kind:
+# Two pages, exercising every inferred widget kind plus a kind: graph panel:
 #   - "Home": two sections -- "Lights" (open by default: a bool toggle and
 #     an int slider with min/max) and "Fan" (folded by default: a
 #     values-mapped dropdown).
 #   - "Sensors": a real read-only devices/sun endpoint, rendered as a
-#     live-updating label.
+#     live-updating label, plus a "History" section charting desk_lamp's
+#     brightness and the sun's elevation over time (see the logdb instance
+#     and log_db task below, which is what actually feeds it).
 
 heartbeat: 1s
 
@@ -63,6 +65,14 @@ devices:
     params: !include common/sun_zurich_params.yaml
 
 extensions:
+  # Feeds the "History" graph panel below -- see the log_db task at the
+  # bottom of this file for what actually samples it.
+  logdb:
+    demo_log:
+      selectors: ["house.desk_lamp/brightness", "sun/elevation"]
+      csv_path: "logs/web_ui_demo_log.csv"
+      max_records: 5000
+
   web_ui:
     demo:
       host: 127.0.0.1
@@ -87,3 +97,25 @@ extensions:
               title: Sun
               collapsed: false
               selectors: ["sun/elevation"]
+            - id: history
+              title: History
+              collapsed: false
+              panels:
+                - kind: graph
+                  id: demo_history
+                  logdb_instance: "logdb.demo_log"
+                  selectors: ["house.desk_lamp/brightness", "sun/elevation"]
+                  title: "Desk Lamp Brightness & Sun Elevation"
+                  window: 1h
+                  decimation:
+                    - older_than: 25h
+                      factor: 3
+                    - older_than: 8D
+                      factor: 8
+
+tasks:
+  - tag: log_demo
+    description: "Sample desk_lamp/brightness and sun/elevation for the History graph panel"
+    time: +2s
+    repeat: 10s
+    action: { kind: log_db, instance: "logdb.demo_log" }
