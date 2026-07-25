@@ -24,6 +24,39 @@ class ConfigError(Exception):
     """Raised for any invalid or inconsistent system YAML."""
 
 
+_include_stack: list[Path] = []
+
+
+class _IncludeLoader(yaml.SafeLoader):
+    """SafeLoader that also understands !include <relative-path>, so a
+    system YAML can pull in child YAML files (see _include_constructor)."""
+
+
+def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
+    """Replace an !include node with the parsed contents of the referenced
+    file, resolved relative to the including file's own directory (so
+    child-of-child includes keep resolving correctly regardless of the root
+    file's location or the process's cwd). Raises ConfigError on a missing
+    file or a circular include chain."""
+    include_rel = loader.construct_scalar(node)
+    base_dir = Path(loader.name).resolve().parent
+    include_path = (base_dir / include_rel).resolve()
+    if not include_path.is_file():
+        raise ConfigError(f"!include: no such file: {include_path} (from {loader.name})")
+    if include_path in _include_stack:
+        chain = " -> ".join(str(p) for p in (*_include_stack, include_path))
+        raise ConfigError(f"!include: circular include: {chain}")
+    _include_stack.append(include_path)
+    try:
+        with open(include_path, "r") as f:
+            return yaml.load(f, Loader=_IncludeLoader)
+    finally:
+        _include_stack.pop()
+
+
+_IncludeLoader.add_constructor("!include", _include_constructor)
+
+
 class ModuleDescriptor:
     """Parsed module.yaml for one device module."""
 
@@ -550,8 +583,9 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     `log_levels_override` (e.g. from CLI flags) is applied on top of the
     file's own `log_levels:` section.
     """
+    _include_stack.clear()
     with open(path, "r") as f:
-        raw = yaml.safe_load(f) or {}
+        raw = yaml.load(f, Loader=_IncludeLoader) or {}
 
     log_levels = dict(raw.get("log_levels") or {})
     log_levels.update(log_levels_override or {})
