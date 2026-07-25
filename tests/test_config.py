@@ -252,6 +252,34 @@ def test_merge_endpoints_rejects_invalid_type():
         _merge_endpoints(module, [], "dev")
 
 
+def test_merge_endpoints_parses_min_max_from_module():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "brightness", "type": "int", "min": 0, "max": 100}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev")
+    assert endpoints[0].min == 0
+    assert endpoints[0].max == 100
+
+
+def test_merge_endpoints_instance_overrides_module_min_max():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "brightness", "type": "int", "min": 0, "max": 100}],
+    })
+    endpoints, _ = _merge_endpoints(
+        module, [{"key": "brightness", "max": 50}], "dev",
+    )
+    assert endpoints[0].min == 0
+    assert endpoints[0].max == 50
+
+
+def test_merge_endpoints_rejects_min_greater_than_max():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "brightness", "type": "int", "min": 100, "max": 0}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev")
+
+
 def test_resolve_interval_module_default_when_no_instance_override():
     module = ModuleDescriptor("m", {"update": "10s"})
     seconds = _resolve_interval(module, {}, {})

@@ -100,6 +100,29 @@ def test_invalid_type_raises():
         Endpoint("state", value_type="bogus")
 
 
+def test_min_max_default_to_none():
+    ep = Endpoint("state")
+    assert ep.min is None
+    assert ep.max is None
+
+
+def test_min_max_stored_independent_of_value_type():
+    ep = Endpoint("state", min=0, max=100)
+    assert ep.min == 0
+    assert ep.max == 100
+
+
+def test_min_greater_than_max_raises():
+    with pytest.raises(ValueError):
+        Endpoint("state", value_type="int", min=10, max=0)
+
+
+def test_min_or_max_alone_is_allowed():
+    ep = Endpoint("state", value_type="int", min=0)
+    assert ep.min == 0
+    assert ep.max is None
+
+
 def test_untyped_to_text_and_from_text_pass_through():
     ep = Endpoint("state")
     ep.set("off")

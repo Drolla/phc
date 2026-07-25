@@ -262,17 +262,22 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 f"device {device_id!r}: endpoint {spec['key']!r} has invalid log_aggregation "
                 f"{log_aggregation!r}, expected one of {LOG_AGGREGATIONS}")
         cls = get_endpoint_class(spec.get("kind"))
-        ep = cls(
-            spec["key"],
-            readable=spec.get("readable", True),
-            writable=spec.get("writable", False),
-            parameters=spec.get("parameters"),
-            description=spec.get("description", ""),
-            value_type=value_type,
-            unit=spec.get("unit"),
-            values=spec.get("values"),
-            log_aggregation=log_aggregation,
-        )
+        try:
+            ep = cls(
+                spec["key"],
+                readable=spec.get("readable", True),
+                writable=spec.get("writable", False),
+                parameters=spec.get("parameters"),
+                description=spec.get("description", ""),
+                value_type=value_type,
+                unit=spec.get("unit"),
+                values=spec.get("values"),
+                log_aggregation=log_aggregation,
+                min=spec.get("min"),
+                max=spec.get("max"),
+            )
+        except ValueError as exc:
+            raise ConfigError(f"device {device_id!r}: {exc}") from None
         endpoints.append(ep)
         if "default" in spec:
             seeds.append((ep, spec["default"]))
