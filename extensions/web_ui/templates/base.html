@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PHC — Home Control</title>
-  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>
 </head>
@@ -13,10 +13,13 @@
     <h1>Pylon Home Control</h1>
     {% if pages and pages|length > 1 %}
     <nav>
-      <ul>
+      <ul class="nav">
         {% for nav_page in pages %}
-        <li><a href="/page/{{ nav_page.id }}"
-               {% if page and nav_page.id == page.id %}aria-current="page"{% endif %}>{{ nav_page.title }}</a></li>
+        <li class="nav-item">
+          <a class="nav-link{% if page and nav_page.id == page.id %} active{% endif %}"
+             {% if page and nav_page.id == page.id %}aria-current="page"{% endif %}
+             href="/page/{{ nav_page.id }}">{{ nav_page.title }}</a>
+        </li>
         {% endfor %}
       </ul>
     </nav>
