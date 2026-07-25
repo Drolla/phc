@@ -1,0 +1,92 @@
+# Demonstrates extensions/web_ui: run with
+#   python phc.py --config examples/web_ui_system.yaml
+# then open http://127.0.0.1:8080/ in a browser.
+#
+# Two pages, exercising every inferred widget kind:
+#   - "Home": two sections -- "Lights" (open by default: a bool toggle and
+#     an int slider with min/max) and "Fan" (folded by default: a
+#     values-mapped dropdown).
+#   - "Sensors": a real read-only devices/sun endpoint, rendered as a
+#     live-updating label.
+
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+
+devices:
+  - id: house
+    module: host
+    name: House
+    children:
+      - id: living_light
+        module: virtual
+        name: Living Room Light
+        update: 5s
+        endpoints:
+          - key: state
+            writable: true
+            type: bool
+            default: false
+
+      - id: desk_lamp
+        module: virtual
+        name: Desk Lamp
+        update: 5s
+        endpoints:
+          - key: brightness
+            writable: true
+            type: int
+            min: 0
+            max: 100
+            unit: "%"
+            default: 0
+
+      - id: fan
+        module: virtual
+        name: Ceiling Fan
+        update: 5s
+        endpoints:
+          - key: speed
+            writable: true
+            type: int
+            values: { 0: "off", 1: "low", 2: "high" }
+            default: 0
+
+  - id: sun
+    module: sun
+    name: Sun
+    update: 1m
+    params:
+      latitude: 47.3769
+      longitude: 8.5417
+      timezone: Europe/Zurich
+
+extensions:
+  web_ui:
+    demo:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: home
+          title: Home
+          sections:
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["house.living_light/*", "house.desk_lamp/*"]
+            - id: fan
+              title: Fan
+              collapsed: true
+              selectors: ["house.fan/*"]
+        - id: sensors
+          title: Sensors
+          sections:
+            - id: sun
+              title: Sun
+              collapsed: false
+              selectors: ["sun/elevation"]
