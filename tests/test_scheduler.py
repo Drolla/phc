@@ -1,6 +1,7 @@
 """Tests for core.scheduler: the Scheduler's tick loop, tasks, and device polling."""
 
 import logging
+import time
 
 import pytest
 
@@ -436,3 +437,116 @@ def test_tick_hook_exception_is_caught_and_does_not_stop_other_hooks():
 
     scheduler.tick(now=0.0)  # must not raise
     assert len(calls) == 1
+
+
+# ---------- start_hooks / stop_hooks ----------
+
+def _run_forever_in_thread(scheduler: Scheduler, *, timeout: float = 2.0):
+    """Drive scheduler.run_forever() on a background daemon thread, wait
+    (bounded) for it to actually start ticking, then stop it and join --
+    the shared pattern for exercising start_hooks/stop_hooks, which only
+    fire around run_forever()'s own loop, never around tick()."""
+    import threading
+
+    thread = threading.Thread(target=scheduler.run_forever, daemon=True)
+    thread.start()
+    deadline = time.time() + timeout
+    while not scheduler._running and time.time() < deadline:
+        time.sleep(0.01)
+    return thread
+
+
+def test_tick_never_runs_start_or_stop_hooks():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    start_calls, stop_calls = [], []
+
+    async def on_start(devices):
+        start_calls.append(devices)
+
+    async def on_stop(devices):
+        stop_calls.append(devices)
+
+    scheduler = Scheduler({"living_light": light}, start_hooks=[on_start], stop_hooks=[on_stop])
+
+    scheduler.tick(now=0.0)
+    scheduler.tick(now=1.0)
+    scheduler.close()
+
+    assert start_calls == []
+    assert stop_calls == []
+
+
+def test_run_forever_runs_start_and_stop_hooks_exactly_once():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    start_calls, stop_calls = [], []
+
+    async def on_start(devices):
+        start_calls.append(devices)
+
+    async def on_stop(devices):
+        stop_calls.append(devices)
+
+    scheduler = Scheduler({"living_light": light}, heartbeat=0.01,
+                           start_hooks=[on_start], stop_hooks=[on_stop])
+
+    thread = _run_forever_in_thread(scheduler)
+    assert len(start_calls) == 1
+    assert start_calls[0] == {"living_light": light}
+    assert stop_calls == []  # not yet stopped
+
+    scheduler.stop()
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
+    assert len(stop_calls) == 1
+    assert stop_calls[0] == {"living_light": light}
+
+
+def test_start_and_stop_hook_exceptions_are_caught_and_do_not_block_siblings_or_crash(caplog):
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    start_calls, stop_calls = [], []
+
+    async def failing_start(devices):
+        raise RuntimeError("start boom")
+
+    async def ok_start(devices):
+        start_calls.append(devices)
+
+    async def failing_stop(devices):
+        raise RuntimeError("stop boom")
+
+    async def ok_stop(devices):
+        stop_calls.append(devices)
+
+    scheduler = Scheduler({"living_light": light}, heartbeat=0.01,
+                           start_hooks=[failing_start, ok_start],
+                           stop_hooks=[failing_stop, ok_stop])
+
+    sched_logger = logging.getLogger("phc.scheduler")
+    sched_logger.addHandler(caplog.handler)
+    sched_logger.setLevel(logging.ERROR)
+    try:
+        with caplog.at_level("ERROR", logger="phc.scheduler"):
+            thread = _run_forever_in_thread(scheduler)
+            assert len(start_calls) == 1  # sibling still ran despite failing_start
+
+            scheduler.stop()
+            thread.join(timeout=2.0)
+    finally:
+        sched_logger.removeHandler(caplog.handler)
+
+    assert not thread.is_alive()  # run_forever() completed, did not crash/hang
+    assert len(stop_calls) == 1  # sibling still ran despite failing_stop
+    assert "start hook" in caplog.text
+    assert "stop hook" in caplog.text

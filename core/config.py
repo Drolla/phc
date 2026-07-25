@@ -262,17 +262,22 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 f"device {device_id!r}: endpoint {spec['key']!r} has invalid log_aggregation "
                 f"{log_aggregation!r}, expected one of {LOG_AGGREGATIONS}")
         cls = get_endpoint_class(spec.get("kind"))
-        ep = cls(
-            spec["key"],
-            readable=spec.get("readable", True),
-            writable=spec.get("writable", False),
-            parameters=spec.get("parameters"),
-            description=spec.get("description", ""),
-            value_type=value_type,
-            unit=spec.get("unit"),
-            values=spec.get("values"),
-            log_aggregation=log_aggregation,
-        )
+        try:
+            ep = cls(
+                spec["key"],
+                readable=spec.get("readable", True),
+                writable=spec.get("writable", False),
+                parameters=spec.get("parameters"),
+                description=spec.get("description", ""),
+                value_type=value_type,
+                unit=spec.get("unit"),
+                values=spec.get("values"),
+                log_aggregation=log_aggregation,
+                min=spec.get("min"),
+                max=spec.get("max"),
+            )
+        except ValueError as exc:
+            raise ConfigError(f"device {device_id!r}: {exc}") from None
         endpoints.append(ep)
         if "default" in spec:
             seeds.append((ep, spec["default"]))
@@ -506,7 +511,8 @@ class System:
 
     def __init__(self, heartbeat: float, roots: list[Device], devices: dict[str, Device],
                  tasks: list[Task] | None = None, max_workers: int | None = None,
-                 fetch_timeout: float | None = None, tick_hooks: list | None = None):
+                 fetch_timeout: float | None = None, tick_hooks: list | None = None,
+                 start_hooks: list | None = None, stop_hooks: list | None = None):
         self.heartbeat = heartbeat
         self.roots = roots
         self.devices = devices
@@ -521,6 +527,12 @@ class System:
         # _load_extensions/load_system) -- passed straight to
         # Scheduler(tick_hooks=...).
         self.tick_hooks = tick_hooks or []
+        # One-time async lifecycle callables auto-collected from configured
+        # extension instances that expose on_start(devices)/on_stop(devices)
+        # (see _load_extensions/load_system) -- passed straight to
+        # Scheduler(start_hooks=..., stop_hooks=...).
+        self.start_hooks = start_hooks or []
+        self.stop_hooks = stop_hooks or []
 
     def scheduled_devices(self) -> dict[str, Device]:
         """Return the subset of `devices` that have an update_interval (i.e.
@@ -566,6 +578,13 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
 
     extensions_registry = _load_extensions(raw, flat)
     tick_hooks = [obj.on_tick for obj in extensions_registry.values() if hasattr(obj, "on_tick")]
+    # One-time async lifecycle hooks (see core.scheduler.Scheduler's
+    # start_hooks/stop_hooks) -- same auto-collection idea as tick_hooks
+    # above, but for an extension instance that needs to start/stop a
+    # long-lived resource (e.g. extensions.web_ui's aiohttp server) once,
+    # rather than every tick.
+    start_hooks = [obj.on_start for obj in extensions_registry.values() if hasattr(obj, "on_start")]
+    stop_hooks = [obj.on_stop for obj in extensions_registry.values() if hasattr(obj, "on_stop")]
 
     tasks: list[Task] = []
     sticky_endpoints: set = set()
@@ -580,4 +599,5 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         raise ConfigError(f"duplicate task tag(s): {sorted(duplicates)}")
 
     return System(heartbeat=heartbeat, roots=roots, devices=flat, tasks=tasks,
-                  max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks)
+                  max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks,
+                  start_hooks=start_hooks, stop_hooks=stop_hooks)

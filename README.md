@@ -36,6 +36,9 @@ through unchanged. An endpoint definition may opt into:
 - `unit` — a display unit, e.g. `"°C"`, appended when formatting a
   numeric value as text.
 - `values` — a raw value → text label mapping, e.g. `{ 0: "off", 1: "on" }`.
+- `min`/`max` — a numeric range hint, stored only (never enforced against
+  a write) — e.g. used by [`extensions/web_ui/`](extensions/web_ui/) to
+  decide whether a writable numeric endpoint gets a bounded slider.
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw
@@ -195,10 +198,73 @@ given. See
 [`examples/surveillance_system.yaml`](examples/surveillance_system.yaml)
 for a fuller worked example, wired into its intrusion-detection task.
 
+### Web UI
+
+[`extensions/web_ui/`](extensions/web_ui/) is a small aiohttp.web server
+(sharing the scheduler's own event loop) that renders the live device tree
+as a browser dashboard — view current status and flip/slide/select new
+values — with **no per-device UI code**: each endpoint's widget is
+inferred purely from its existing metadata:
+
+| Endpoint                                  | Widget     |
+|--------------------------------------------|------------|
+| not `writable`                              | label      |
+| `writable`, `type: bool`                    | toggle     |
+| `writable`, has `values`                    | dropdown   |
+| `writable`, numeric, both `min` and `max`   | slider     |
+| `writable`, numeric, missing `min` or `max` | number     |
+| `writable`, `str` or untyped                | text       |
+
+Layout is either a single flat page (the `selectors` shorthand, default
+everything) or an explicit `pages:` list, each holding one or more
+collapsible `sections:` (folded by default) that pick their devices via
+the same selector syntax `extensions/logdb` uses:
+
+```yaml
+extensions:
+  web_ui:
+    home:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: overview
+          title: Overview
+          sections:
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["house.*.light*/*"]
+            - id: climate
+              title: Climate
+              selectors: ["house.*/temperature", "house.*/humidity"]
+```
+
+Writes POST through the same `Device.set_text()` path a task action uses;
+every widget independently polls its own small HTML fragment on
+`refresh_interval` to pick up live state (its own write included, once the
+next scheduler tick commits it — there is no WebSocket/push channel).
+Interactivity is [HTMX](https://htmx.org) and styling is
+[PicoCSS](https://picocss.com) — both vendored, unmodified, single-file
+static assets (see `extensions/web_ui/static/`), so no project-authored
+JS or build tooling is needed.
+
+A section's content is a list of **panels**, dispatched by `kind` (default
+`"devices"`, the widgets described above) through a small registry local
+to this extension (`extensions/web_ui/panels.py`), independent of
+`core/registry.py`. Only `kind: devices` ships today; it's a deliberately
+foreseen, not-yet-implemented extension point for a future non-device-tied
+panel (e.g. `kind: graph`, a time-series chart over a set of endpoints).
+
+There is no authentication — bind `host` to a trusted interface only
+(defaults to `127.0.0.1`, loopback-only). See
+[`examples/web_ui_system.yaml`](examples/web_ui_system.yaml) for a
+complete runnable example.
+
 ## Requirements
 
 - Python >= 3.11
-- Dependencies: `PyYAML`, `aiohttp`, `astral` (see `pyproject.toml`)
+- Dependencies: `PyYAML`, `aiohttp`, `astral`, `Jinja2` (see `pyproject.toml`)
 
 ## Install
 

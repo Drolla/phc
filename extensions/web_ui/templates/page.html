@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% from "_macros.html" import render_section %}
+{% block content %}
+  {% if page.title %}<h2>{{ page.title }}</h2>{% endif %}
+  {% for section in sections %}{{ render_section(section, refresh_interval) }}{% endfor %}
+{% endblock %}
