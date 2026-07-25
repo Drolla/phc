@@ -80,3 +80,55 @@ input[type="range"].widget-input {
 .section {
   margin-bottom: 1rem;
 }
+
+/* Teal accent color, replacing Bootstrap's default blue. Link colors need
+   BOTH variable forms overridden: plain <a> tags use the rgb() triplet
+   (--bs-link-color-rgb), while .nav-link's --bs-nav-link-color instead
+   inherits the separate scalar (--bs-link-color) -- Bootstrap sets both
+   independently, not one derived from the other. The checked-switch,
+   range-thumb, and focus-ring colors, however, are hardcoded literal hex
+   values inside bootstrap.min.css itself (not variable-driven in this
+   Bootstrap version) -- since this file loads after bootstrap.min.css,
+   these same-specificity selectors win by source order and override them
+   directly, no !important needed. Tint values (focus border / active
+   thumb) mirror Bootstrap's own ~50%/~70% white-mix ratios for its
+   default blue, applied to the same teal base (#0d9488). */
+:root,
+[data-bs-theme="light"] {
+  --bs-link-color: #0d9488;
+  --bs-link-color-rgb: 13, 148, 136;
+  --bs-link-hover-color: #0b7a70;
+  --bs-link-hover-color-rgb: 11, 122, 112;
+}
+[data-bs-theme="dark"] {
+  --bs-link-color: #2dd4bf;
+  --bs-link-color-rgb: 45, 212, 191;
+  --bs-link-hover-color: #5eead4;
+  --bs-link-hover-color-rgb: 94, 234, 212;
+}
+
+.form-check-input:checked {
+  background-color: #0d9488;
+  border-color: #0d9488;
+}
+.form-check-input:focus,
+.form-select:focus,
+.form-control:focus {
+  border-color: #86cac4;
+  box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25);
+}
+.form-range::-webkit-slider-thumb {
+  background-color: #0d9488;
+}
+.form-range::-webkit-slider-thumb:active {
+  background-color: #b6dfdb;
+}
+.form-range::-moz-range-thumb {
+  background-color: #0d9488;
+}
+.form-range::-moz-range-thumb:active {
+  background-color: #b6dfdb;
+}
+.nav-link:focus-visible {
+  box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25);
+}
