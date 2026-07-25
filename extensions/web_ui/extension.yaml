@@ -75,7 +75,7 @@ parameters:
       (default "24h") sets the chart's initial zoom -- the full retained
       history is still fetched and pannable via the range selector.
       `decimation` (optional) is a list of {older_than, factor} tiers
-      (e.g. [{older_than: 25h, factor: 3}, {older_than: 8d, factor: 8}]):
+      (e.g. [{older_than: 25h, factor: 3}, {older_than: 8D, factor: 8}]):
       samples older than a tier's `older_than` duration are averaged in
       groups of `factor`, bounding how much history data is shipped to the
       browser; omitted or empty means no decimation (see
