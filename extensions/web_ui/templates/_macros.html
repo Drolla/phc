@@ -1,0 +1,98 @@
+{#
+  render_widget: renders ONE endpoint's widget div, addressed by
+  data-device/data-endpoint (the stable unit app-side HTMX targets for
+  both its own polling refresh and, indirectly, the write it triggers).
+  The wrapper polls its own fragment (GET /widget/<device>/<endpoint>) on
+  refresh_interval -- skipped while the user is actively editing this
+  widget's own control, or while its enclosing <details> section is
+  collapsed. render_widget is the ONLY place widget markup is generated:
+  both the full-page render and the single-fragment poll response
+  (templates/_widget_only.html) call it with identical data, so there is
+  never a "first paint" vs. "poll refresh" markup mismatch.
+
+  A dropdown's <option value> is deliberately the LABEL text, not the raw
+  enum key, so it round-trips through Endpoint.from_text()'s
+  type-agnostic label-matching branch regardless of whether the raw key
+  is an int/str/bool -- do not "simplify" this to the raw value.
+#}
+{% macro render_widget(ep, refresh_interval) %}
+<div class="widget widget-{{ ep.widget }}"
+     data-device="{{ ep.device }}" data-endpoint="{{ ep.endpoint }}"
+     hx-get="/widget/{{ ep.device }}/{{ ep.endpoint }}"
+     hx-trigger="every {{ refresh_interval }}s [document.activeElement.closest('.widget')!==this && (!this.closest('details') || this.closest('details').open)]"
+     hx-swap="outerHTML">
+  <span class="widget-label">{{ ep.label }}</span>
+  {% if ep.widget == "toggle" %}
+    <input type="checkbox" class="widget-input" {% if ep.value %}checked{% endif %}
+           hx-post="/api/set" hx-trigger="change" hx-swap="none"
+           hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: String(event.target.checked)}">
+  {% elif ep.widget == "dropdown" %}
+    <select class="widget-input"
+            hx-post="/api/set" hx-trigger="change" hx-swap="none"
+            hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
+      {# ep.values would resolve to dict.values (the builtin method), not
+         the "values" key -- ep is a plain dict, so bracket access is
+         required here specifically. #}
+      {% for raw, label in (ep['values'] or {}).items() %}
+      <option value="{{ label }}" {% if ep.text == label %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  {% elif ep.widget == "slider" %}
+    <input type="range" class="widget-input" min="{{ ep.min }}" max="{{ ep.max }}"
+           step="{{ '1' if ep.value_type == 'int' else 'any' }}"
+           value="{{ ep.value if ep.value is not none else ep.min }}"
+           hx-post="/api/set" hx-trigger="change" hx-swap="none"
+           hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
+  {% elif ep.widget == "number" %}
+    <input type="number" class="widget-input"
+           {% if ep.min is not none %}min="{{ ep.min }}"{% endif %}
+           {% if ep.max is not none %}max="{{ ep.max }}"{% endif %}
+           step="{{ '1' if ep.value_type == 'int' else 'any' }}"
+           value="{{ ep.value if ep.value is not none else '' }}"
+           hx-post="/api/set" hx-trigger="change" hx-swap="none"
+           hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
+  {% elif ep.widget == "text" %}
+    <input type="text" class="widget-input" value="{{ ep.value if ep.value is not none else '' }}"
+           hx-post="/api/set" hx-trigger="change" hx-swap="none"
+           hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
+  {% endif %}
+  <span class="widget-value">{{ ep.text }}</span>
+</div>
+{% endmacro %}
+
+{% macro render_device(device, refresh_interval) %}
+<article class="device">
+  <h4>{{ device.name }}</h4>
+  {% if device.endpoints %}
+  <div class="endpoints">
+    {% for ep in device.endpoints %}{{ render_widget(ep, refresh_interval) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% if device.children %}
+  <div class="children">
+    {% for child in device.children %}{{ render_device(child, refresh_interval) }}{% endfor %}
+  </div>
+  {% endif %}
+</article>
+{% endmacro %}
+
+{#
+  render_panel: dispatches on panel.kind. v1 only implements "devices"; a
+  future "graph" (or other non-device-tied) panel kind is added here as
+  its own {% elif panel.kind == "graph" %} branch -- see
+  extensions/web_ui/panels.py for the matching Python-side registry.
+#}
+{% macro render_panel(panel, refresh_interval) %}
+{% if panel.kind == "devices" %}
+  {% for device in panel.devices %}{{ render_device(device, refresh_interval) }}{% endfor %}
+{% endif %}
+{% endmacro %}
+
+{% macro render_section(section, refresh_interval) %}
+<details class="section" {% if not section.collapsed %}open{% endif %}>
+  {% if section.title %}<summary>{{ section.title }}</summary>{% endif %}
+  <div class="section-content">
+    {% for panel in section.panels %}{{ render_panel(panel, refresh_interval) }}{% endfor %}
+  </div>
+</details>
+{% endmacro %}

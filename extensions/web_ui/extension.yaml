@@ -1,0 +1,76 @@
+description: >
+  Live web UI: a small aiohttp.web server that renders the current device
+  tree (server-side, via Jinja2), grouped into configurable pages and
+  collapsible sections, with a widget per readable/writable endpoint
+  automatically inferred from its own metadata (readable/writable/
+  value_type/values/min/max) -- see extensions/web_ui/widgets.py. No
+  per-device or per-endpoint-kind UI registration is needed: a new device
+  module gets a working widget for free.
+
+  Interactive widgets write via HTMX (POST /api/set -> Device.set_text());
+  every widget also polls its own small HTML fragment (GET
+  /widget/<device>/<endpoint>) on refresh_interval to pick up live state,
+  including from other devices/tasks/clients -- there is no WebSocket/push
+  channel.
+
+  Layout is either a single flat page (the `selectors` shorthand, default
+  everything) or an explicit `pages:` list, each page holding one or more
+  `sections:`, each section either `selectors:` (shorthand for one
+  `kind: devices` panel) or an explicit `panels:` list. Panel `kind`
+  defaults to "devices" and is dispatched via a small registry local to
+  this extension (extensions/web_ui/panels.py) -- a deliberately foreseen,
+  not-yet-implemented extension point for a future non-device-tied panel
+  (e.g. `kind: graph`, a time-series chart over a set of endpoints).
+
+  v1: no authentication -- host defaults to loopback-only; set it
+  explicitly to expose beyond localhost, and only on a trusted LAN.
+
+parameters:
+  - name: host
+    override: allowed
+    default: "127.0.0.1"
+    description: Interface to bind the HTTP server to.
+
+  - name: port
+    override: allowed
+    default: 8080
+    description: TCP port to bind the HTTP server to.
+
+  - name: selectors
+    override: allowed
+    default: ["*"]
+    description: >
+      List of "<device-glob>/<endpoint-glob>" selector patterns (same
+      syntax as extensions.logdb's `selectors`), or bare "*" for
+      everything (the default). Used only when `pages` is not given:
+      synthesizes a single flat, always-expanded page/section showing
+      every matched endpoint. Ignored if `pages` is set.
+
+  - name: pages
+    override: allowed
+    default: null
+    description: >
+      List of page definitions for a multi-page layout: each page is
+      {id, title, sections: [...]}. Each section is {id, title, collapsed,
+      selectors} or {id, title, collapsed, panels}, where `selectors` is
+      shorthand for `panels: [{kind: devices, selectors: [...]}]`; exactly
+      one of `selectors`/`panels` is required. `collapsed` defaults to
+      true (folded by default). Each panel is {kind, ...kind-specific
+      params}; `kind` defaults to "devices". null (the default) means: use
+      the top-level `selectors` shorthand instead.
+
+  - name: refresh_interval
+    override: allowed
+    default: "2s"
+    description: >
+      How often each widget polls its own current state (a duration
+      string, e.g. "2s", "500ms"). A write is visible in the UI only after
+      the next scheduler tick's commit is picked up by the following poll
+      -- bounded by refresh_interval plus the system's heartbeat.
+
+  - name: shutdown_timeout
+    override: allowed
+    default: 5
+    description: >
+      Seconds to wait for in-flight requests to finish when the server
+      stops, before forcing them closed (aiohttp.web.AppRunner).
