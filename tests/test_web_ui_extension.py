@@ -18,7 +18,7 @@ from core.config import ConfigError
 from core.endpoint import Endpoint
 from devices.virtual.device import VirtualDevice
 from extensions.web_ui.extension import configure
-from extensions.web_ui.server import PAGES
+from extensions.web_ui.server import GRAPH_PANELS_BY_ID, PAGES
 
 
 def _base_params(**overrides):
@@ -130,8 +130,39 @@ def test_configure_section_requires_exactly_one_of_selectors_or_panels():
 
 def test_configure_panel_unknown_kind_raises():
     params = _base_params(pages=[{"id": "a", "sections": [
-        {"id": "s", "panels": [{"kind": "graph", "selectors": ["*"]}]},
+        {"id": "s", "panels": [{"kind": "bogus", "selectors": ["*"]}]},
     ]}])
+    with pytest.raises(ConfigError):
+        configure(params, _flat(), "web_ui.demo")
+
+
+def test_configure_graph_panel_missing_required_params_raises():
+    params = _base_params(pages=[{"id": "a", "sections": [
+        {"id": "s", "panels": [{"kind": "graph", "selectors": ["*"]}]},  # no id/logdb_instance
+    ]}])
+    with pytest.raises(ConfigError):
+        configure(params, _flat(), "web_ui.demo")
+
+
+def test_configure_graph_panel_builds_and_registers():
+    params = _base_params(pages=[{"id": "a", "sections": [
+        {"id": "s", "panels": [
+            {"kind": "graph", "id": "lamp_history", "logdb_instance": "logdb.house", "selectors": ["lamp/*"]},
+        ]},
+    ]}])
+    instance = configure(params, _flat(), "web_ui.demo")
+    panel = instance._app[PAGES][0].sections[0].panels[0]
+    assert panel.kind == "graph"
+    assert panel.id == "lamp_history"
+    assert instance._app[GRAPH_PANELS_BY_ID] == {"lamp_history": panel}
+
+
+def test_configure_duplicate_graph_panel_id_across_pages_raises():
+    graph_panel = {"kind": "graph", "id": "dup", "logdb_instance": "logdb.house", "selectors": ["*"]}
+    params = _base_params(pages=[
+        {"id": "a", "sections": [{"id": "s1", "panels": [graph_panel]}]},
+        {"id": "b", "sections": [{"id": "s2", "panels": [graph_panel]}]},
+    ])
     with pytest.raises(ConfigError):
         configure(params, _flat(), "web_ui.demo")
 
@@ -320,6 +351,105 @@ def test_post_api_set_unknown_endpoint_not_found():
         try:
             resp = await client.post("/api/set", data={"device": "lamp", "endpoint": "nope", "text": "1"})
             assert resp.status == 404
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+# ---------- graph panel: GET /api/graph/{id} ----------
+
+def _logdb_registry(tmp_path, flat, selectors=("*",), instance_key="logdb.house"):
+    """Build a real LogDbInstance (mirrors tests/test_logdb_extension.py's
+    own configure() construction) and wrap it in the small extensions
+    registry dict web_ui's configure() expects as its 4th argument."""
+    from extensions.logdb.extension import configure as configure_logdb
+    params = {
+        "selectors": list(selectors),
+        "csv_path": str(tmp_path / "log.csv"),
+        "full_vector_interval": 100,
+        "max_records": None,
+        "max_age": None,
+        "header_reserve_bytes": None,
+    }
+    return {instance_key: configure_logdb(params, flat, instance_key)}
+
+
+def _graph_page_params(**panel_overrides):
+    panel = {"kind": "graph", "id": "lamp_history", "logdb_instance": "logdb.house", "selectors": ["lamp/*"]}
+    panel.update(panel_overrides)
+    return _base_params(pages=[{"id": "a", "sections": [{"id": "s", "panels": [panel]}]}])
+
+
+async def _client_for_graph(extensions_registry, params=None, flat=None):
+    instance = configure(params or _graph_page_params(), flat if flat is not None else _flat(),
+                          "web_ui.demo", extensions_registry)
+    client = TestClient(TestServer(instance._app))
+    await client.start_server()
+    return client, instance
+
+
+def test_get_api_graph_returns_history_from_referenced_logdb_instance(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        registry["logdb.house"].store.log(1.0, {"lamp/state": 1.0})
+        registry["logdb.house"].store.log(2.0, {"lamp/state": 0.0})
+        client, _ = await _client_for_graph(registry, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            assert resp.status == 200
+            body = await resp.json()
+            assert body["labels"] == ["Time", "lamp/state"]
+            assert body["rows"] == [[1.0, 1.0], [2.0, 0.0]]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_unknown_graph_id_404(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        client, _ = await _client_for_graph(registry, flat=flat)
+        try:
+            resp = await client.get("/api/graph/nonexistent")
+            assert resp.status == 404
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_unresolvable_logdb_instance_404(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat, instance_key="logdb.other")  # not "logdb.house"
+        client, _ = await _client_for_graph(registry, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            assert resp.status == 404
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_missing_values_serialize_as_null_not_literal_nan(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        registry["logdb.house"].store.log(1.0, {"lamp/state": 1.0})
+        registry["logdb.house"].store.log(2.0, {})  # "lamp/state" unlogged this sample -> NaN
+        client, _ = await _client_for_graph(registry, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            raw_text = await resp.text()
+            # The real correctness concern: a literal NaN token isn't valid
+            # JSON and throws in a browser's JSON.parse/fetch().json(),
+            # even though Python's own json.loads happens to tolerate it --
+            # so this must be checked against the raw wire bytes, not just
+            # a round-tripped Python object.
+            assert "NaN" not in raw_text
+            body = await resp.json()
+            assert body["rows"] == [[1.0, 1.0], [2.0, None]]
         finally:
             await client.close()
     asyncio.run(run())

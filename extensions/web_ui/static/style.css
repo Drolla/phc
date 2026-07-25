@@ -43,3 +43,16 @@
 .section {
   margin-bottom: 1rem;
 }
+
+.graph-panel {
+  margin-bottom: 1.5rem;
+}
+
+.graph-panel > h4 {
+  margin-bottom: 0.25rem;
+}
+
+.graph-canvas {
+  width: 100%;
+  height: 300px;
+}
