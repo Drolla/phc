@@ -1,10 +1,15 @@
 """Tests for core.config: system YAML loading, param/endpoint merging, and validation."""
 
+import logging
+from pathlib import Path
+
 import pytest
 
 from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _load_extensions,
                           _merge_endpoints, _merge_extension_params, _merge_params,
                           _resolve_interval, _resolve_module_params, load_system)
+
+_EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
 
 def test_merge_params_uses_default_when_no_override():
@@ -1120,3 +1125,112 @@ tasks:
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
+
+
+# ---------- !include ----------
+
+def test_load_system_include_as_mapping_value(tmp_path):
+    (tmp_path / "params.yaml").write_text("""
+station: BER
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: meteo-bern
+    module: meteoswiss
+    params: !include params.yaml
+""")
+    system = load_system(system_yaml)
+    assert system.devices["meteo-bern"].params["station"] == "BER"
+
+
+def test_load_system_include_as_sequence_item(tmp_path):
+    (tmp_path / "device.yaml").write_text("""
+id: living_light
+module: virtual
+update: fast
+endpoints:
+  - key: state
+    writable: true
+    default: "off"
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+intervals: { fast: 3s }
+devices:
+  - !include device.yaml
+""")
+    system = load_system(system_yaml)
+    assert system.devices["living_light"].get() == "off"
+
+
+def test_load_system_include_resolves_relative_to_including_file(tmp_path):
+    # sub/device.yaml's own !include of "endpoints.yaml" only resolves if
+    # it's taken relative to sub/ (where endpoints.yaml actually lives),
+    # not relative to tmp_path/ (the root system.yaml's directory).
+    sub_dir = tmp_path / "sub"
+    sub_dir.mkdir()
+    (sub_dir / "endpoints.yaml").write_text("""
+- key: state
+  writable: true
+  default: "off"
+""")
+    (sub_dir / "device.yaml").write_text("""
+id: living_light
+module: virtual
+endpoints: !include endpoints.yaml
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - !include sub/device.yaml
+""")
+    system = load_system(system_yaml)
+    assert system.devices["living_light"].get() == "off"
+
+
+def test_load_system_include_missing_file_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices: !include missing.yaml
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_include_circular_raises(tmp_path):
+    (tmp_path / "a.yaml").write_text("!include b.yaml\n")
+    (tmp_path / "b.yaml").write_text("!include a.yaml\n")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices: !include a.yaml
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+@pytest.fixture
+def _restore_phc_logger_levels():
+    # Some examples set per-module log_levels (e.g. scheduler: DEBUG), and
+    # configure_logging() applies those via logging.Logger.setLevel(), which
+    # is global, process-wide state with no built-in reset -- restore it so
+    # loading these examples doesn't leak into unrelated tests that run
+    # later in the same session (e.g. tests/test_logging_setup.py).
+    snapshot = {name: lg.level for name, lg in logging.Logger.manager.loggerDict.items()
+                if isinstance(lg, logging.Logger) and (name == "phc" or name.startswith("phc."))}
+    snapshot["phc"] = logging.getLogger("phc").level
+    yield
+    for name, level in snapshot.items():
+        logging.getLogger(name).setLevel(level)
+
+
+@pytest.mark.parametrize("example_path", sorted(_EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
+def test_load_system_examples_load_without_error(example_path, _restore_phc_logger_levels):
+    # Non-recursive glob: examples/common/ holds !include fragments, not
+    # standalone runnable systems, so it's naturally excluded here.
+    load_system(example_path)

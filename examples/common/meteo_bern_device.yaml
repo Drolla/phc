@@ -1,0 +1,7 @@
+# Assumes the including system YAML defines an "intervals: { weather: ... }" entry.
+id: meteo-bern
+module: meteoswiss
+name: Bern Weather
+update: weather
+params:
+  station: BER

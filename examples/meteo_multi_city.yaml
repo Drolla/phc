@@ -14,22 +14,14 @@ intervals:
 # -- one shared value for every station, not per device). Setting cache_time
 # here, once, means the five stations below coalesce into a single shared
 # HTTP fetch per cache window instead of five independent downloads.
-modules:
-  meteoswiss:
-    params:
-      cache_time: 5m
+modules: !include common/meteoswiss_cache_params.yaml
 
 # Station codes below are a sample of MeteoSwiss automatic weather stations
 # (one per city); see the full list at
 # https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
 # and swap in whichever stations you actually want to track.
 devices:
-  - id: meteo-bern
-    module: meteoswiss
-    name: Bern Weather
-    update: weather
-    params:
-      station: BER
+  - !include common/meteo_bern_device.yaml
 
   - id: meteo-zurich
     module: meteoswiss
