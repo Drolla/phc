@@ -97,8 +97,20 @@ devices:
       timezone: Europe/Zurich
 
 # Randomizes the hallway/porch lights while armed (enable_ref) and not
-# alarmed (pause_ref) -- see extensions/random_light.
+# alarmed (pause_ref) -- see extensions/random_light. Sends an alert mail
+# (with an email-to-SMS gateway address alongside an ordinary mailbox) when
+# an intrusion is detected -- see extensions/mail_alert.
 extensions:
+  mail_alert:
+    house:
+      smtp_host: "smtp.example.com"
+      username: "alerts@example.com"
+      password: "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
+      from: "alerts@example.com"
+      to:
+        - "someone@example.com"
+        - "15555550123@sms.example.com"
+
   random_light:
     house:
       enable_ref: "surveillance.armed"
@@ -192,3 +204,7 @@ tasks:
       - kind: random_light
         instance: "random_light.house"
         force: 1
+      - kind: mail_alert
+        instance: "mail_alert.house"
+        title: "Surveillance - Intrusion Alert"
+        message: "Motion detected while armed"
