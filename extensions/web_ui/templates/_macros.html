@@ -30,7 +30,7 @@
      hx-swap="outerHTML">
   <span class="widget-label">{{ ep.label }}</span>
   {% if ep.widget == "toggle" %}
-    <input type="checkbox" class="widget-input" {% if ep.value %}checked{% endif %}
+    <input type="checkbox" class="widget-input" role="switch" {% if ep.value %}checked{% endif %}
            hx-post="/api/set" hx-trigger="change" hx-swap="none"
            hx-on::after-request="this.blur()"
            hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: String(event.target.checked)}">

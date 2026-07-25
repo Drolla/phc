@@ -22,8 +22,12 @@
 
 .widget {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-card-background-color);
 }
 
 .widget-label {
@@ -31,12 +35,26 @@
   font-weight: 600;
 }
 
+/* Pico's base stylesheet sets width:100% on select/range/number/text
+   inputs, which -- absent an override -- stretches them to fill the rest
+   of the flex row instead of sizing to their own purpose. */
 .widget-input {
   flex: 0 1 auto;
   margin: 0;
+  width: auto;
+  max-width: 14rem;
+}
+
+input[type="range"].widget-input {
+  max-width: 10rem;
 }
 
 .widget-value {
+  min-width: 3.5rem;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   color: var(--pico-muted-color);
 }
 
