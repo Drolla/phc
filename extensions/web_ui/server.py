@@ -39,7 +39,13 @@ async def _log_requests(request: web.Request, handler):
     subclasses (e.g. handle_index's HTTPFound, handle_page's HTTPNotFound)
     rather than returning them, so those must be caught here to still log
     their status before re-raising for aiohttp's own handling."""
-    logger.debug("%s %s", request.method, request.path)
+    if request.method in ("POST", "PUT", "PATCH"):
+        # request.post() caches its result on `request`, so this doesn't
+        # consume anything the handler's own request.post() call still needs.
+        body = dict(await request.post())
+        logger.debug("%s %s %s", request.method, request.path, body)
+    else:
+        logger.debug("%s %s", request.method, request.path)
     try:
         response = await handler(request)
     except web.HTTPException as exc:
