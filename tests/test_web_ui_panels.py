@@ -15,7 +15,7 @@ def test_get_panel_kind_class_returns_devices_panel_by_default():
 
 def test_get_panel_kind_class_unknown_kind_raises_config_error():
     with pytest.raises(ConfigError):
-        get_panel_kind_class("graph")  # not implemented -- see panels.py docstring
+        get_panel_kind_class("bogus")
 
 
 def test_devices_panel_resolves_selectors_and_describes():
