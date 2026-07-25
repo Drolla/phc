@@ -893,6 +893,62 @@ tasks:
     assert len(system.tick_hooks) >= 1
 
 
+# ---------- start_hooks / stop_hooks auto-collection ----------
+
+def test_load_system_defaults_to_empty_start_and_stop_hooks(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+""")
+    system = load_system(system_yaml)
+    assert system.start_hooks == []
+    assert system.stop_hooks == []
+
+
+def test_load_system_collects_on_start_on_stop_from_extension_instances(tmp_path, monkeypatch):
+    """No shipped extension has on_start/on_stop yet (only extensions.web_ui
+    will), so this exercises core.config's auto-collection directly by
+    monkeypatching _load_extensions to return a fake instance -- the same
+    collection mechanism already proven for on_tick (see
+    test_load_system_condition_expr_registers_sticky_tick_hook above and
+    logdb/random_light's own end-to-end tests)."""
+    import core.config as config_module
+
+    calls = {"start": [], "stop": []}
+
+    class FakeExtensionInstance:
+        async def on_start(self, devices):
+            calls["start"].append(devices)
+
+        async def on_stop(self, devices):
+            calls["stop"].append(devices)
+
+    monkeypatch.setattr(config_module, "_load_extensions",
+                         lambda raw, flat: {"fake.instance": FakeExtensionInstance()})
+
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+""")
+    system = load_system(system_yaml)
+
+    assert len(system.start_hooks) == 1
+    assert len(system.stop_hooks) == 1
+    import asyncio
+    asyncio.run(system.start_hooks[0]({"living_light": system.devices["living_light"]}))
+    asyncio.run(system.stop_hooks[0]({"living_light": system.devices["living_light"]}))
+    assert len(calls["start"]) == 1
+    assert len(calls["stop"]) == 1
+
+
 # ---------- Task.min_interval ----------
 
 def test_load_system_task_min_interval_parsed(tmp_path):
