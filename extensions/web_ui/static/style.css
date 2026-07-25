@@ -49,6 +49,22 @@ input[type="range"].widget-input {
   max-width: 10rem;
 }
 
+/* Bootstrap's .form-switch positions its <input> via padding-left plus a
+   negative margin-left, assuming an adjacent <label> fills the rest of the
+   block. This project's switch has no inline label (.widget-label already
+   serves that role) -- neutralize that trick and let the parent .widget
+   flex row position the input directly. */
+.widget-input.form-check.form-switch {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  margin-bottom: 0;
+  padding-left: 0;
+}
+.widget-input.form-check.form-switch .form-check-input {
+  margin-left: 0;
+}
+
 .widget-value {
   min-width: 3.5rem;
   margin-left: auto;
