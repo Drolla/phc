@@ -1,0 +1,65 @@
+description: >
+  Mail alert delivery: an extensions.mail_alert.<instance> entry holds one
+  SMTP server's connection details plus a default sender/recipient list; a
+  `kind: mail_alert` task action sends one message through it. Sends run on
+  a small background thread pool (see extension.py) so a slow/unreachable
+  mail server never stalls the scheduler tick -- delivery success/failure
+  is logged, not surfaced back to the firing task (same as any other
+  Action failure -- see core.scheduler's per-task exception handling).
+
+parameters:
+  - name: smtp_host
+    override: required
+    description: SMTP server hostname or address.
+
+  - name: smtp_port
+    override: allowed
+    default: 587
+    description: SMTP server port.
+
+  - name: security
+    override: allowed
+    default: "starttls"
+    description: >
+      One of "starttls" (plaintext connection upgraded via STARTTLS, the
+      common submission-port default), "ssl" (implicit TLS from
+      connection start, typically port 465), or "none" (unencrypted).
+
+  - name: username
+    override: allowed
+    default: null
+    description: SMTP auth username. null = no authentication attempted.
+
+  - name: password
+    override: allowed
+    default: null
+    description: >
+      SMTP auth password, in plain text in this system YAML -- phc has no
+      secrets-management mechanism at present. Keep this file out of
+      version control, or restrict its permissions, if it holds a real
+      password.
+
+  - name: from
+    override: required
+    description: Default "From" address for alerts sent through this instance.
+
+  - name: to
+    override: allowed
+    default: []
+    description: >
+      Default recipient list, used when a mail_alert action doesn't supply
+      its own `to`. May include an email-to-SMS gateway address (e.g.
+      "1234567890@sms.example.com") -- these are ordinary mail recipients
+      as far as this extension is concerned.
+
+  - name: timeout
+    override: allowed
+    default: "10s"
+    description: SMTP connection/command timeout (duration string).
+
+  - name: debug
+    override: allowed
+    default: false
+    description: >
+      Log the full traceback (not just a one-line warning) when a send
+      fails.
