@@ -30,12 +30,14 @@
      hx-swap="outerHTML">
   <span class="widget-label">{{ ep.label }}</span>
   {% if ep.widget == "toggle" %}
-    <input type="checkbox" class="widget-input" role="switch" {% if ep.value %}checked{% endif %}
-           hx-post="/api/set" hx-trigger="change" hx-swap="none"
-           hx-on::after-request="this.blur()"
-           hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: String(event.target.checked)}">
+    <div class="widget-input form-check form-switch">
+      <input type="checkbox" class="form-check-input" role="switch" {% if ep.value %}checked{% endif %}
+             hx-post="/api/set" hx-trigger="change" hx-swap="none"
+             hx-on::after-request="this.blur()"
+             hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: String(event.target.checked)}">
+    </div>
   {% elif ep.widget == "dropdown" %}
-    <select class="widget-input"
+    <select class="widget-input form-select"
             hx-post="/api/set" hx-trigger="change" hx-swap="none"
             hx-on::after-request="this.blur()"
             hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
@@ -47,14 +49,14 @@
       {% endfor %}
     </select>
   {% elif ep.widget == "slider" %}
-    <input type="range" class="widget-input" min="{{ ep.min }}" max="{{ ep.max }}"
+    <input type="range" class="widget-input form-range" min="{{ ep.min }}" max="{{ ep.max }}"
            step="{{ '1' if ep.value_type == 'int' else 'any' }}"
            value="{{ ep.value if ep.value is not none else ep.min }}"
            hx-post="/api/set" hx-trigger="change" hx-swap="none"
            hx-on::after-request="this.blur()"
            hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
   {% elif ep.widget == "number" %}
-    <input type="number" class="widget-input"
+    <input type="number" class="widget-input form-control"
            {% if ep.min is not none %}min="{{ ep.min }}"{% endif %}
            {% if ep.max is not none %}max="{{ ep.max }}"{% endif %}
            step="{{ '1' if ep.value_type == 'int' else 'any' }}"
@@ -63,7 +65,7 @@
            hx-on::after-request="this.blur()"
            hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
   {% elif ep.widget == "text" %}
-    <input type="text" class="widget-input" value="{{ ep.value if ep.value is not none else '' }}"
+    <input type="text" class="widget-input form-control" value="{{ ep.value if ep.value is not none else '' }}"
            hx-post="/api/set" hx-trigger="change" hx-swap="none"
            hx-on::after-request="this.blur()"
            hx-vals="js:{device: '{{ ep.device }}', endpoint: '{{ ep.endpoint }}', text: event.target.value}">
