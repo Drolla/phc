@@ -98,7 +98,8 @@ def _build_page(page_spec: dict, flat: dict[str, Device], instance_key: str) -> 
     return Page(id=page_id, title=title, sections=sections)
 
 
-def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "WebUiInstance":
+def configure(params: dict, flat: dict[str, Device], instance_key: str,
+              extensions_registry: dict | None = None) -> "WebUiInstance":
     pages_spec = params.get("pages")
     if pages_spec:
         if not isinstance(pages_spec, list):
@@ -108,6 +109,13 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "WebU
         duplicates = {i for i in page_ids if page_ids.count(i) > 1}
         if duplicates:
             raise ConfigError(f"web_ui instance {instance_key!r}: duplicate page id(s): {sorted(duplicates)}")
+
+        graph_ids = [panel.id for page in pages for section in page.sections
+                     for panel in section.panels if panel.kind == "graph"]
+        duplicates = {i for i in graph_ids if graph_ids.count(i) > 1}
+        if duplicates:
+            raise ConfigError(
+                f"web_ui instance {instance_key!r}: duplicate graph panel id(s): {sorted(duplicates)}")
     else:
         # No `pages:` at all: single-page shorthand off the top-level
         # `selectors:` param -- one always-expanded, untitled section
@@ -124,6 +132,7 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "WebU
         shutdown_timeout=float(params["shutdown_timeout"]),
         refresh_interval=parse_duration(params["refresh_interval"]),
         instance_key=instance_key,
+        extensions_registry=extensions_registry if extensions_registry is not None else {},
     )
 
 
@@ -135,12 +144,20 @@ class WebUiInstance:
     its own loop -- see core.scheduler.Scheduler.start_hooks/stop_hooks."""
 
     def __init__(self, devices: dict[str, Device], pages: list[Page], host: str, port: int,
-                 shutdown_timeout: float, refresh_interval: float, instance_key: str):
+                 shutdown_timeout: float, refresh_interval: float, instance_key: str,
+                 extensions_registry: dict):
         self._host = host
         self._port = port
         self._shutdown_timeout = shutdown_timeout
         self._instance_key = instance_key
-        self._app = build_app(devices, pages, refresh_interval)
+        # `extensions_registry` is the live, still-growing dict from
+        # core.config._load_extensions -- held onto (not snapshotted) so a
+        # `kind: graph` panel's `logdb_instance` reference (see
+        # extensions/web_ui/server.py's handle_graph_data) can resolve
+        # against extensions declared *after* this one, since by the time
+        # HTTP requests are served, load_system() has long since returned
+        # and the registry is complete.
+        self._app = build_app(devices, pages, refresh_interval, extensions_registry)
         self._runner: web.AppRunner | None = None
 
     async def on_start(self, devices: dict[str, Device]) -> None:

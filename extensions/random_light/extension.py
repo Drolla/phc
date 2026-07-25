@@ -80,12 +80,15 @@ def _resolve_optional_ref(spec, flat: dict[str, Device], instance_key: str, labe
     return device_id, endpoint_key
 
 
-def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "RandomLightInstance":
+def configure(params: dict, flat: dict[str, Device], instance_key: str,
+              extensions_registry: dict | None = None) -> "RandomLightInstance":
     """Extension entry point (see core.config._load_extensions): parse and
     validate every configured light against `flat`, plus optional
     enable_ref/pause_ref gating and the sun device (only required if some
     light's *effective* windows -- its own, or the instance default it
-    falls back to -- reference it).
+    falls back to -- reference it). `extensions_registry` (see
+    core.config._load_extensions) is unused here -- random_light never
+    references another extension's instance.
 
     `windows`/`min_interval`/`probability_on` are declared, defaulted
     extension parameters (extension.yaml), so `params[...]` already holds

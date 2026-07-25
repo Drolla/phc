@@ -149,6 +149,101 @@ def test_get_range_restricts_to_requested_labels(tmp_path):
     db.close()
 
 
+# ---------- get_decimated ----------
+
+def _seed(db, now, count):
+    """Log `count` samples, 1 second apart, ending exactly at `now`, with
+    value == the sample's index (0 = oldest)."""
+    for i in range(count):
+        db.log(now - (count - 1 - i), {"a": float(i)})
+
+
+def test_get_decimated_empty_store_returns_empty_list(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"])
+    assert db.get_decimated(now=1000.0) == []
+    db.close()
+
+
+def test_get_decimated_no_tiers_matches_get_range(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1000.0
+    _seed(db, now, 5)
+    assert db.get_decimated(now=now) == db.get_range(0, now)
+    assert db.get_decimated(decimation=[], now=now) == db.get_range(0, now)
+    db.close()
+
+
+def test_get_decimated_single_tier_groups_older_samples(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1000.0
+    _seed(db, now, 20)  # values 0..19, times now-19..now
+    # Strictly-older-than-10s samples (indexes 0..8, ages 19..11) grouped
+    # in 4s; the rest (indexes 9..19, ages 10..0) ungrouped.
+    rows = db.get_decimated(decimation=[(10, 4)], now=now)
+    assert [r["a"] for r in rows] == [1.5, 5.5, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0,
+                                       14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
+    # Groups restart cleanly at the tier boundary and are timestamped by
+    # their own last (most recent) sample.
+    assert rows[0]["time"] == now - 16  # group [0..3], last index 3
+    assert rows[2]["time"] == now - 11  # group [8..8] (boundary-truncated)
+    db.close()
+
+
+def test_get_decimated_multiple_tiers_restart_at_each_boundary(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1000.0
+    _seed(db, now, 20)
+    rows = db.get_decimated(decimation=[(15, 5), (8, 2)], now=now)
+    assert [r["a"] for r in rows] == [1.5, 4.5, 6.5, 8.5, 10.0, 11.0, 12.0, 13.0,
+                                       14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
+    db.close()
+
+
+def test_get_decimated_skips_nan_when_averaging(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    db.log(1.0, {"a": 10.0})
+    db.log(2.0, {})  # "a" unlogged this sample -> NaN
+    db.log(3.0, {"a": 20.0})
+    db.log(4.0, {})
+    # now=10.0, well after the last sample, so all four are "old" (age >
+    # 0.5s) and land in a single group -- unlike a request-time `now`
+    # exactly at the last sample's own timestamp, which would leave that
+    # one sample in its own trailing, ungrouped (factor 1) section.
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10.0)
+    assert len(rows) == 1
+    assert rows[0]["a"] == 15.0  # average of 10.0, 20.0 -- the two NaNs skipped
+    assert rows[0]["time"] == 4.0  # group's last (most recent) timestamp
+    db.close()
+
+
+def test_get_decimated_all_nan_group_emits_nan(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 2.0
+    db.log(now - 1, {})
+    db.log(now, {})
+    rows = db.get_decimated(now=now)
+    assert all(math.isnan(r["a"]) for r in rows)
+    db.close()
+
+
+def test_get_decimated_drops_unknown_labels_without_keyerror(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1.0
+    db.log(now, {"a": 1.0})
+    rows = db.get_decimated(labels=["a", "bogus"], now=now)
+    assert rows == [{"time": now, "a": 1.0}]
+    db.close()
+
+
+def test_get_decimated_zero_and_negative_factor_tiers_are_ignored(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1000.0
+    _seed(db, now, 5)
+    rows = db.get_decimated(decimation=[(2, 0), (2, -3), (2, 1)], now=now)
+    assert rows == db.get_range(0, now)
+    db.close()
+
+
 # ---------- restore ----------
 
 def test_restore_round_trip(tmp_path):
