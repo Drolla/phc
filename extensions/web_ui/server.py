@@ -142,6 +142,7 @@ async def handle_widget(request: web.Request) -> web.Response:
     except KeyError:
         raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}")
     ep = describe_endpoint(device_id, endpoint)
+    logger.debug("web_ui widget %s/%s -> value=%r text=%r", device_id, endpoint_key, ep["value"], ep["text"])
     template = request.app[JINJA_ENV].get_template("_widget_only.html")
     html = template.render(ep=ep, refresh_interval=request.app[REFRESH_INTERVAL])
     return web.Response(text=html, content_type="text/html")
