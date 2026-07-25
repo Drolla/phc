@@ -4,19 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PHC — Home Control</title>
-  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js"></script>
+  <script>
+    // Bootstrap's dark theme is scoped via [data-bs-theme=dark] selectors
+    // throughout bootstrap.min.css, not just swappable CSS variables (e.g.
+    // form-switch's thumb icon is a different data-URI per theme) -- a
+    // prefers-color-scheme media query alone can't reach those, so the
+    // attribute itself has to be set. Runs once on load and again only on
+    // OS theme-change events; never touches anything an HTMX widget swap
+    // replaces, so -- unlike a JS-driven Bootstrap/Semantic component --
+    // it never needs re-invocation after a poll's outerHTML swap.
+    (function () {
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      var apply = function () {
+        document.documentElement.setAttribute('data-bs-theme', mq.matches ? 'dark' : 'light');
+      };
+      apply();
+      mq.addEventListener('change', apply);
+    })();
+  </script>
 </head>
 <body>
   <header class="container">
     <h1>Pylon Home Control</h1>
     {% if pages and pages|length > 1 %}
     <nav>
-      <ul>
+      <ul class="nav">
         {% for nav_page in pages %}
-        <li><a href="/page/{{ nav_page.id }}"
-               {% if page and nav_page.id == page.id %}aria-current="page"{% endif %}>{{ nav_page.title }}</a></li>
+        <li class="nav-item">
+          <a class="nav-link{% if page and nav_page.id == page.id %} active{% endif %}"
+             {% if page and nav_page.id == page.id %}aria-current="page"{% endif %}
+             href="/page/{{ nav_page.id }}">{{ nav_page.title }}</a>
+        </li>
         {% endfor %}
       </ul>
     </nav>

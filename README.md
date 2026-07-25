@@ -245,9 +245,14 @@ every widget independently polls its own small HTML fragment on
 `refresh_interval` to pick up live state (its own write included, once the
 next scheduler tick commits it — there is no WebSocket/push channel).
 Interactivity is [HTMX](https://htmx.org) and styling is
-[PicoCSS](https://picocss.com) — both vendored, unmodified, single-file
-static assets (see `extensions/web_ui/static/`), so no project-authored
-JS or build tooling is needed.
+[Bootstrap](https://getbootstrap.com) (CSS only, no `bootstrap.bundle.min.js`
+or jQuery — only Bootstrap's pure-CSS form-control classes are used, so a
+widget stays fully styled and interactive immediately after its own HTMX
+poll swap, with no re-initialization needed). Both are vendored, unmodified,
+single-file static assets (see `extensions/web_ui/static/`), so no build
+tooling is needed; the one small piece of project-authored JS is an inline
+snippet in `base.html` that mirrors OS light/dark preference onto
+Bootstrap's `data-bs-theme` attribute.
 
 A section's content is a list of **panels**, dispatched by `kind` (default
 `"devices"`, the widgets described above) through a small registry local
