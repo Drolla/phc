@@ -15,7 +15,7 @@ state, all on a fixed-heartbeat scheduler.
 - **Device** — a node in a tree that exposes zero or more **endpoints**
   (readable/writable state) and may have child devices. Devices are backed
   by a plugin **module** (e.g. `meteoswiss`, `open_meteo`, `waveplus_bridge`,
-  `sun`, `virtual`, `host`), declared in a system YAML file.
+  `zway`, `sun`, `virtual`, `host`), declared in a system YAML file.
 - **Module** — a device plugin: a `devices/<name>/device.py` (the `Device`
   subclass) plus a `devices/<name>/module.yaml` describing its parameters
   and endpoints declaratively. Modules are discovered automatically at
@@ -197,6 +197,52 @@ tasks:
 given. See
 [`examples/surveillance_system.yaml`](examples/surveillance_system.yaml)
 for a fuller worked example, wired into its intrusion-detection task.
+
+### Razberry/zWay Z-Wave integration
+
+[`devices/zway/`](devices/zway/) controls Z-Wave devices through a
+Razberry/zWay controller, via `thc_zWay.js`
+(https://github.com/Drolla/thc/tree/master/modules/thc_zWay), a small helper
+script ported from the earlier THC project that you install on the zWay
+server yourself (PHC does not push it there). One `zway` device is one
+physical Z-Wave node; give it whatever endpoints that node needs (a switch's
+`state`, a sensor's `battery`, ...), each naming its own zWay identifier via
+`parameters`:
+
+```yaml
+devices:
+  - id: light_corridor
+    module: zway
+    update: 30s
+    params:
+      base_url: http://192.168.1.21:8083
+      user: admin
+      password: admin
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 255: "on" }
+        parameters: { command_group: SwitchBinary, value_id: "7.1" }
+```
+
+`command_group` is one of `SwitchBinary`, `SwitchMultilevel`, `SensorBinary`,
+`SensorMultilevel`, `Battery`, or `TagReader`; `value_id` is an opaque zWay
+`"node.instance[.datarecord]"` identifier, passed through verbatim. A
+`TagReader` endpoint additionally needs `node_id`, used for a one-time
+setup call the first time that device is polled.
+
+Every `zway` device behind the same controller (`base_url`) self-registers
+its endpoints' identifiers into a shared, module-level registry; whichever
+device is due first each poll window issues one combined status request
+covering *every* currently-registered identifier for that controller, cached
+for `cache_time` (default `30s`) -- so a whole controller's worth of
+Z-Wave devices coalesces into a single HTTP request per poll, the same
+batching the old THC `thc_zWay` module did, rather than one round-trip per
+device. Set the same `update` interval on every device behind one
+controller to keep them polling together and get full sharing -- see
+[`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
+example with a light switch, a motion+battery sensor, and a TagReader node.
 
 ### Web UI
 
