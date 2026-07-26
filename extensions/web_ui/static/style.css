@@ -104,7 +104,15 @@ input[type="range"].widget-input {
   margin-bottom: 1rem;
 }
 
+/* A graph panel shares .section-content's auto-fit grid with device cards
+   (see render_panel in _macros.html), so without this it would only get one
+   of however many columns currently fit -- half/a third/a quarter of the
+   row depending on viewport width, like any other grid item. Graphs need
+   to read as a single time series, not be cropped to a card's width, so
+   force it to span every column regardless of how many the grid currently
+   has. */
 .graph-panel {
+  grid-column: 1 / -1;
   margin-bottom: 1.5rem;
 }
 
