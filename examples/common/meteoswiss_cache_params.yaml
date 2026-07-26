@@ -1,0 +1,3 @@
+meteoswiss:
+  params:
+    cache_time: 5m

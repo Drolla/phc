@@ -1,0 +1,82 @@
+heartbeat: 1s
+
+log:
+  dest: stdout
+
+log_levels:
+  default: INFO
+
+intervals:
+  zwave: 30s
+
+# All three devices below share one Razberry/zWay controller at the same
+# base_url and the same update interval, so their status reads automatically
+# coalesce into a single combined Get() request per poll window (see
+# devices/zway/device.py's per-base_url identifier registry and response
+# cache) -- the same "shared fetch" pattern as
+# examples/waveplus_bridge_system.yaml, just batched across many small
+# Z-Wave values instead of one bridge's full JSON payload. Install
+# thc_zWay.js (https://github.com/Drolla/thc/tree/master/modules/thc_zWay)
+# on the zWay server itself before running this example.
+devices:
+  - id: light_corridor
+    module: zway
+    name: Corridor Light
+    update: zwave
+    params:
+      base_url: http://192.168.1.21:8083
+      user: admin
+      password: admin
+      cache_time: 30s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 255: "on" }
+        parameters: { command_group: SwitchBinary, value_id: "7.1" }
+
+  - id: sensor_garage
+    module: zway
+    name: Garage Motion Sensor
+    update: zwave
+    params:
+      base_url: http://192.168.1.21:8083
+      user: admin
+      password: admin
+      cache_time: 30s
+    endpoints:
+      - key: state
+        type: int
+        values: { 0: "clear", 1: "motion" }
+        parameters: { command_group: SensorBinary, value_id: "12" }
+      - key: battery
+        type: int
+        unit: "%"
+        parameters: { command_group: Battery, value_id: "12.0" }
+
+  - id: tag_reader_front
+    module: zway
+    name: Front Door Tag Reader
+    update: zwave
+    params:
+      base_url: http://192.168.1.21:8083
+      user: admin
+      password: admin
+      cache_time: 30s
+    endpoints:
+      - key: state
+        parameters: { command_group: TagReader, value_id: "22", node_id: "22" }
+
+tasks:
+  - tag: garage_motion_light
+    description: "Turn the corridor light on whenever the garage sensor detects motion"
+    condition: { device: "sensor_garage.state", changed: true }
+    action:
+      kind: set
+      device: "light_corridor.state"
+      value: 255
+
+  - tag: report_low_battery
+    description: "Log the garage sensor's battery level whenever it changes"
+    condition: { device: "sensor_garage.battery", changed: true }
+    action: { kind: log, device: "sensor_garage", message: "garage sensor battery changed to {text}" }

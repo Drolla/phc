@@ -30,3 +30,7 @@ logs/
 # Claude Code local settings
 .claude/settings.local.json
 CLAUDE.md
+
+# Personal home automation config (may become a symlink to a backed-up
+# location outside the repo) -- never commit, see CLAUDE.md.
+fusion18/

@@ -1,0 +1,52 @@
+description: >
+  One physical Z-Wave node's values, on a Razberry/zWay Z-Wave controller,
+  read/written through the thc_zWay.js helper script
+  (https://github.com/Drolla/thc/tree/master/modules/thc_zWay) installed on
+  the zWay server itself -- install it there yourself, PHC does not push it.
+  Define whatever endpoints one node needs (e.g. a switch's `state`, a
+  sensor's `battery`); every endpoint must set its own `parameters`:
+  `command_group` (one of SwitchBinary, SwitchMultilevel, SensorBinary,
+  SensorMultilevel, Battery, TagReader) and `value_id` (an opaque zWay
+  "node.instance[.datarecord]" identifier string, e.g. "20.1" or "11.0.1" --
+  passed through verbatim, never parsed by PHC). A TagReader endpoint
+  additionally needs `node_id`, used for a one-time setup call before its
+  readings are meaningful. Devices sharing one `base_url` share one cached
+  batched status request per `cache_time` -- see `cache_time` below.
+
+update: "1m"
+
+parameters:
+  - name: base_url
+    override: required
+    description: >
+      The zWay controller's URL, e.g. "http://192.168.1.21:8083". Every
+      device on the same controller should use the same base_url -- their
+      status reads then automatically batch into a single combined request
+      (see cache_time below).
+  - name: user
+    override: allowed
+    default: null
+    description: >
+      Login username, required by zWay >= 2.1.1. Omit (leave null) for a
+      zWay server that doesn't require authentication.
+  - name: password
+    override: allowed
+    default: null
+    description: Login password, paired with `user`.
+  - name: cache_time
+    override: allowed
+    default: "30s"
+    description: >
+      How long a fetched batched status response may be reused before
+      re-fetching (e.g. "30s", "1m" -- any value parse_duration accepts).
+      All devices sharing the same base_url share one cached fetch covering
+      every registered device's values in one HTTP request, so this is the
+      old THC zWay module's per-poll batching equivalent. Set the same
+      value (and the same `update` interval) on every device behind one
+      controller to get full sharing.
+  - name: request_timeout
+    override: allowed
+    default: "10s"
+    description: How long to wait for one HTTP request to the controller.
+
+endpoints: []

@@ -91,14 +91,23 @@
 {% endmacro %}
 
 {#
-  render_panel: dispatches on panel.kind. v1 only implements "devices"; a
-  future "graph" (or other non-device-tied) panel kind is added here as
-  its own {% elif panel.kind == "graph" %} branch -- see
-  extensions/web_ui/panels.py for the matching Python-side registry.
+  render_panel: dispatches on panel.kind. "devices" renders its pruned tree
+  inline; "graph" renders an empty container that extensions/web_ui/
+  static/graph.js fills in client-side, after fetching
+  /api/graph/{{ panel.id }} (its data isn't embedded in the page render --
+  see extensions/web_ui/server.py's handle_graph_data). A further
+  non-device-tied panel kind is added here as its own
+  {% elif panel.kind == "..." %} branch -- see extensions/web_ui/panels.py
+  for the matching Python-side registry.
 #}
 {% macro render_panel(panel, refresh_interval) %}
 {% if panel.kind == "devices" %}
   {% for device in panel.devices %}{{ render_device(device, refresh_interval) }}{% endfor %}
+{% elif panel.kind == "graph" %}
+  <div class="graph-panel" data-graph-id="{{ panel.id }}" data-window="{{ panel.window }}">
+    {% if panel.title %}<h4>{{ panel.title }}</h4>{% endif %}
+    <div class="graph-canvas"></div>
+  </div>
 {% endif %}
 {% endmacro %}
 

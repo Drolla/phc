@@ -18,9 +18,9 @@ description: >
   `sections:`, each section either `selectors:` (shorthand for one
   `kind: devices` panel) or an explicit `panels:` list. Panel `kind`
   defaults to "devices" and is dispatched via a small registry local to
-  this extension (extensions/web_ui/panels.py) -- a deliberately foreseen,
-  not-yet-implemented extension point for a future non-device-tied panel
-  (e.g. `kind: graph`, a time-series chart over a set of endpoints).
+  this extension (extensions/web_ui/panels.py). A `kind: graph` panel
+  renders a Dygraphs time-series chart over a named extensions.logdb
+  instance's history (see the `pages` parameter below).
 
   v1: no authentication -- host defaults to loopback-only; set it
   explicitly to expose beyond localhost, and only on a trusted LAN.
@@ -58,6 +58,28 @@ parameters:
       true (folded by default). Each panel is {kind, ...kind-specific
       params}; `kind` defaults to "devices". null (the default) means: use
       the top-level `selectors` shorthand instead.
+
+      A `kind: graph` panel renders a time-series chart (Dygraphs) over one
+      or more endpoints' logged history, backed by a named
+      extensions.logdb instance: {kind: graph, id, logdb_instance,
+      selectors, title, unit, window, decimation}. `id` (required) must be
+      unique across every graph panel in this web_ui instance -- it
+      addresses the panel's own GET /api/graph/{id} data route. `selectors`
+      (required, same "<device-glob>/<endpoint-glob>" syntax as
+      extensions.logdb's own `selectors`) picks which endpoints to plot;
+      each must also be selected by the referenced logdb instance, or its
+      series will be empty. `logdb_instance` (required, e.g.
+      "logdb.house_log") is resolved lazily, at request time, so it may be
+      configured either before or after this web_ui instance. `title`
+      defaults to `id`. `unit` (optional) labels the Y axis. `window`
+      (default "24h") sets the chart's initial zoom -- the full retained
+      history is still fetched and pannable via the range selector.
+      `decimation` (optional) is a list of {older_than, factor} tiers
+      (e.g. [{older_than: 25h, factor: 3}, {older_than: 8D, factor: 8}]):
+      samples older than a tier's `older_than` duration are averaged in
+      groups of `factor`, bounding how much history data is shipped to the
+      browser; omitted or empty means no decimation (see
+      extensions.logdb.logdb.LogDb.get_decimated).
 
   - name: refresh_interval
     override: allowed

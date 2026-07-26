@@ -25,11 +25,14 @@ _SECURITY_MODES = ("starttls", "ssl", "none")
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="phc-mail")
 
 
-def configure(params: dict, flat: dict[str, Device], instance_key: str) -> "MailAlertInstance":
+def configure(params: dict, flat: dict[str, Device], instance_key: str,
+              extensions_registry: dict | None = None) -> "MailAlertInstance":
     """Extension entry point (see core.config._load_extensions): validate
     this instance's SMTP settings and build a MailAlertInstance. Unlike
     logdb/random_light, nothing here is resolved against `flat` -- a mail
-    alert has no device target."""
+    alert has no device target. `extensions_registry` (see
+    core.config._load_extensions) is unused here -- mail_alert never
+    references another extension's instance."""
     security = params["security"]
     if security not in _SECURITY_MODES:
         raise ConfigError(

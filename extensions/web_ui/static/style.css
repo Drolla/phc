@@ -104,6 +104,19 @@ input[type="range"].widget-input {
   margin-bottom: 1rem;
 }
 
+.graph-panel {
+  margin-bottom: 1.5rem;
+}
+
+.graph-panel > h4 {
+  margin-bottom: 0.25rem;
+}
+
+.graph-canvas {
+  width: 100%;
+  height: 300px;
+}
+
 /* Teal accent color, replacing Bootstrap's default blue. Link colors need
    BOTH variable forms overridden: plain <a> tags use the rgb() triplet
    (--bs-link-color-rgb), while .nav-link's --bs-nav-link-color instead

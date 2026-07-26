@@ -1,0 +1,13 @@
+id: kitchen
+module: host
+name: Kitchen
+children:
+  - id: kitchen_light
+    module: virtual
+    update: 5s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
