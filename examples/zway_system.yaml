@@ -23,11 +23,7 @@ devices:
     module: zway
     name: Corridor Light
     update: zwave
-    params:
-      base_url: http://192.168.1.21:8083
-      user: admin
-      password: admin
-      cache_time: 30s
+    params: !include common/zway_controller_params.yaml
     endpoints:
       - key: state
         writable: true
@@ -39,11 +35,7 @@ devices:
     module: zway
     name: Garage Motion Sensor
     update: zwave
-    params:
-      base_url: http://192.168.1.21:8083
-      user: admin
-      password: admin
-      cache_time: 30s
+    params: !include common/zway_controller_params.yaml
     endpoints:
       - key: state
         type: int
@@ -58,11 +50,7 @@ devices:
     module: zway
     name: Front Door Tag Reader
     update: zwave
-    params:
-      base_url: http://192.168.1.21:8083
-      user: admin
-      password: admin
-      cache_time: 30s
+    params: !include common/zway_controller_params.yaml
     endpoints:
       - key: state
         parameters: { command_group: TagReader, value_id: "22", node_id: "22" }
