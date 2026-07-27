@@ -265,12 +265,18 @@ def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: st
     return merged
 
 
-def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_id: str) -> list[Endpoint]:
+def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list,
+                      device_id: str) -> tuple[list[Endpoint], list[tuple[Endpoint, object]]]:
     """Build this device instance's Endpoint objects: start from the module's
     declared endpoints, overlay any instance-level overrides (by `key`) and
     append instance-only endpoints not declared by the module. Returns
     (endpoints, seeds), where `seeds` are (Endpoint, default_value) pairs to
     apply once the device is constructed."""
+    for spec in instance_endpoints or []:
+        unknown = set(spec) - _ENDPOINT_ENTRY_KEYS
+        if unknown:
+            raise ConfigError(f"device {device_id!r}: endpoint {spec.get('key')!r} has "
+                              f"unrecognized key(s) {sorted(unknown)}")
     instance_by_key = {e["key"]: e for e in (instance_endpoints or [])}
     module_keys = [e["key"] for e in module.endpoints]
 
@@ -340,14 +346,31 @@ def _resolve_interval(module: ModuleDescriptor, instance_entry: dict,
     return parse_duration(value)
 
 
+# Keys _build_device/_merge_endpoints recognize on a device entry / endpoint
+# entry. A typo'd key here fails open elsewhere in the stack -- e.g. a
+# misspelled "profil:" silently yields a device with zero endpoints, and
+# devices/zway/device.py's setup() documents that a misconfigured endpoint
+# "permanently reports None, never raises" -- so an unrecognized key is
+# rejected here rather than silently ignored.
+_DEVICE_ENTRY_KEYS = {"id", "module", "name", "params", "endpoints", "update", "children", "profile"}
+_ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "parameters", "description",
+                        "type", "unit", "values", "log_aggregation", "min", "max", "default",
+                        "profile"}
+_MODULES_ENTRY_KEYS = {"params", "update"}
+
+
 def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | None,
                    flat: dict[str, Device], modules_config: dict,
                    resolved_module_params_cache: dict[str, dict]) -> Device:
     """Recursively build one `devices:` YAML entry (and its children) into a
     Device tree, registering every device by qualified id in `flat` as it
-    goes. Raises ConfigError on a duplicate qualified id."""
+    goes. Raises ConfigError on a duplicate qualified id or an unrecognized
+    entry key."""
     device_id = entry["id"]
     module_name = entry["module"]
+    unknown = set(entry) - _DEVICE_ENTRY_KEYS
+    if unknown:
+        raise ConfigError(f"device {device_id!r}: unrecognized key(s) {sorted(unknown)}")
     module = _load_module_descriptor(module_name)
     device_cls = get_device_class(module_name)
 
@@ -603,6 +626,10 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
 
     intervals_map = raw.get("intervals") or {}
     modules_config = raw.get("modules") or {}
+    for module_name, module_entry in modules_config.items():
+        unknown = set(module_entry or {}) - _MODULES_ENTRY_KEYS
+        if unknown:
+            raise ConfigError(f"modules.{module_name}: unrecognized key(s) {sorted(unknown)}")
     heartbeat = parse_duration(raw.get("heartbeat", "1s"))
 
     max_workers = raw.get("max_workers")
