@@ -562,6 +562,7 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 log_aggregation=log_aggregation,
                 min=spec.get("min"),
                 max=spec.get("max"),
+                format=spec.get("format"),
             )
         except ValueError as exc:
             raise ConfigError(f"device {device_id!r}: {exc}") from None
@@ -604,7 +605,7 @@ _DEVICE_ENTRY_KEYS = {"id", "module", "name", "params", "endpoints", "update", "
                       "device_profile"}
 _ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "params", "description",
                         "type", "unit", "values", "log_aggregation", "min", "max", "default",
-                        "endpoint_profile"}
+                        "format", "endpoint_profile"}
 _MODULES_ENTRY_KEYS = {"params", "update"}
 
 
