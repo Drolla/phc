@@ -1,14 +1,19 @@
-"""Logging setup for the "phc" logger tree, including an in-place (carriage
-return, no newline) status line for the scheduler's live task countdown."""
+"""Logging setup for the "phc" logger tree: one or more independently
+levelled destinations (stream or file), plus an in-place (carriage return,
+no newline) status line for the scheduler's live task countdown."""
 
 import logging
 import sys
+from pathlib import Path
 
 
 class _InPlaceLineState:
     """Shared between InPlaceLineHandler and NewlineSafeStreamHandler: lets
     a normal log record know -- and clear -- whether an in-place (no
-    trailing newline) line is currently open on the stream."""
+    trailing newline) line is currently open on the stream. Scoped per
+    underlying stream object (stdout and stderr each get their own), so two
+    stream destinations sharing one tty don't interleave a pending '\\r'
+    line from one with a normal record from the other."""
 
     def __init__(self):
         self.is_open = False
@@ -19,7 +24,10 @@ class InPlaceLineHandler(logging.Handler):
     repeated calls overwrite the same terminal line instead of scrolling.
     Used for the scheduler's live per-tick task countdown -- a status line
     re-rendered every heartbeat, not a discrete event worth a full log
-    line each time."""
+    line each time. Only ever installed on the first stream destination
+    (see configure_logging) -- file destinations never receive in-place
+    records at all, since a carriage-return status line is a terminal
+    affordance that makes no sense appended to a log file."""
 
     def __init__(self, stream, state: _InPlaceLineState):
         super().__init__()
@@ -68,51 +76,147 @@ def _parse_level(level_name, default: int) -> int:
     return getattr(logging, str(level_name).upper(), default)
 
 
-def configure_logging(log_config: dict | None, log_levels: dict | None = None) -> None:
-    """Configure the "phc" logger tree.
+class _LevelMapFilter(logging.Filter):
+    """Per-destination logger-name -> level filter.
 
-    log_config: {"dest": "stdout"|"stderr"} -- where log output goes.
-    log_levels: {"default": LEVEL, "<name>": LEVEL, ...} -- "default" sets
-    the base level for the whole tree; any other key sets the level of
-    logging.getLogger(f"phc.{name}") individually (e.g. "scheduler" ->
-    "phc.scheduler"). Name-agnostic: no fixed list of known loggers.
+    A destination's `levels: {default: LEVEL, <name>: LEVEL, ...}` can't be
+    expressed by handler.setLevel() -- that's a single level for the whole
+    handler, but different destinations (and different loggers within one
+    destination) may want different levels. This resolves each record's
+    logger name against the map instead: "<name>" matches the dotted
+    suffix of a "phc.<name>" logger (e.g. "scheduler" -> "phc.scheduler");
+    the bare "phc" logger itself (phc.py's own startup/shutdown lines) is
+    matched by the literal key "phc", not by stripping a "phc." prefix that
+    isn't there. "default" applies to any logger with no more specific
+    entry. Name -> level lookups are memoized per filter instance, since
+    the small, fixed set of logger names in this process never changes at
+    runtime."""
+
+    def __init__(self, levels: dict, default_level: int):
+        super().__init__()
+        self._default_level = default_level
+        self._overrides = {name: _parse_level(value, default_level)
+                            for name, value in levels.items() if name != "default"}
+        self._resolved: dict[str, int] = {}
+
+    def _level_for(self, name: str) -> int:
+        if name not in self._resolved:
+            key = name[len("phc."):] if name.startswith("phc.") else name
+            self._resolved[name] = self._overrides.get(key, self._default_level)
+        return self._resolved[name]
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= self._level_for(record.name)
+
+
+def configure_logging(log_config: list | None, log_levels_override: dict | None = None,
+                       config_dir: Path | None = None) -> None:
+    """Configure the "phc" logger tree from `log_config`, a list of
+    independently levelled destinations:
+
+        log:
+          - dest: stdout
+            levels: { default: INFO, scheduler: DEBUG }
+          - dest: warn_err.log
+            levels: { default: WARNING }
+
+    `dest` is "stdout"/"stderr" for a stream, or any other string for a
+    file path -- resolved relative to `config_dir` (the system YAML's own
+    directory; deliberately NOT relative to the file the `dest:` value
+    itself came from via !include, since !include discards that
+    provenance -- see core.config._include_constructor), opened in append
+    mode, lazily (no file is created until the first record for it).
+
+    Each destination's `levels` is a name -> LEVEL map (see
+    _LevelMapFilter); "default" applies to any logger with no more
+    specific entry. `log_levels_override` (CLI --log-level/
+    --log-level-module) is merged into every STREAM destination's levels
+    only, never a file destination's -- the CLI flags mean "make my
+    console louder/quieter", and applying them to a file dest would
+    permanently pollute the sparse log a user configured for exactly the
+    opposite reason.
+
+    The "phc" root logger itself is set to the minimum level requested by
+    any destination, so nothing is dropped before a handler's own
+    per-destination filter gets a chance to see it. Per-logger levels
+    (logging.getLogger("phc.<name>").setLevel(...)) are deliberately never
+    set: one logger can hold only one level, but two destinations may
+    legitimately want different levels for the same logger.
+
+    At most one destination gets the in-place countdown-line handler (the
+    first stream destination) -- installing it on two streams could
+    interleave two independently rewound '\\r' lines on one terminal.
+
+    Absent/empty log_config defaults to a single stdout destination at
+    INFO. Raises ValueError if log_config is a mapping (the removed
+    single-destination `log: {dest: ...}` form) or if two destinations
+    share one `dest`. Closes any handlers previously installed on "phc"
+    before installing the new ones, so repeated calls (load_system() makes
+    one every time it's called) don't accumulate open file descriptors --
+    harmless for a StreamHandler, but a FileHandler holds a real fd.
     """
-    log_config = log_config or {}
-    log_levels = log_levels or {}
+    if isinstance(log_config, dict):
+        raise ValueError(
+            "log: must be a list of destinations, e.g. "
+            "[{dest: stdout, levels: {default: INFO}}] -- the old single-mapping "
+            "log: {dest: stdout} form (with a separate top-level log_levels:) has been removed")
+    log_config = log_config or [{"dest": "stdout"}]
+    log_levels_override = log_levels_override or {}
 
-    dest = log_config.get("dest", "stdout")
-    stream = sys.stderr if dest == "stderr" else sys.stdout
+    seen_dests = set()
+    handlers: list[logging.Handler] = []
+    all_levels: list[int] = []
+    in_place_installed = False
+    state_by_stream: dict[int, _InPlaceLineState] = {}
+    record_formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    default_level = _parse_level(log_levels.get("default"), logging.INFO)
-    overrides = {name: _parse_level(value, default_level)
-                 for name, value in log_levels.items() if name != "default"}
+    for dest_entry in log_config:
+        dest = dest_entry.get("dest", "stdout")
+        if dest in seen_dests:
+            raise ValueError(f"log: duplicate dest {dest!r}")
+        seen_dests.add(dest)
 
-    # The handlers must allow through the most verbose level in play, or a
-    # module overridden to be more verbose than the default would be
-    # filtered at the handler stage regardless of its own logger level.
-    # The root logger itself is set to `default_level` (not the min) so
-    # that any logger WITHOUT an explicit override correctly inherits
-    # `default` via Python's logger-hierarchy walk, rather than picking up
-    # some other module's more-verbose override.
-    handler_level = min([default_level, *overrides.values()], default=default_level)
+        levels = dict(dest_entry.get("levels") or {})
+        is_stream = dest in ("stdout", "stderr")
+        if is_stream:
+            levels.update(log_levels_override)
 
-    state = _InPlaceLineState()
+        default_level = _parse_level(levels.get("default"), logging.INFO)
+        all_levels.append(default_level)
+        all_levels.extend(_parse_level(v, default_level) for k, v in levels.items() if k != "default")
+        level_filter = _LevelMapFilter(levels, default_level)
+        not_in_place = lambda record: not getattr(record, "in_place", False)
 
-    handler = NewlineSafeStreamHandler(stream, state)
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    handler.addFilter(lambda record: not getattr(record, "in_place", False))
-    handler.setLevel(handler_level)
+        if is_stream:
+            stream = sys.stderr if dest == "stderr" else sys.stdout
+            state = state_by_stream.setdefault(id(stream), _InPlaceLineState())
 
-    in_place_handler = InPlaceLineHandler(stream, state)
-    in_place_handler.setFormatter(logging.Formatter("%(message)s"))
-    in_place_handler.addFilter(lambda record: getattr(record, "in_place", False))
-    in_place_handler.setLevel(handler_level)
+            handler = NewlineSafeStreamHandler(stream, state)
+            handler.setFormatter(record_formatter)
+            handler.addFilter(not_in_place)
+            handler.addFilter(level_filter)
+            handlers.append(handler)
+
+            if not in_place_installed:
+                in_place_handler = InPlaceLineHandler(stream, state)
+                in_place_handler.setFormatter(logging.Formatter("%(message)s"))
+                in_place_handler.addFilter(lambda record: getattr(record, "in_place", False))
+                in_place_handler.addFilter(level_filter)
+                handlers.append(in_place_handler)
+                in_place_installed = True
+        else:
+            path = Path(dest)
+            if config_dir is not None and not path.is_absolute():
+                path = config_dir / path
+            handler = logging.FileHandler(path, mode="a", encoding="utf-8", delay=True)
+            handler.setFormatter(record_formatter)
+            handler.addFilter(not_in_place)
+            handler.addFilter(level_filter)
+            handlers.append(handler)
 
     root = logging.getLogger("phc")
-    root.setLevel(default_level)
-    root.handlers = [handler, in_place_handler]
+    for old_handler in root.handlers:
+        old_handler.close()
+    root.setLevel(min(all_levels, default=logging.INFO))
+    root.handlers = handlers
     root.propagate = False
-
-    for name, level in overrides.items():
-        logging.getLogger(f"phc.{name}").setLevel(level)

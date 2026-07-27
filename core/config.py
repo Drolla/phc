@@ -676,16 +676,22 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     effect, then builds the device tree, resolves each device's
     params/endpoints/interval against its module, builds every configured
     extension instance (see _load_extensions), and builds tasks.
-    `log_levels_override` (e.g. from CLI flags) is applied on top of the
-    file's own `log_levels:` section.
+    `log_levels_override` (e.g. from CLI flags) is merged into every stream
+    destination's `levels:` -- see core.logging_setup.configure_logging.
     """
     _include_stack.clear()
     with open(path, "r") as f:
         raw = yaml.load(f, Loader=_IncludeLoader) or {}
 
-    log_levels = dict(raw.get("log_levels") or {})
-    log_levels.update(log_levels_override or {})
-    configure_logging(raw.get("log"), log_levels)
+    if "log_levels" in raw:
+        raise ConfigError(
+            "log_levels: is no longer a separate top-level key -- put each destination's "
+            "'levels:' under log: instead, e.g. "
+            "log: [{dest: stdout, levels: {default: INFO, scheduler: DEBUG}}]")
+    try:
+        configure_logging(raw.get("log"), log_levels_override, Path(path).resolve().parent)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from None
     discover_modules()
     discover_extensions()
 

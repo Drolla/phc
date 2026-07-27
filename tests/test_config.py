@@ -341,7 +341,6 @@ def test_load_system_builds_tree_with_dotted_ids(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
-log: { dest: stdout }
 intervals: { fast: 3s }
 devices:
   - id: living_light
@@ -1350,17 +1349,23 @@ devices: !include a.yaml
 
 @pytest.fixture
 def _restore_phc_logger_levels():
-    # Some examples set per-module log_levels (e.g. scheduler: DEBUG), and
-    # configure_logging() applies those via logging.Logger.setLevel(), which
-    # is global, process-wide state with no built-in reset -- restore it so
-    # loading these examples doesn't leak into unrelated tests that run
-    # later in the same session (e.g. tests/test_logging_setup.py).
-    snapshot = {name: lg.level for name, lg in logging.Logger.manager.loggerDict.items()
-                if isinstance(lg, logging.Logger) and (name == "phc" or name.startswith("phc."))}
-    snapshot["phc"] = logging.getLogger("phc").level
+    # configure_logging() replaces the "phc" logger's level and handler
+    # list on every call -- global, process-wide state with no built-in
+    # reset -- so loading an example here must not leak into unrelated
+    # tests running later in the same session (e.g.
+    # tests/test_logging_setup.py). Restore both afterward, and close
+    # (rather than just drop) any handler this test's configure_logging()
+    # call installed and the restore is about to discard -- particularly a
+    # FileHandler, which would otherwise leak an open fd.
+    root = logging.getLogger("phc")
+    snapshot_level = root.level
+    snapshot_handlers = list(root.handlers)
     yield
-    for name, level in snapshot.items():
-        logging.getLogger(name).setLevel(level)
+    for handler in root.handlers:
+        if handler not in snapshot_handlers:
+            handler.close()
+    root.setLevel(snapshot_level)
+    root.handlers = snapshot_handlers
 
 
 @pytest.mark.parametrize("example_path", sorted(_EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
