@@ -1,0 +1,89 @@
+# Demonstrates devices/system_monitor with extensions/web_ui: run with
+#   python phc.py --config examples/system_monitor_system.yaml
+# then open http://127.0.0.1:8080/ in a browser.
+#
+# One page ("System") with two sections:
+#   - "Live Metrics" (open by default): every this_machine endpoint,
+#     rendered as live-updating labels.
+#   - "History" (open by default): two graph panels charting CPU/memory
+#     and network throughput over time (see the logdb instance and
+#     log_system_metrics task below, which is what actually samples it).
+
+heartbeat: 1s
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+intervals:
+  system_metrics: 10s
+
+devices:
+  - id: this_machine
+    module: system_monitor
+    name: This Machine
+    update: system_metrics
+    params:
+      disk_path: ""   # auto: "/" on Linux, system drive on Windows
+
+extensions:
+  # Feeds the "History" graph panels below -- see the log_system_metrics
+  # task at the bottom of this file for what actually samples it.
+  logdb:
+    system_monitor_log:
+      selectors: ["this_machine/*"]
+      csv_path: "logs/system_monitor_log.csv"
+      max_records: 100000
+
+  web_ui:
+    system_monitor:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: system
+          title: System
+          sections:
+            - id: live
+              title: Live Metrics
+              collapsed: false
+              selectors: ["this_machine/*"]
+            - id: history
+              title: History
+              collapsed: false
+              panels:
+                - kind: graph
+                  id: cpu_memory_history
+                  logdb_instance: "logdb.system_monitor_log"
+                  selectors: ["this_machine/cpu_percent", "this_machine/memory_percent"]
+                  title: "CPU & Memory Usage"
+                  unit: "%"
+                  window: 1h
+                  decimation:
+                    - older_than: 25h
+                      factor: 3
+                    - older_than: 8D
+                      factor: 8
+                - kind: graph
+                  id: network_history
+                  logdb_instance: "logdb.system_monitor_log"
+                  selectors: ["this_machine/network_rx_rate", "this_machine/network_tx_rate"]
+                  title: "Network Throughput"
+                  unit: "B/s"
+                  window: 1h
+                  decimation:
+                    - older_than: 25h
+                      factor: 3
+                    - older_than: 8D
+                      factor: 8
+
+tasks:
+  - tag: report_cpu_load_change
+    description: "Log whenever this machine's CPU load changes"
+    condition: { device: "this_machine.cpu_percent", changed: true }
+    action: { kind: log, device: "this_machine.cpu_percent", message: "CPU load is now {state}%" }
+
+  - tag: log_system_metrics
+    description: "Sample this_machine's metrics for the History graph panels"
+    time: +2s
+    repeat: 10s
+    action: { kind: log_db, instance: "logdb.system_monitor_log" }
