@@ -42,7 +42,7 @@ class Endpoint:
     kind: str = "generic"
 
     def __init__(self, key: str, *, readable: bool = True, writable: bool = False,
-                 parameters: dict | None = None, description: str = "",
+                 params: dict | None = None, description: str = "",
                  value_type: str | None = None, unit: str | None = None,
                  values: dict | None = None, log_aggregation: str = "max",
                  min: float | int | None = None, max: float | int | None = None):
@@ -60,7 +60,7 @@ class Endpoint:
         # Module-authored facts about what this endpoint kind means (e.g.
         # which CSV column backs it). An instance may add or override
         # individual keys (merged per-key in config._merge_endpoints).
-        self.parameters = parameters or {}
+        self.params = params or {}
         self.description = description
         self.value_type = value_type
         self.unit = unit

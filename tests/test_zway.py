@@ -130,18 +130,18 @@ def _serve(*, login_ok: bool = True, get_response=None, get_status: int = 200,
 
 def _switch_endpoints():
     return [Endpoint("state", writable=True,
-                     parameters={"command_group": "SwitchBinary", "address": "20.1"})]
+                     params={"command_group": "SwitchBinary", "address": "20.1"})]
 
 
 def _sensor_endpoints():
     return [
-        Endpoint("state", parameters={"command_group": "SensorBinary", "address": "26"}),
-        Endpoint("battery", parameters={"command_group": "Battery", "address": "26.0"}),
+        Endpoint("state", params={"command_group": "SensorBinary", "address": "26"}),
+        Endpoint("battery", params={"command_group": "Battery", "address": "26.0"}),
     ]
 
 
 def _tagreader_endpoints():
-    return [Endpoint("state", parameters={
+    return [Endpoint("state", params={
         "command_group": "TagReader", "address": "22", "node_id": "22"})]
 
 

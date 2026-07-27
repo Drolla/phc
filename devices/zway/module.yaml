@@ -4,7 +4,7 @@ description: >
   (https://github.com/Drolla/thc/tree/master/modules/thc_zWay) installed on
   the zWay server itself -- install it there yourself, PHC does not push it.
   Define whatever endpoints one node needs (e.g. a switch's `state`, a
-  sensor's `battery`); every endpoint must set its own `parameters`:
+  sensor's `battery`); every endpoint must set its own `params`:
   `command_group` (one of SwitchBinary, SwitchMultilevel, SwitchMultiBinary,
   SensorBinary, SensorMultilevel, Battery, TagReader) and `address` (an
   opaque zWay "node.instance[.datarecord]" identifier string, e.g. "20.1" or
@@ -17,12 +17,15 @@ description: >
   endpoint_profiles/device_profiles below are an optional shortcut for the
   common case where one node's endpoints all derive from the same node
   number (e.g. node 11's temperature is "11.0.1", its humidity "11.0.5",
-  its battery "11") -- set `node:` in the device's `params` and `profile:`
-  on the device (or on one endpoint) instead of writing each `address` out
-  by hand. Writing endpoints fully explicitly, without `profile:` anywhere,
-  keeps working exactly as before; the two styles can also mix on one
-  device (e.g. a device profile for temp/humidity/battery, plus one
-  fully-explicit endpoint for something the library doesn't cover).
+  its battery "11") -- set `node:` in the device's `params` and
+  `device_profile:` on the device (or `endpoint_profile:` on one endpoint)
+  instead of writing each `address` out by hand. `{param}` templates like
+  `{node}` are resolved on any endpoint's fields, whether or not a profile
+  is used, so writing endpoints fully explicitly, without `device_profile:`/
+  `endpoint_profile:` anywhere, keeps working exactly as before; the two
+  styles can also mix on one device (e.g. a device profile for
+  temp/humidity/battery, plus one fully-explicit endpoint for something the
+  library doesn't cover).
 
 update: "1m"
 
@@ -73,75 +76,74 @@ parameters:
 endpoints: []
 
 # A profile entry is a full endpoint spec, the same shape written by hand
-# (see the description above), with `{node}` templates in `parameters:`
-# values filled in from the device's own `node` param. `switch` carries no
-# address -- a switch's channel (e.g. the ".1" in "7.1") has no safe
-# default (channel 0 is real, so it can't be inferred from an unset
-# param), so a device using it must still supply its own
-# `parameters: { address: "7.1" }`.
+# (see the description above), with `{node}` templates in `params:` values
+# filled in from the device's own `node` param. `switch` carries no address
+# -- a switch's channel (e.g. the ".1" in "7.1") has no safe default
+# (channel 0 is real, so it can't be inferred from an unset param), so a
+# device using it must still supply its own `params: { address: "7.1" }`.
 endpoint_profiles:
   temperature:
     type: float
     unit: "°C"
-    parameters: { command_group: SensorMultilevel, address: "{node}.0.1" }
+    params: { command_group: SensorMultilevel, address: "{node}.0.1" }
   humidity:
     type: float
     unit: "%"
-    parameters: { command_group: SensorMultilevel, address: "{node}.0.5" }
+    params: { command_group: SensorMultilevel, address: "{node}.0.5" }
   battery:
     type: int
     unit: "%"
-    parameters: { command_group: Battery, address: "{node}" }
+    params: { command_group: Battery, address: "{node}" }
   motion:
     type: int
     values: { 0: "clear", 1: "motion" }
-    parameters: { command_group: SensorBinary, address: "{node}" }
+    params: { command_group: SensorBinary, address: "{node}" }
   switch:
     type: int
     writable: true
     values: { 0: "off", 255: "on" }
-    parameters: { command_group: SwitchBinary }
+    params: { command_group: SwitchBinary }
   luminance:
     type: float
     unit: "%"
-    parameters: { command_group: SensorMultilevel, address: "{node}.0.3" }
+    params: { command_group: SensorMultilevel, address: "{node}.0.3" }
   pressure:
     type: float
     unit: kPa
-    parameters: { command_group: SensorMultilevel, address: "{node}.0.9" }
+    params: { command_group: SensorMultilevel, address: "{node}.0.9" }
   dew_point:
     type: float
     unit: "°C"
-    parameters: { command_group: SensorMultilevel, address: "{node}.0.11" }
+    params: { command_group: SensorMultilevel, address: "{node}.0.11" }
   wind_velocity:
     type: float
     unit: m/s
-    parameters: { command_group: SensorMultilevel, address: "{node}.0.6" }
+    params: { command_group: SensorMultilevel, address: "{node}.0.6" }
 
-# A device_profiles entry is a named list of {key, profile} pairs -- set
-# `profile: <name>` on a device (alongside `params: { node: ... }`) to get
-# all of them at once; the device's own `endpoints:` can still tweak or add
-# to what the profile provides (overlaid by key -- see
-# core.config._expand_endpoint_specs).
+# A device_profiles entry is a named list of {key, endpoint_profile} pairs
+# -- set `device_profile: <name>` on a device (alongside
+# `params: { node: ... }`) to get all of them at once; the device's own
+# `endpoints:` can still tweak or add to what the profile provides
+# (overlaid by key -- see core.config._expand_endpoint_specs).
 device_profiles:
   multisensor_th:
-    - { key: temp, profile: temperature }
-    - { key: hum, profile: humidity }
-    - { key: battery, profile: battery }
+    - { key: temp, endpoint_profile: temperature }
+    - { key: hum, endpoint_profile: humidity }
+    - { key: battery, endpoint_profile: battery }
   multisensor_t:
-    - { key: temp, profile: temperature }
-    - { key: battery, profile: battery }
+    - { key: temp, endpoint_profile: temperature }
+    - { key: battery, endpoint_profile: battery }
   motion_sensor:
-    - { key: state, profile: motion }
-    - { key: battery, profile: battery }
+    - { key: state, endpoint_profile: motion }
+    - { key: battery, endpoint_profile: battery }
   # POPP Z-Weather outdoor sensor (product 005206,
   # https://popp.eu/products/z-weather) -- six SensorMultilevel readings
   # plus battery, all on the same node.
   popp_zweather:
-    - { key: temp, profile: temperature }
-    - { key: hum, profile: humidity }
-    - { key: lum, profile: luminance }
-    - { key: pres, profile: pressure }
-    - { key: dew, profile: dew_point }
-    - { key: vel, profile: wind_velocity }
-    - { key: battery, profile: battery }
+    - { key: temp, endpoint_profile: temperature }
+    - { key: hum, endpoint_profile: humidity }
+    - { key: lum, endpoint_profile: luminance }
+    - { key: pres, endpoint_profile: pressure }
+    - { key: dew, endpoint_profile: dew_point }
+    - { key: vel, endpoint_profile: wind_velocity }
+    - { key: battery, endpoint_profile: battery }

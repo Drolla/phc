@@ -65,11 +65,14 @@ class ModuleDescriptor:
     endpoint_profiles/device_profiles (see _expand_endpoint_specs) are an
     optional reusable-endpoint library a module can ship: an endpoint
     profile is a full endpoint spec (the same shape a user writes by hand)
-    with `{param}` templates in its `parameters:` values, and a device
-    profile is a named list of {key, profile} entries. A device opts in via
-    `profile:` (whole device) or an endpoint's own `profile:` (single
-    endpoint) -- writing endpoints out fully explicitly, with no `profile:`
-    anywhere, is unaffected either way.
+    with `{param}` templates in any of its string fields (params: values,
+    description, unit, ...), and a device profile is a named list of {key,
+    profile} entries. A device opts in via `device_profile:` (whole device)
+    or an endpoint's own `endpoint_profile:` (single endpoint) -- writing
+    endpoints out fully explicitly, with neither key anywhere, is unaffected
+    either way. `{param}` templating itself (see _substitute_endpoint_spec)
+    is not tied to profiles at all -- it runs on every endpoint of every
+    device, whether or not a profile was used to produce it.
 
     device_profiles is mutually exclusive with a non-empty `endpoints:` on
     the SAME module: `endpoints:` is unconditional (every device of the
@@ -349,93 +352,122 @@ def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: st
 
 # Matches a bare {name} template field (no format-spec/conversion syntax --
 # these templates only ever need to substitute a plain param value, e.g.
-# "{node}.0.1") inside a profile-derived endpoint's `parameters:` string
-# value. Used by _substitute_params to find which params a template
-# references, before calling str.format_map on it.
+# "{node}.0.1") inside an endpoint spec's string fields. Used by
+# _substitute_templates to find which params a template references, before
+# calling str.format_map on it.
 _TEMPLATE_FIELD_RE = re.compile(r"\{(\w+)\}")
+
+# Endpoint-spec fields that are structural/identity metadata rather than
+# display or protocol data -- never templated even though some are strings,
+# since substituting `key` (used for merge-by-key lookups before this point)
+# or `kind`/`type`/`log_aggregation`/`device_profile`/`endpoint_profile`
+# would be meaningless or actively wrong.
+_TEMPLATE_EXCLUDED_FIELDS = {"key", "kind", "type", "log_aggregation",
+                             "device_profile", "endpoint_profile"}
 
 
 def _overlay_endpoint_spec(base: dict, over: dict) -> dict:
     """Shallow-overlay `over` onto `base` (a plain dict.update) except for
-    `parameters`, which is deep-merged one level (over's parameters win
-    per-key; a base parameter not present in over is kept) rather than
-    replaced wholesale. This is what lets e.g. `endpoints: [{key: battery,
-    parameters: {value_id: "16.0"}}]` tweak just one parameter of a
-    profile- or module-declared endpoint without losing its other
-    parameters -- a plain dict.update would silently drop a sibling
-    parameter like command_group, and devices/zway's setup() documents
-    that an endpoint missing command_group permanently reports None, never
-    raises. Every other field (type, values, writable, ...) replaces
-    wholesale; only `parameters` is merged."""
+    `params`, which is deep-merged one level (over's params win per-key; a
+    base param not present in over is kept) rather than replaced wholesale.
+    This is what lets e.g. `endpoints: [{key: battery, params: {value_id:
+    "16.0"}}]` tweak just one param of a profile- or module-declared
+    endpoint without losing its other params -- a plain dict.update would
+    silently drop a sibling param like command_group, and devices/zway's
+    setup() documents that an endpoint missing command_group permanently
+    reports None, never raises. Every other field (type, values, writable,
+    ...) replaces wholesale; only `params` is merged."""
     merged = dict(base)
     merged.update(over)
-    if "parameters" in base or "parameters" in over:
-        merged["parameters"] = {**base.get("parameters", {}), **over.get("parameters", {})}
+    if "params" in base or "params" in over:
+        merged["params"] = {**base.get("params", {}), **over.get("params", {})}
     return merged
 
 
-def _substitute_params(parameters: dict, params: dict, device_id: str, endpoint_key: str) -> dict:
-    """Substitute `{param}` templates in a profile-derived endpoint's
-    `parameters:` string values from the device's already-resolved `params`
-    (e.g. `value_id: "{node}.0.1"` -> "11.0.1" when params["node"] == 11).
-    Only `str` values are substituted; anything else (int, bool, list, ...)
-    passes through untouched. Raises ConfigError if a template references a
+def _substitute_templates(value, params: dict, device_id: str, endpoint_key: str, field: str = ""):
+    """Recursively substitute `{param}` templates in every string found in
+    `value` (an endpoint spec, or a nested dict/value within one, e.g.
+    `params:`/`values:`) from the device's already-resolved `params` (e.g.
+    `address: "{node}.0.1"` -> "11.0.1" when params["node"] == 11). Dicts are
+    walked key-by-key; non-string, non-dict values (int, bool, list, None)
+    pass through untouched. Raises ConfigError if a template references a
     param that is missing or None -- a forgotten `node:` would otherwise
     format to the literal string "7.None" via plain str.format_map, which
     devices/zway/device.py's setup() accepts as a real (if wrong) value_id
     and then reports None forever with no error -- or if the template
     itself is malformed."""
-    substituted = {}
-    for key, value in parameters.items():
-        if not isinstance(value, str):
-            substituted[key] = value
-            continue
-        missing = [name for name in _TEMPLATE_FIELD_RE.findall(value) if params.get(name) is None]
-        if missing:
-            raise ConfigError(
-                f"device {device_id!r}: endpoint {endpoint_key!r} parameter {key!r} template "
-                f"{value!r} needs param(s) {missing}, which are unset")
-        try:
-            substituted[key] = value.format_map(params)
-        except (KeyError, IndexError, ValueError) as exc:
-            raise ConfigError(f"device {device_id!r}: endpoint {endpoint_key!r} parameter "
-                              f"{key!r} template {value!r} is invalid: {exc}") from None
-    return substituted
+    if isinstance(value, dict):
+        return {k: _substitute_templates(v, params, device_id, endpoint_key, field=k)
+                for k, v in value.items()}
+    if not isinstance(value, str):
+        return value
+    missing = [name for name in _TEMPLATE_FIELD_RE.findall(value) if params.get(name) is None]
+    if missing:
+        raise ConfigError(
+            f"device {device_id!r}: endpoint {endpoint_key!r} field {field!r} template "
+            f"{value!r} needs param(s) {missing}, which are unset")
+    try:
+        return value.format_map(params)
+    except (KeyError, IndexError, ValueError) as exc:
+        raise ConfigError(f"device {device_id!r}: endpoint {endpoint_key!r} field {field!r} "
+                          f"template {value!r} is invalid: {exc}") from None
 
 
-def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, params: dict,
-                            device_id: str) -> list:
+def _substitute_endpoint_spec(spec: dict, params: dict, device_id: str) -> dict:
+    """Substitute `{param}` templates throughout one endpoint spec's fields
+    (params:, description, unit, values:, ...) from the device's resolved
+    `params` -- see _substitute_templates. Runs on every endpoint of every
+    device regardless of whether it came from a profile, a hand-written
+    instance override, or a module's own unconditional `endpoints:` -- a
+    spec with no `{...}` anywhere passes through unchanged, so this is a
+    no-op for every module that declares no templates. Skips fields in
+    _TEMPLATE_EXCLUDED_FIELDS (key, kind, type, ...), which are structural
+    metadata rather than display/protocol data."""
+    endpoint_key = spec.get("key", "")
+    return {
+        field: value if field in _TEMPLATE_EXCLUDED_FIELDS
+        else _substitute_templates(value, params, device_id, endpoint_key, field=field)
+        for field, value in spec.items()
+    }
+
+
+def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, device_id: str) -> list:
     """Expand a device entry's `endpoints:` (and its own top-level
-    `profile:`, if any) against the module's endpoint_profiles/
-    device_profiles library (see ModuleDescriptor), substituting `{param}`
-    templates in profile-derived `parameters:` values from the device's
-    resolved `params`. Returns a plain list of endpoint dicts in the same
-    shape a user writes by hand, ready for _merge_endpoints -- which needs
-    no awareness that profiles exist.
+    `device_profile:`, if any) against the module's endpoint_profiles/
+    device_profiles library (see ModuleDescriptor). Returns a plain list of
+    endpoint dicts in the same shape a user writes by hand, ready for
+    _merge_endpoints -- which needs no awareness that profiles exist.
+    `{param}` templating is a separate, later step (see
+    _substitute_endpoint_spec, called from _merge_endpoints) -- this
+    function only resolves which endpoints exist and how they overlay, not
+    their template values.
 
-    A device that uses no `profile:` anywhere (neither its own top-level
-    `profile:` nor any endpoint's) gets its `endpoints:` list back
-    completely unchanged -- this identity case is what guarantees writing
-    endpoints fully explicitly keeps working exactly as before.
+    A device that uses no `device_profile:` anywhere (neither its own
+    top-level `device_profile:` nor any endpoint's `endpoint_profile:`) gets
+    its `endpoints:` list back completely unchanged -- this identity case is
+    what guarantees writing endpoints fully explicitly keeps working exactly
+    as before.
 
-    Resolution order: the device's own `profile:` (if set) expands into a
-    base endpoints list first, in device_profiles order; the device's own
-    `endpoints:` then overlays that list by `key` (via
-    _overlay_endpoint_spec, so a `parameters:` tweak doesn't clobber a
+    Resolution order: the device's own `device_profile:` (if set) expands
+    into a base endpoints list first, in device_profiles order; the
+    device's own `endpoints:` then overlays that list by `key` (via
+    _overlay_endpoint_spec, so a `params:` tweak doesn't clobber a
     profile-derived command_group/value_id) and appends any key the
     profile didn't already provide. An `endpoints:` entry may set its own
-    `profile:` too (with or without a device-level `profile:`), for a
-    single profile-derived endpoint on a device that otherwise writes
-    everything out by hand. Final order: device-profile order, then
-    extra/overlaid instance endpoints in `endpoints:` list order."""
+    `endpoint_profile:` too (with or without a device-level
+    `device_profile:`), for a single profile-derived endpoint on a device
+    that otherwise writes everything out by hand. Final order:
+    device-profile order, then extra/overlaid instance endpoints in
+    `endpoints:` list order."""
     instance_endpoints = entry.get("endpoints") or []
-    device_profile_name = entry.get("profile")
+    device_profile_name = entry.get("device_profile")
 
-    if device_profile_name is None and not any("profile" in spec for spec in instance_endpoints):
-        return instance_endpoints   # no profile: anywhere -- identity, the escape hatch
+    if device_profile_name is None and not any(
+            "endpoint_profile" in spec for spec in instance_endpoints):
+        return instance_endpoints   # no device_profile:/endpoint_profile: -- identity
 
     def _expand_one(spec: dict) -> dict:
-        profile_name = spec.get("profile")
+        profile_name = spec.get("endpoint_profile")
         if profile_name is None:
             return spec
         if profile_name not in module.endpoint_profiles:
@@ -444,11 +476,8 @@ def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, params: dict,
                 f"profile {profile_name!r} (module {module.name!r} has "
                 f"endpoint_profiles {sorted(module.endpoint_profiles)})")
         profile_spec = copy.deepcopy(module.endpoint_profiles[profile_name])
-        overlay = {k: v for k, v in spec.items() if k != "profile"}
-        expanded = _overlay_endpoint_spec(profile_spec, overlay)
-        expanded["parameters"] = _substitute_params(
-            expanded.get("parameters") or {}, params, device_id, expanded.get("key", ""))
-        return expanded
+        overlay = {k: v for k, v in spec.items() if k != "endpoint_profile"}
+        return _overlay_endpoint_spec(profile_spec, overlay)
 
     base_specs = []
     if device_profile_name is not None:
@@ -473,16 +502,19 @@ def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, params: dict,
     return [by_key[key] for key in order]
 
 
-def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list,
-                      device_id: str) -> tuple[list[Endpoint], list[tuple[Endpoint, object]]]:
+def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_id: str,
+                      params: dict) -> tuple[list[Endpoint], list[tuple[Endpoint, object]]]:
     """Build this device instance's Endpoint objects: start from the module's
     declared endpoints, overlay any instance-level overrides (by `key`) and
     append instance-only endpoints not declared by the module. Returns
     (endpoints, seeds), where `seeds` are (Endpoint, default_value) pairs to
     apply once the device is constructed. `instance_endpoints` is normally
     the device's raw `endpoints:` list, already expanded against any
-    profile: by _expand_endpoint_specs -- this function itself has no
-    awareness that profiles exist."""
+    device_profile:/endpoint_profile: by _expand_endpoint_specs -- this
+    function itself has no awareness that profiles exist. `params` is the
+    device's already-resolved params, used only to substitute `{param}`
+    templates (see _substitute_endpoint_spec) in the fully-merged specs --
+    templating is independent of whether an endpoint came from a profile."""
     for spec in instance_endpoints or []:
         unknown = set(spec) - _ENDPOINT_ENTRY_KEYS
         if unknown:
@@ -505,6 +537,7 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list,
     endpoints = []
     seeds = []
     for spec in merged_specs:
+        spec = _substitute_endpoint_spec(spec, params, device_id)
         value_type = spec.get("type")
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ConfigError(
@@ -521,7 +554,7 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list,
                 spec["key"],
                 readable=spec.get("readable", True),
                 writable=spec.get("writable", False),
-                parameters=spec.get("parameters"),
+                params=spec.get("params"),
                 description=spec.get("description", ""),
                 value_type=value_type,
                 unit=spec.get("unit"),
@@ -563,14 +596,15 @@ def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_
 
 # Keys _build_device/_merge_endpoints recognize on a device entry / endpoint
 # entry. A typo'd key here fails open elsewhere in the stack -- e.g. a
-# misspelled "profil:" silently yields a device with zero endpoints, and
-# devices/zway/device.py's setup() documents that a misconfigured endpoint
-# "permanently reports None, never raises" -- so an unrecognized key is
-# rejected here rather than silently ignored.
-_DEVICE_ENTRY_KEYS = {"id", "module", "name", "params", "endpoints", "update", "children", "profile"}
-_ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "parameters", "description",
+# misspelled "device_profil:" silently yields a device with zero endpoints,
+# and devices/zway/device.py's setup() documents that a misconfigured
+# endpoint "permanently reports None, never raises" -- so an unrecognized
+# key is rejected here rather than silently ignored.
+_DEVICE_ENTRY_KEYS = {"id", "module", "name", "params", "endpoints", "update", "children",
+                      "device_profile"}
+_ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "params", "description",
                         "type", "unit", "values", "log_aggregation", "min", "max", "default",
-                        "profile"}
+                        "endpoint_profile"}
 _MODULES_ENTRY_KEYS = {"params", "update"}
 
 
@@ -595,8 +629,8 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
 
     params = _merge_params(module, entry.get("params", {}), device_id,
                            module_config.module_params, module_config.device_param_defaults)
-    endpoint_specs = _expand_endpoint_specs(module, entry, params, device_id)
-    endpoints, seeds = _merge_endpoints(module, endpoint_specs, device_id)
+    endpoint_specs = _expand_endpoint_specs(module, entry, device_id)
+    endpoints, seeds = _merge_endpoints(module, endpoint_specs, device_id, params)
     update_interval = _resolve_interval(module, entry, intervals_map, module_config.update)
 
     qualified_id = f"{parent_qualified_id}.{device_id}" if parent_qualified_id else device_id

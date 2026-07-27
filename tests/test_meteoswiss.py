@@ -67,8 +67,8 @@ def _device(url, station="BER", cache_time=None):
         "weather",
         params=params,
         endpoints=[
-            Endpoint("temperature", parameters={"column": "tre200s0"}),
-            Endpoint("humidity", parameters={"column": "ure200s0"}),
+            Endpoint("temperature", params={"column": "tre200s0"}),
+            Endpoint("humidity", params={"column": "ure200s0"}),
         ],
         update_interval=0.0,
     )
