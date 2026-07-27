@@ -43,11 +43,12 @@ class ZWayDevice(Device):
     (https://github.com/Drolla/thc/tree/master/modules/thc_zWay -- install
     thc_zWay.js on the zWay server yourself, PHC does not push it). Each
     endpoint's `parameters` name the zWay identifier it maps to:
-    `command_group` (one of SwitchBinary/SwitchMultilevel/SensorBinary/
-    SensorMultilevel/Battery/TagReader) and `value_id` (an opaque
-    "node.instance[.datarecord]" string, passed through verbatim -- PHC never
-    parses its internal structure). A TagReader endpoint additionally needs
-    `node_id`, used for the one-time Configure_TagReader call.
+    `command_group` (one of SwitchBinary/SwitchMultilevel/SwitchMultiBinary/
+    SensorBinary/SensorMultilevel/Battery/TagReader) and `value_id` (an
+    opaque "node.instance[.datarecord]" string, passed through verbatim --
+    PHC never parses its internal structure). A TagReader endpoint
+    additionally needs `node_id`, used for the one-time Configure_TagReader
+    call.
 
     Devices sharing one `base_url` share one cached Get() response per
     cache_time (see _identifiers/_response_cache above), so their reads

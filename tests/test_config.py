@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _load_extensions,
-                          _merge_endpoints, _merge_extension_params, _merge_params,
-                          _resolve_interval, _resolve_module_config, load_system)
+from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _expand_endpoint_specs,
+                          _load_extensions, _merge_endpoints, _merge_extension_params,
+                          _merge_params, _resolve_interval, _resolve_module_config, load_system)
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -311,6 +311,105 @@ def test_merge_endpoints_rejects_min_greater_than_max():
     })
     with pytest.raises(ConfigError):
         _merge_endpoints(module, [], "dev")
+
+
+# ---------- endpoint/device profiles ----------
+
+def _profile_module():
+    return ModuleDescriptor("zwaylike", {
+        "endpoints": [],
+        "endpoint_profiles": {
+            "temperature": {"type": "float", "unit": "°C",
+                            "parameters": {"command_group": "SensorMultilevel", "value_id": "{node}.0.1"}},
+            "battery": {"type": "int", "unit": "%",
+                       "parameters": {"command_group": "Battery", "value_id": "{node}"}},
+        },
+        "device_profiles": {
+            "multisensor_t": [
+                {"key": "temp", "profile": "temperature"},
+                {"key": "battery", "profile": "battery"},
+            ],
+        },
+    })
+
+
+def test_module_descriptor_rejects_device_profiles_with_nonempty_endpoints():
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {
+            "endpoints": [{"key": "state"}],
+            "device_profiles": {"x": [{"key": "state", "profile": "y"}]},
+        })
+
+
+def test_expand_endpoint_specs_is_identity_when_no_profile_anywhere():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike",
+             "endpoints": [{"key": "state", "parameters": {"command_group": "SwitchBinary", "value_id": "7.1"}}]}
+    specs = _expand_endpoint_specs(module, entry, {}, "dev")
+    assert specs is entry["endpoints"]
+
+
+def test_expand_endpoint_specs_device_profile_substitutes_node():
+    module = _profile_module()
+    entry = {"id": "multi_liv", "module": "zwaylike", "profile": "multisensor_t"}
+    specs = _expand_endpoint_specs(module, entry, {"node": 11}, "multi_liv")
+    by_key = {s["key"]: s for s in specs}
+    assert by_key["temp"]["parameters"] == {"command_group": "SensorMultilevel", "value_id": "11.0.1"}
+    assert by_key["battery"]["parameters"] == {"command_group": "Battery", "value_id": "11"}
+
+
+def test_expand_endpoint_specs_device_endpoints_overlay_by_key_preserves_command_group():
+    # A device's own endpoints: tweaking one profile-derived parameter must
+    # not clobber the profile's other parameters (e.g. command_group) --
+    # see _overlay_endpoint_spec.
+    module = _profile_module()
+    entry = {"id": "sirene", "module": "zwaylike", "profile": "multisensor_t",
+             "endpoints": [{"key": "battery", "parameters": {"value_id": "16.0"}}]}
+    specs = _expand_endpoint_specs(module, entry, {"node": 16}, "sirene")
+    battery = next(s for s in specs if s["key"] == "battery")
+    assert battery["parameters"] == {"command_group": "Battery", "value_id": "16.0"}
+
+
+def test_expand_endpoint_specs_single_endpoint_profile_without_device_profile():
+    module = _profile_module()
+    entry = {"id": "fus18_meteo", "module": "zwaylike",
+             "endpoints": [{"key": "f18_temp", "profile": "temperature"}]}
+    specs = _expand_endpoint_specs(module, entry, {"node": 15}, "fus18_meteo")
+    assert specs[0]["parameters"]["value_id"] == "15.0.1"
+
+
+def test_expand_endpoint_specs_rejects_unset_template_param():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike", "profile": "multisensor_t"}
+    with pytest.raises(ConfigError):
+        _expand_endpoint_specs(module, entry, {"node": None}, "dev")
+
+
+def test_expand_endpoint_specs_rejects_unknown_device_profile():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike", "profile": "bogus"}
+    with pytest.raises(ConfigError):
+        _expand_endpoint_specs(module, entry, {}, "dev")
+
+
+def test_expand_endpoint_specs_rejects_unknown_endpoint_profile():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike", "endpoints": [{"key": "x", "profile": "bogus"}]}
+    with pytest.raises(ConfigError):
+        _expand_endpoint_specs(module, entry, {}, "dev")
+
+
+def test_expand_endpoint_specs_does_not_mutate_cached_module_profiles():
+    # module.endpoint_profiles/device_profiles are process-global-cached
+    # descriptors (_module_descriptors) -- expanding a profile for one
+    # device must not leave its substituted value behind for the next.
+    module = _profile_module()
+    entry = {"id": "a", "module": "zwaylike", "profile": "multisensor_t"}
+    _expand_endpoint_specs(module, entry, {"node": 11}, "a")
+    assert module.endpoint_profiles["temperature"]["parameters"]["value_id"] == "{node}.0.1"
+    specs = _expand_endpoint_specs(module, entry, {"node": 22}, "b")
+    by_key = {s["key"]: s for s in specs}
+    assert by_key["temp"]["parameters"]["value_id"] == "22.0.1"
 
 
 def test_resolve_interval_module_default_when_no_instance_override():
