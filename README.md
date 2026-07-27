@@ -207,7 +207,7 @@ script ported from the earlier THC project that you install on the zWay
 server yourself (PHC does not push it there). One `zway` device is one
 physical Z-Wave node; give it whatever endpoints that node needs (a switch's
 `state`, a sensor's `battery`, ...), each naming its own zWay identifier via
-`parameters`:
+`params`:
 
 ```yaml
 modules:
@@ -223,7 +223,7 @@ devices:
         writable: true
         type: int
         values: { 0: "off", 255: "on" }
-        parameters: { command_group: SwitchBinary, address: "7.1" }
+        params: { command_group: SwitchBinary, address: "7.1" }
 ```
 
 `command_group` is one of `SwitchBinary`, `SwitchMultilevel`,
@@ -503,45 +503,56 @@ A module can also declare a reusable library of endpoints in its
 `module.yaml`, for devices whose endpoints mostly differ by one templated
 value (e.g. a Z-Wave node number). An `endpoint_profiles` entry is a full
 endpoint spec — the same shape written out by hand — with `{param}`
-templates in its `parameters:` values, filled in from the device's own
+templates in any of its fields (typically `params:` values, but
+`description`/`unit`/`values` work too), filled in from the device's own
 resolved `params`; a `device_profiles` entry is a named list of
-`{key, profile}` pairs:
+`{key, endpoint_profile}` pairs:
 
 ```yaml
 # devices/zway/module.yaml
 endpoint_profiles:
   temperature: { type: float, unit: "°C",
-                 parameters: { command_group: SensorMultilevel, address: "{node}.0.1" } }
+                 params: { command_group: SensorMultilevel, address: "{node}.0.1" } }
   battery:     { type: int, unit: "%",
-                 parameters: { command_group: Battery, address: "{node}" } }
+                 params: { command_group: Battery, address: "{node}" } }
 device_profiles:
-  multisensor_t: [ { key: temp, profile: temperature }, { key: battery, profile: battery } ]
+  multisensor_t: [ { key: temp, endpoint_profile: temperature }, { key: battery, endpoint_profile: battery } ]
 ```
 
 ```yaml
 devices:
   - id: multi_liv
     module: zway
-    profile: multisensor_t   # whole device, from device_profiles
-    params: { node: 11 }     # fills in every {node} template above
+    device_profile: multisensor_t   # whole device, from device_profiles
+    params: { node: 11 }            # fills in every {node} template above
   - id: fus18_meteo
     module: zway
     endpoints:
       - key: f18_temp
-        profile: temperature   # single endpoint, no device profile
+        endpoint_profile: temperature   # single endpoint, no device profile
     params: { node: 15 }
 ```
 
-A device's own `endpoints:` overlays whatever its `profile:` provided, by
-`key` — deep-merging just `parameters:`, so tweaking one templated value
-(e.g. a node whose `address` doesn't follow the usual pattern) doesn't
-silently drop a sibling parameter. Writing an endpoint out fully
-explicitly, with no `profile:` anywhere on the device, keeps working
-exactly as before — profiles are a shortcut, not a replacement for the
-underlying `key`/`type`/`values`/`parameters`/... spec. See
-[`devices/zway/module.yaml`](devices/zway/module.yaml) and
+A device's own `endpoints:` overlays whatever its `device_profile:`/
+`endpoint_profile:` provided, by `key` — deep-merging just `params:`, so
+tweaking one templated value (e.g. a node whose `address` doesn't follow
+the usual pattern) doesn't silently drop a sibling param. Writing an
+endpoint out fully explicitly, with neither key anywhere on the device,
+keeps working exactly as before — profiles are a shortcut, not a
+replacement for the underlying `key`/`type`/`values`/`params`/... spec.
+
+`{param}` template substitution itself is independent of profiles: it runs
+on every endpoint's fields for every device of every module, whether that
+endpoint came from a profile, an instance override, or a module's own
+unconditional `endpoints:`. A module that never declares any templates
+(most of them, today) is unaffected, since a spec with no `{...}` anywhere
+just passes through unchanged.
+
+See [`devices/zway/module.yaml`](devices/zway/module.yaml) and
 [`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
-example mixing both styles on one system.
+example mixing a whole-device profile, a single-endpoint profile, a
+profile with one field overridden, and fully explicit endpoints all on one
+system.
 
 ## Adding a device module
 
