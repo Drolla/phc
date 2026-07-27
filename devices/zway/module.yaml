@@ -101,6 +101,22 @@ endpoint_profiles:
     writable: true
     values: { 0: "off", 255: "on" }
     parameters: { command_group: SwitchBinary }
+  luminance:
+    type: float
+    unit: "%"
+    parameters: { command_group: SensorMultilevel, address: "{node}.0.3" }
+  pressure:
+    type: float
+    unit: kPa
+    parameters: { command_group: SensorMultilevel, address: "{node}.0.9" }
+  dew_point:
+    type: float
+    unit: "°C"
+    parameters: { command_group: SensorMultilevel, address: "{node}.0.11" }
+  wind_velocity:
+    type: float
+    unit: m/s
+    parameters: { command_group: SensorMultilevel, address: "{node}.0.6" }
 
 # A device_profiles entry is a named list of {key, profile} pairs -- set
 # `profile: <name>` on a device (alongside `params: { node: ... }`) to get
@@ -117,4 +133,15 @@ device_profiles:
     - { key: battery, profile: battery }
   motion_sensor:
     - { key: state, profile: motion }
+    - { key: battery, profile: battery }
+  # POPP Z-Weather outdoor sensor (product 005206,
+  # https://popp.eu/products/z-weather) -- six SensorMultilevel readings
+  # plus battery, all on the same node.
+  popp_zweather:
+    - { key: temp, profile: temperature }
+    - { key: hum, profile: humidity }
+    - { key: lum, profile: luminance }
+    - { key: pres, profile: pressure }
+    - { key: dew, profile: dew_point }
+    - { key: vel, profile: wind_velocity }
     - { key: battery, profile: battery }
