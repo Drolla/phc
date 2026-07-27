@@ -15,6 +15,7 @@ log:
 
 intervals:
   zwave: 30s
+  zwave_meteo: 5m
 
 # All three devices below share one Razberry/zWay controller, so its
 # connection params and update interval are set once here -- rather than
@@ -64,6 +65,20 @@ devices:
       - key: state
         parameters: { command_group: TagReader, address: "22", node_id: "22" }
 
+  # A whole POPP Z-Weather outdoor sensor (product 005206) built entirely
+  # from zway's popp_zweather device_profile: node: 30 fills in all seven
+  # endpoints' {node} templates in one go (temp/hum/lum/pres/dew/vel/
+  # battery) -- contrast with sensor_garage above (also a device profile,
+  # but only two endpoints) and light_corridor (a single endpoint
+  # profile). update: zwave_meteo overrides modules.zway's zwave default,
+  # since this sensor reports far less often than a switch/motion sensor.
+  - id: weather_station
+    module: zway
+    name: Outdoor Weather Station
+    update: zwave_meteo
+    profile: popp_zweather
+    params: { node: 30 }
+
 tasks:
   - tag: garage_motion_light
     description: "Turn the corridor light on whenever the garage sensor detects motion"
@@ -77,3 +92,8 @@ tasks:
     description: "Log the garage sensor's battery level whenever it changes"
     condition: { device: "sensor_garage.battery", changed: true }
     action: { kind: log, device: "sensor_garage", message: "garage sensor battery changed to {text}" }
+
+  - tag: report_outdoor_temperature
+    description: "Log whenever the weather station's temperature reading changes"
+    condition: { device: "weather_station.temp", changed: true }
+    action: { kind: log, device: "weather_station.temp", message: "outdoor temperature changed to {text}" }
