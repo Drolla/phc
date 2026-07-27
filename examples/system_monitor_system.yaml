@@ -1,0 +1,21 @@
+heartbeat: 1s
+log:
+  dest: stdout
+log_levels:
+  default: INFO
+intervals:
+  system_metrics: 10s
+
+devices:
+  - id: this_machine
+    module: system_monitor
+    name: This Machine
+    update: system_metrics
+    params:
+      disk_path: ""   # auto: "/" on Linux, system drive on Windows
+
+tasks:
+  - tag: report_cpu_load_change
+    description: "Log whenever this machine's CPU load changes"
+    condition: { device: "this_machine.cpu_percent", changed: true }
+    action: { kind: log, device: "this_machine.cpu_percent", message: "CPU load is now {state}%" }
