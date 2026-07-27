@@ -1,13 +1,13 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
-  # Trace condition.expr/kind:script compilation and evaluation (source,
-  # referenced paths, namespace, result) -- see core/scripting.py.
-  scripting: DEBUG
+  - dest: stdout
+    levels:
+      default: INFO
+      # Trace condition.expr/kind:script compilation and evaluation
+      # (source, referenced paths, namespace, result) -- see
+      # core/scripting.py.
+      scripting: DEBUG
 
 # Mirrors a previous Tcl-based home automation system's surveillance job
 # set: arming/disarming toggles a control device (in real use, driven by a

@@ -24,8 +24,10 @@ env/
 .idea/
 .vscode/
 
-# Generated logs (e.g. logdb CSV output)
+# Generated logs (e.g. logdb CSV output, or a log: file destination
+# written next to whichever system YAML configured it)
 logs/
+*.log
 
 # Claude Code local settings
 .claude/settings.local.json

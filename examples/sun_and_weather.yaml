@@ -1,10 +1,9 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
+  - dest: stdout
+    levels:
+      default: INFO
 
 intervals:
   sun: 1m
@@ -14,9 +13,10 @@ intervals:
 # local computation (latitude/longitude + the system clock), open_meteo and
 # meteoswiss are plain HTTP calls to free public APIs.
 
-# All meteoswiss devices below poll the same published CSV
-# (data_url/cache_time are `scope: module` in devices/meteoswiss/module.yaml
-# -- one shared value for every station, not per device).
+# All meteoswiss devices below poll the same published CSV (data_url is
+# `scope: module` in devices/meteoswiss/module.yaml -- one shared value for
+# every station, not per device); update/cache_time are shared too, via
+# modules.meteoswiss below.
 modules: !include common/meteoswiss_cache_params.yaml
 
 # sun and open_meteo take latitude/longitude directly on the device, so swap

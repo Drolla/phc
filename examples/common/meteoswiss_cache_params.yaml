@@ -1,3 +1,8 @@
+# Assumes the including system YAML defines an "intervals: { weather: ... }"
+# entry -- included as the whole top-level modules: value, so every
+# meteoswiss device below inherits this update interval and cache_time
+# without setting its own update:.
 meteoswiss:
+  update: weather
   params:
     cache_time: 5m

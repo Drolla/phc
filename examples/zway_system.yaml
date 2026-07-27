@@ -1,56 +1,65 @@
 heartbeat: 1s
 
+# log: is a list of independently-levelled destinations -- stdout gets
+# everything at INFO+, and zway_warn_err.log (resolved relative to this
+# YAML's own directory, appended to) collects only WARNING+ across every
+# device, so it stays a sparse "what went wrong" record even while stdout
+# is chatty.
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
+  - dest: stdout
+    levels:
+      default: INFO
+  - dest: zway_warn_err.log
+    levels:
+      default: WARNING
 
 intervals:
   zwave: 30s
 
-# All three devices below share one Razberry/zWay controller at the same
-# base_url and the same update interval, so their status reads automatically
-# coalesce into a single combined Get() request per poll window (see
-# devices/zway/device.py's per-base_url identifier registry and response
-# cache) -- the same "shared fetch" pattern as
+# All three devices below share one Razberry/zWay controller, so its
+# connection params and update interval are set once here -- rather than
+# repeated on each device -- under modules.zway; their status reads then
+# automatically coalesce into a single combined Get() request per poll
+# window (see devices/zway/device.py's per-base_url identifier registry and
+# response cache) -- the same "shared fetch" pattern as
 # examples/waveplus_bridge_system.yaml, just batched across many small
 # Z-Wave values instead of one bridge's full JSON payload. Install
 # thc_zWay.js (https://github.com/Drolla/thc/tree/master/modules/thc_zWay)
 # on the zWay server itself before running this example.
+modules:
+  zway:
+    update: zwave
+    params: !include common/zway_controller_params.yaml
+
 devices:
+  # A single endpoint using zway's `switch` endpoint profile (see
+  # devices/zway/module.yaml) instead of writing out type/values/writable/
+  # command_group by hand -- a switch's channel has no safe default, so
+  # value_id is still supplied explicitly.
   - id: light_corridor
     module: zway
     name: Corridor Light
-    update: zwave
-    params: !include common/zway_controller_params.yaml
     endpoints:
       - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 255: "on" }
-        parameters: { command_group: SwitchBinary, value_id: "7.1" }
+        profile: switch
+        parameters: { value_id: "7.1" }
 
+  # A whole device built from zway's motion_sensor device_profile: node: 12
+  # fills in both endpoints' {node} templates (state -> "12", battery ->
+  # "12").
   - id: sensor_garage
     module: zway
     name: Garage Motion Sensor
-    update: zwave
-    params: !include common/zway_controller_params.yaml
-    endpoints:
-      - key: state
-        type: int
-        values: { 0: "clear", 1: "motion" }
-        parameters: { command_group: SensorBinary, value_id: "12" }
-      - key: battery
-        type: int
-        unit: "%"
-        parameters: { command_group: Battery, value_id: "12.0" }
+    profile: motion_sensor
+    params: { node: 12 }
 
+  # Fully explicit, no profile: at all -- TagReader needs node_id, which
+  # the profile library doesn't model, and this is only one endpoint
+  # anyway. Writing endpoints out by hand like this keeps working
+  # unchanged whether or not a module ships any profiles.
   - id: tag_reader_front
     module: zway
     name: Front Door Tag Reader
-    update: zwave
-    params: !include common/zway_controller_params.yaml
     endpoints:
       - key: state
         parameters: { command_group: TagReader, value_id: "22", node_id: "22" }
