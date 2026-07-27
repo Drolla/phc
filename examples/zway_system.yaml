@@ -42,8 +42,8 @@ devices:
     name: Corridor Light
     endpoints:
       - key: state
-        profile: switch
-        parameters: { address: "7.1" }
+        endpoint_profile: switch
+        params: { address: "7.1" }
 
   # A whole device built from zway's motion_sensor device_profile: node: 12
   # fills in both endpoints' {node} templates (state -> "12", battery ->
@@ -51,19 +51,35 @@ devices:
   - id: sensor_garage
     module: zway
     name: Garage Motion Sensor
-    profile: motion_sensor
+    device_profile: motion_sensor
     params: { node: 12 }
 
-  # Fully explicit, no profile: at all -- TagReader needs node_id, which
-  # the profile library doesn't model, and this is only one endpoint
-  # anyway. Writing endpoints out by hand like this keeps working
-  # unchanged whether or not a module ships any profiles.
+  # A device profile (multisensor_th: temp/humidity/battery) whose `hum`
+  # endpoint is then tweaked by one field: this unit's humidity sensor is
+  # wired to a non-standard sub-instance, so its `address` is overridden
+  # while `command_group` (from the profile) is kept -- demonstrating the
+  # params: deep-merge-by-key overlay (see
+  # core.config._overlay_endpoint_spec) rather than a wholesale replace.
+  # temp/battery are left exactly as the profile provides them.
+  - id: sensor_workshop
+    module: zway
+    name: Workshop Multisensor
+    device_profile: multisensor_th
+    params: { node: 15 }
+    endpoints:
+      - key: hum
+        params: { address: "15.1.5" }
+
+  # Fully explicit, no device_profile:/endpoint_profile: at all -- TagReader
+  # needs node_id, which the profile library doesn't model, and this is
+  # only one endpoint anyway. Writing endpoints out by hand like this keeps
+  # working unchanged whether or not a module ships any profiles.
   - id: tag_reader_front
     module: zway
     name: Front Door Tag Reader
     endpoints:
       - key: state
-        parameters: { command_group: TagReader, address: "22", node_id: "22" }
+        params: { command_group: TagReader, address: "22", node_id: "22" }
 
   # A whole POPP Z-Weather outdoor sensor (product 005206) built entirely
   # from zway's popp_zweather device_profile: node: 30 fills in all seven
@@ -76,7 +92,7 @@ devices:
     module: zway
     name: Outdoor Weather Station
     update: zwave_meteo
-    profile: popp_zweather
+    device_profile: popp_zweather
     params: { node: 30 }
 
 tasks:

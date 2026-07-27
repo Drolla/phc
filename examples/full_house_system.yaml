@@ -61,7 +61,7 @@ devices:
             writable: true
             type: int
             values: { 0: "off", 255: "on" }
-            parameters: { command_group: SwitchBinary, address: "7.1" }
+            params: { command_group: SwitchBinary, address: "7.1" }
 
       - id: hallway_motion
         module: zway
@@ -70,18 +70,18 @@ devices:
           - key: state
             type: int
             values: { 0: "clear", 1: "motion" }
-            parameters: { command_group: SensorBinary, address: "12" }
+            params: { command_group: SensorBinary, address: "12" }
           - key: battery
             type: int
             unit: "%"
-            parameters: { command_group: Battery, address: "12.0" }
+            params: { command_group: Battery, address: "12.0" }
 
       - id: front_door_tag
         module: zway
         name: Front Door Tag Reader
         endpoints:
           - key: state
-            parameters: { command_group: TagReader, address: "22", node_id: "22" }
+            params: { command_group: TagReader, address: "22", node_id: "22" }
 
       - id: cellar_air
         module: waveplus_bridge
