@@ -646,6 +646,46 @@ devices: []
         load_system(system_yaml)
 
 
+def test_load_system_rejects_unknown_device_entry_key(tmp_path):
+    # A typo'd device-entry key (e.g. "profil" instead of "profile") must
+    # not be silently ignored: devices/zway/device.py documents that a
+    # misconfigured endpoint permanently reports None with no error, so
+    # catching the typo here, at load time, is the only safety net.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: virtual
+    bogus_key: 1
+    endpoints:
+      - key: state
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_unknown_endpoint_entry_key(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: virtual
+    endpoints:
+      - key: state
+        bogus_key: 1
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_merge_endpoints_rejects_unknown_endpoint_entry_key():
+    module = ModuleDescriptor("m", {"endpoints": []})
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [{"key": "state", "bogus_key": 1}], "dev")
+
+
 def test_load_system_sibling_local_ids_do_not_collide(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
