@@ -42,9 +42,9 @@ def _endpoints():
     device instances (Endpoint holds per-device mutable state), especially
     in tests that co-schedule two devices in the same tick."""
     return [
-        Endpoint("temperature", parameters={"field": "temperature"}),
-        Endpoint("radon_st", parameters={"field": "radon_st"}),
-        Endpoint("co2", parameters={"field": "co2"}),
+        Endpoint("temperature", params={"field": "temperature"}),
+        Endpoint("radon_st", params={"field": "radon_st"}),
+        Endpoint("co2", params={"field": "co2"}),
     ]
 
 

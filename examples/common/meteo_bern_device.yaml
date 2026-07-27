@@ -1,7 +1,9 @@
-# Assumes the including system YAML defines an "intervals: { weather: ... }" entry.
+# Assumes the including system YAML includes common/meteoswiss_cache_params.yaml
+# as its top-level modules: (or otherwise sets modules.meteoswiss.update
+# itself) -- this device relies on that for its update interval rather than
+# setting its own update:.
 id: meteo-bern
 module: meteoswiss
 name: Bern Weather
-update: weather
 params:
   station: BER

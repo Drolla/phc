@@ -39,42 +39,42 @@ endpoints:
     type: float
     unit: "°C"
     description: Air temperature, degrees Celsius
-    parameters: { field: temperature_2m }
+    params: { field: temperature_2m }
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
     description: Relative humidity, percent
-    parameters: { field: relative_humidity_2m }
+    params: { field: relative_humidity_2m }
   - key: precipitation
     readable: true
     writable: false
     type: float
     unit: mm
     description: Precipitation over the current hour, mm
-    parameters: { field: precipitation }
+    params: { field: precipitation }
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
     description: Mean sea-level pressure, hPa
-    parameters: { field: pressure_msl }
+    params: { field: pressure_msl }
   - key: wind_speed
     readable: true
     writable: false
     type: float
     unit: m/s
     description: Wind speed, m/s
-    parameters: { field: wind_speed_10m }
+    params: { field: wind_speed_10m }
   - key: wind_direction
     readable: true
     writable: false
     type: float
     unit: "°"
     description: Wind direction, degrees
-    parameters: { field: wind_direction_10m }
+    params: { field: wind_direction_10m }
   - key: weather_code
     readable: true
     writable: false
@@ -84,11 +84,11 @@ endpoints:
       cloudy/overcast, 45/48=fog, 51-67=drizzle, 61-67=rain, 71-77=snow,
       80-82=rain showers, 85/86=snow showers, 95-99=thunderstorm). See
       https://open-meteo.com/en/docs for the full table.
-    parameters: { field: weather_code }
+    params: { field: weather_code }
   - key: is_day
     readable: true
     writable: false
     type: int
     values: { 0: "night", 1: "day" }
     description: 1 if it is currently daytime at the location, 0 if night
-    parameters: { field: is_day }
+    params: { field: is_day }

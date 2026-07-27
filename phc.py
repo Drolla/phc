@@ -30,11 +30,14 @@ def main(argv=None):
     parser.add_argument("--config", required=True, help="path to the system YAML config")
     parser.add_argument("--log-level", metavar="LEVEL",
                          help="default logging level (DEBUG, INFO, WARNING, ERROR); "
-                              "overrides log_levels.default in the config file")
+                              "overrides each stream destination's levels.default in the "
+                              "config file's log: section (file destinations are unaffected)")
     parser.add_argument("--log-level-module", metavar="NAME=LEVEL", action="append",
                          type=_parse_log_level_module, default=[],
                          help="logging level for one module's logger (e.g. scheduler=DEBUG); "
-                              "overrides log_levels.<name> in the config file; repeatable")
+                              "overrides that stream destination's levels.<name> in the "
+                              "config file's log: section (file destinations are unaffected); "
+                              "repeatable")
     args = parser.parse_args(argv)
 
     log_levels_override = dict(args.log_level_module)

@@ -1,10 +1,9 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
+  - dest: stdout
+    levels:
+      default: INFO
 
 intervals:
   radon: 1m

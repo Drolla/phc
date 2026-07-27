@@ -14,11 +14,10 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
-  web_ui: DEBUG
+  - dest: stdout
+    levels:
+      default: INFO
+      web_ui: DEBUG
 
 devices:
   - id: house

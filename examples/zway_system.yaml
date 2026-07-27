@@ -1,0 +1,115 @@
+heartbeat: 1s
+
+# log: is a list of independently-levelled destinations -- stdout gets
+# everything at INFO+, and zway_warn_err.log (resolved relative to this
+# YAML's own directory, appended to) collects only WARNING+ across every
+# device, so it stays a sparse "what went wrong" record even while stdout
+# is chatty.
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+  - dest: zway_warn_err.log
+    levels:
+      default: WARNING
+
+intervals:
+  zwave: 30s
+  zwave_meteo: 5m
+
+# All three devices below share one Razberry/zWay controller, so its
+# connection params and update interval are set once here -- rather than
+# repeated on each device -- under modules.zway; their status reads then
+# automatically coalesce into a single combined Get() request per poll
+# window (see devices/zway/device.py's per-base_url identifier registry and
+# response cache) -- the same "shared fetch" pattern as
+# examples/waveplus_bridge_system.yaml, just batched across many small
+# Z-Wave values instead of one bridge's full JSON payload. Install
+# thc_zWay.js (https://github.com/Drolla/thc/tree/master/modules/thc_zWay)
+# on the zWay server itself before running this example.
+modules:
+  zway:
+    update: zwave
+    params: !include common/zway_controller_params.yaml
+
+devices:
+  # A single endpoint using zway's `switch` endpoint profile (see
+  # devices/zway/module.yaml) instead of writing out type/values/writable/
+  # command_group by hand -- a switch's channel has no safe default, so
+  # address is still supplied explicitly.
+  - id: light_corridor
+    module: zway
+    name: Corridor Light
+    endpoints:
+      - key: state
+        endpoint_profile: switch
+        params: { address: "7.1" }
+
+  # A whole device built from zway's motion_sensor device_profile: node: 12
+  # fills in both endpoints' {node} templates (state -> "12", battery ->
+  # "12").
+  - id: sensor_garage
+    module: zway
+    name: Garage Motion Sensor
+    device_profile: motion_sensor
+    params: { node: 12 }
+
+  # A device profile (multisensor_th: temp/humidity/battery) whose `hum`
+  # endpoint is then tweaked by one field: this unit's humidity sensor is
+  # wired to a non-standard sub-instance, so its `address` is overridden
+  # while `command_group` (from the profile) is kept -- demonstrating the
+  # params: deep-merge-by-key overlay (see
+  # core.config._overlay_endpoint_spec) rather than a wholesale replace.
+  # temp/battery are left exactly as the profile provides them.
+  - id: sensor_workshop
+    module: zway
+    name: Workshop Multisensor
+    device_profile: multisensor_th
+    params: { node: 15 }
+    endpoints:
+      - key: hum
+        params: { address: "15.1.5" }
+
+  # Fully explicit, no device_profile:/endpoint_profile: at all -- TagReader
+  # needs node_id, which the profile library doesn't model, and this is
+  # only one endpoint anyway. Writing endpoints out by hand like this keeps
+  # working unchanged whether or not a module ships any profiles.
+  - id: tag_reader_front
+    module: zway
+    name: Front Door Tag Reader
+    endpoints:
+      - key: state
+        params: { command_group: TagReader, address: "22", node_id: "22" }
+
+  # A whole POPP Z-Weather outdoor sensor (product 005206) built entirely
+  # from zway's popp_zweather device_profile: node: 30 fills in all seven
+  # endpoints' {node} templates in one go (temp/hum/lum/pres/dew/vel/
+  # battery) -- contrast with sensor_garage above (also a device profile,
+  # but only two endpoints) and light_corridor (a single endpoint
+  # profile). update: zwave_meteo overrides modules.zway's zwave default,
+  # since this sensor reports far less often than a switch/motion sensor.
+  - id: weather_station
+    module: zway
+    name: Outdoor Weather Station
+    update: zwave_meteo
+    device_profile: popp_zweather
+    params: { node: 30 }
+
+tasks:
+  - tag: garage_motion_light
+    description: "Turn the corridor light on whenever the garage sensor detects motion"
+    condition: { device: "sensor_garage.state", changed: true }
+    action:
+      kind: set
+      device: "light_corridor.state"
+      value: 255
+
+  - tag: report_low_battery
+    description: "Log the garage sensor's battery level whenever it changes"
+    condition: { device: "sensor_garage.battery", changed: true }
+    action: { kind: log, device: "sensor_garage", message: "garage sensor battery changed to {text}" }
+
+  - tag: report_outdoor_temperature
+    description: "Log whenever the weather station's temperature reading changes"
+    condition: { device: "weather_station.temp", changed: true }
+    action: { kind: log, device: "weather_station.temp", message: "outdoor temperature changed to {text}" }

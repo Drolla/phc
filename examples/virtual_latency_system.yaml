@@ -1,11 +1,10 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
-  scheduler: DEBUG
+  - dest: stdout
+    levels:
+      default: INFO
+      scheduler: DEBUG
 
 # Demonstrates the effect of slow/flaky devices on the scheduler, which
 # runs every due device's fetch() synchronously, one after another in a

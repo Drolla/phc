@@ -54,46 +54,46 @@ endpoints:
     type: float
     unit: "°C"
     description: Air temperature, degrees Celsius
-    parameters: { field: temperature }
+    params: { field: temperature }
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
     description: Relative humidity, percent
-    parameters: { field: humidity }
+    params: { field: humidity }
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
     description: Barometric pressure, hPa
-    parameters: { field: pressure }
+    params: { field: pressure }
   - key: radon_st
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
     description: Short-term (up to ~24h) average radon concentration, Bq/m3
-    parameters: { field: radon_st }
+    params: { field: radon_st }
   - key: radon_lt
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
     description: Long-term (up to ~1 year) average radon concentration, Bq/m3
-    parameters: { field: radon_lt }
+    params: { field: radon_lt }
   - key: co2
     readable: true
     writable: false
     type: float
     unit: ppm
     description: CO2 concentration, ppm
-    parameters: { field: co2 }
+    params: { field: co2 }
   - key: voc
     readable: true
     writable: false
     type: float
     unit: ppb
     description: Total volatile organic compounds (TVOC), ppb
-    parameters: { field: voc }
+    params: { field: voc }

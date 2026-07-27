@@ -1,18 +1,19 @@
 heartbeat: 1s
 
+# log: is a list of destinations -- each with its own dest (stdout/stderr,
+# or any other string is a file path resolved relative to this YAML's own
+# directory, appended to) and levels (DEBUG/INFO/WARNING/ERROR). 'default'
+# applies to any logger below that doesn't set its own level (a stream
+# destination's 'default' can also be overridden from the command line
+# with --log-level). The remaining keys are optional per-logger overrides,
+# matching the dotted suffix of a "phc.<name>" logger (e.g. "scheduler",
+# "tasks"); omit a logger to fall back to 'default'.
 log:
-  dest: stdout
-
-# Level: DEBUG, INFO, WARNING, ERROR.
-# 'default' applies to any module below that doesn't set its own level
-# (can be overridden from the command line with --log-level). The
-# remaining keys are optional per-module overrides, matching the dotted
-# suffix of a "phc.<name>" logger (e.g. "scheduler", "tasks"); omit a
-# module to fall back to 'default'.
-log_levels:
-  default: INFO
-  scheduler: DEBUG
-  # tasks: INFO
+  - dest: stdout
+    levels:
+      default: INFO
+      scheduler: DEBUG
+      # tasks: INFO
 
 intervals:
   fast: 3s

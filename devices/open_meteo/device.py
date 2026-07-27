@@ -53,7 +53,7 @@ class OpenMeteoDevice(Device):
             # Network/HTTP failure or the request's own 10s timeout: report
             # every endpoint as unavailable, mirroring meteoswiss.
             current = None
-        return {key: self._extract(current, ep.parameters.get("field"))
+        return {key: self._extract(current, ep.params.get("field"))
                 for key, ep in self.endpoints.items()}
 
     async def _get_current(self) -> dict | None:
