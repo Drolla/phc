@@ -1,19 +1,20 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
+  - dest: stdout
+    levels:
+      default: INFO
 
 intervals:
   weather: 10m
 
-# All meteoswiss devices below poll the same published CSV
-# (data_url/cache_time are `scope: module` in devices/meteoswiss/module.yaml
-# -- one shared value for every station, not per device). Setting cache_time
-# here, once, means the five stations below coalesce into a single shared
-# HTTP fetch per cache window instead of five independent downloads.
+# All meteoswiss devices below poll the same published CSV (data_url is
+# `scope: module` in devices/meteoswiss/module.yaml -- one shared value for
+# every station, not per device) and share one update interval + cache_time
+# via modules.meteoswiss below (update: weather is why none of the devices
+# below need their own update: -- see common/meteoswiss_cache_params.yaml),
+# so the five stations coalesce into a single shared HTTP fetch per cache
+# window instead of five independent downloads.
 modules: !include common/meteoswiss_cache_params.yaml
 
 # Station codes below are a sample of MeteoSwiss automatic weather stations
@@ -26,28 +27,24 @@ devices:
   - id: meteo-zurich
     module: meteoswiss
     name: Zurich Weather
-    update: weather
     params:
       station: KLO
 
   - id: meteo-geneva
     module: meteoswiss
     name: Geneva Weather
-    update: weather
     params:
       station: GVE
 
   - id: meteo-basel
     module: meteoswiss
     name: Basel Weather
-    update: weather
     params:
       station: BAS
 
   - id: meteo-lugano
     module: meteoswiss
     name: Lugano Weather
-    update: weather
     params:
       station: LUG
 

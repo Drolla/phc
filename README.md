@@ -210,14 +210,14 @@ physical Z-Wave node; give it whatever endpoints that node needs (a switch's
 `parameters`:
 
 ```yaml
+modules:
+  zway:
+    update: 30s
+    params: { base_url: "http://192.168.1.21:8083", user: admin, password: admin }
+
 devices:
   - id: light_corridor
     module: zway
-    update: 30s
-    params:
-      base_url: http://192.168.1.21:8083
-      user: admin
-      password: admin
     endpoints:
       - key: state
         writable: true
@@ -226,11 +226,15 @@ devices:
         parameters: { command_group: SwitchBinary, value_id: "7.1" }
 ```
 
-`command_group` is one of `SwitchBinary`, `SwitchMultilevel`, `SensorBinary`,
-`SensorMultilevel`, `Battery`, or `TagReader`; `value_id` is an opaque zWay
-`"node.instance[.datarecord]"` identifier, passed through verbatim. A
-`TagReader` endpoint additionally needs `node_id`, used for a one-time
-setup call the first time that device is polled.
+`command_group` is one of `SwitchBinary`, `SwitchMultilevel`,
+`SwitchMultiBinary`, `SensorBinary`, `SensorMultilevel`, `Battery`, or
+`TagReader`; `value_id` is an opaque zWay `"node.instance[.datarecord]"`
+identifier, passed through verbatim. A `TagReader` endpoint additionally
+needs `node_id`, used for a one-time setup call the first time that device
+is polled. `devices/zway/module.yaml` also ships an endpoint/device
+profile library for the common case where one node's endpoints all derive
+from the same node number — see [Endpoint and device
+profiles](#endpoint-and-device-profiles) above.
 
 Every `zway` device behind the same controller (`base_url`) self-registers
 its endpoints' identifiers into a shared, module-level registry; whichever
@@ -240,7 +244,9 @@ for `cache_time` (default `30s`) -- so a whole controller's worth of
 Z-Wave devices coalesces into a single HTTP request per poll, the same
 batching the old THC `thc_zWay` module did, rather than one round-trip per
 device. Set the same `update` interval on every device behind one
-controller to keep them polling together and get full sharing -- see
+controller to keep them polling together and get full sharing -- typically
+by setting both `update` and `params` once under `modules.zway`, as above,
+rather than repeating them on every device. See
 [`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
 example with a light switch, a motion+battery sensor, and a TagReader node.
 
@@ -386,11 +392,45 @@ python phc.py --config examples/virtual_system.yaml
 
 Useful flags:
 
-- `--log-level LEVEL` — default logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`).
-- `--log-level-module NAME=LEVEL` — override the level of one module's logger
-  (e.g. `scheduler=DEBUG`); repeatable.
+- `--log-level LEVEL` — default logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`);
+  applies to every *stream* (`stdout`/`stderr`) destination in `log:`, never a
+  file destination — see [Logging](#logging) below.
+- `--log-level-module NAME=LEVEL` — override the level of one logger (e.g.
+  `scheduler=DEBUG`) on every stream destination; repeatable.
 
 Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
+
+## Logging
+
+`log:` is a list of independently-levelled destinations:
+
+```yaml
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+      scheduler: DEBUG   # per-logger override, dotted suffix of "phc.<name>"
+  - dest: warn_err.log    # any dest other than stdout/stderr is a file path,
+    levels:               # resolved relative to this YAML's own directory
+      default: WARNING    # and appended to
+```
+
+`dest` is `stdout`, `stderr`, or any other string (a file path). Each
+destination's `levels` map works like `virtual_system.yaml`'s comment
+explains: `default` sets the base level for any logger that doesn't have
+its own entry; every other key overrides one logger by the dotted suffix
+of its `"phc.<name>"` name (`scheduler`, `tasks`, `scripting`, `logdb`,
+`mail_alert`, `web_ui`, ...) — name-agnostic, so a typo'd name is silently
+never matched rather than rejected. Destinations are independent: the same
+logger can be `INFO` on stdout and `WARNING` in a file at the same time.
+At most one destination (the first stream one) shows the scheduler's live
+in-place tick countdown; a file destination never receives it. `--log-level`/
+`--log-level-module` only ever affect stream destinations, so a file
+destination configured to stay sparse can't be accidentally flooded from
+the command line.
+
+There is no `log_levels:` top-level key — every destination carries its own
+`levels:` instead.
 
 ## Splitting configuration across files
 
@@ -417,6 +457,91 @@ including it (e.g. just the `params:` of a device whose other fields differ
 per file). See [`examples/common/`](examples/common/) for fragments shared
 between several of the example systems, and any example file under
 [`examples/`](examples/) that references them for real usage.
+
+## Modules and shared configuration
+
+A `module.yaml` declares each parameter's `scope` (default `device`) and
+`override` (default `allowed`; `required` or `none` are the other two).
+`scope: device` params are normally set per device, under that device's own
+`params:`. The top-level `modules:` section lets several devices of one
+module type share configuration instead of repeating it on every device:
+
+```yaml
+modules:
+  zway:
+    update: zwave                              # falls between a device's own update: and module.yaml's default
+    params: !include common/zway_controller_params.yaml   # base_url/user/password/cache_time, shared by every zway device
+
+devices:
+  - id: light_corridor
+    module: zway
+    endpoints: [ ... ]   # no params:/update: of its own -- both come from modules.zway above
+  - id: sensor_garage
+    module: zway
+    params: { base_url: "http://a-different-controller:8083" }   # overrides just this one param
+    endpoints: [ ... ]
+```
+
+Precedence for a `scope: device` param: the device's own `params.<name>` →
+`modules.<name>.params.<name>` → the module's own `default:`. A param
+declared `override: required` (e.g. zway's `base_url`) can be satisfied by
+either the device or the module-level value — this is what lets every
+device behind one controller omit `base_url` entirely once it's set under
+`modules.zway.params`. `override: none` rejects a value being set anywhere
+but the module's own `default:`. `modules.<name>.update` works the same
+way for a device's update interval: device `update:` → `modules.<name>.update`
+→ the module's own `update:` default.
+
+A parameter declared `scope: module` (e.g. `meteoswiss`'s `data_url`/
+`cache_time`) is different: it has exactly one value for every device of
+that module type, settable *only* under `modules.<name>.params` — setting
+it on a device's own `params:` is a `ConfigError`.
+
+## Endpoint and device profiles
+
+A module can also declare a reusable library of endpoints in its
+`module.yaml`, for devices whose endpoints mostly differ by one templated
+value (e.g. a Z-Wave node number). An `endpoint_profiles` entry is a full
+endpoint spec — the same shape written out by hand — with `{param}`
+templates in its `parameters:` values, filled in from the device's own
+resolved `params`; a `device_profiles` entry is a named list of
+`{key, profile}` pairs:
+
+```yaml
+# devices/zway/module.yaml
+endpoint_profiles:
+  temperature: { type: float, unit: "°C",
+                 parameters: { command_group: SensorMultilevel, value_id: "{node}.0.1" } }
+  battery:     { type: int, unit: "%",
+                 parameters: { command_group: Battery, value_id: "{node}" } }
+device_profiles:
+  multisensor_t: [ { key: temp, profile: temperature }, { key: battery, profile: battery } ]
+```
+
+```yaml
+devices:
+  - id: multi_liv
+    module: zway
+    profile: multisensor_t   # whole device, from device_profiles
+    params: { node: 11 }     # fills in every {node} template above
+  - id: fus18_meteo
+    module: zway
+    endpoints:
+      - key: f18_temp
+        profile: temperature   # single endpoint, no device profile
+    params: { node: 15 }
+```
+
+A device's own `endpoints:` overlays whatever its `profile:` provided, by
+`key` — deep-merging just `parameters:`, so tweaking one templated value
+(e.g. a node whose `value_id` doesn't follow the usual pattern) doesn't
+silently drop a sibling parameter. Writing an endpoint out fully
+explicitly, with no `profile:` anywhere on the device, keeps working
+exactly as before — profiles are a shortcut, not a replacement for the
+underlying `key`/`type`/`values`/`parameters`/... spec. See
+[`devices/zway/module.yaml`](devices/zway/module.yaml) and
+[`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
+example mixing both styles on one system.
 
 ## Adding a device module
 

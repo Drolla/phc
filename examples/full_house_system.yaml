@@ -28,10 +28,9 @@
 heartbeat: 1s
 
 log:
-  dest: stdout
-
-log_levels:
-  default: INFO
+  - dest: stdout
+    levels:
+      default: INFO
 
 intervals:
   zwave: 30s
@@ -42,6 +41,12 @@ modules:
   meteoswiss:
     params:
       cache_time: 5m
+  # Every zway device below shares one controller, so its connection
+  # params and update interval are set once here rather than repeated on
+  # each device -- see examples/zway_system.yaml for the same pattern.
+  zway:
+    update: zwave
+    params: !include common/zway_controller_params.yaml
 
 devices:
   - id: house
@@ -51,8 +56,6 @@ devices:
       - id: corridor_light
         module: zway
         name: Corridor Light
-        update: zwave
-        params: !include common/zway_controller_params.yaml
         endpoints:
           - key: state
             writable: true
@@ -63,8 +66,6 @@ devices:
       - id: hallway_motion
         module: zway
         name: Hallway Motion Sensor
-        update: zwave
-        params: !include common/zway_controller_params.yaml
         endpoints:
           - key: state
             type: int
@@ -78,8 +79,6 @@ devices:
       - id: front_door_tag
         module: zway
         name: Front Door Tag Reader
-        update: zwave
-        params: !include common/zway_controller_params.yaml
         endpoints:
           - key: state
             parameters: { command_group: TagReader, value_id: "22", node_id: "22" }

@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _load_extensions,
-                          _merge_endpoints, _merge_extension_params, _merge_params,
-                          _resolve_interval, _resolve_module_params, load_system)
+from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _expand_endpoint_specs,
+                          _load_extensions, _merge_endpoints, _merge_extension_params,
+                          _merge_params, _resolve_interval, _resolve_module_config, load_system)
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -98,46 +98,46 @@ def test_merge_params_module_scope_rejects_device_level_value():
         _merge_params(module, {"cache_time": "1m"}, "dev", resolved_module_params={"cache_time": "5m"})
 
 
-def test_resolve_module_params_uses_default_when_absent():
+def test_resolve_module_config_uses_default_when_absent():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "cache_time", "override": "allowed", "scope": "module", "default": "10m"},
         ]
     })
-    assert _resolve_module_params(module, {}) == {"cache_time": "10m"}
+    assert _resolve_module_config(module, {}).module_params == {"cache_time": "10m"}
 
 
-def test_resolve_module_params_supplied_value_used():
+def test_resolve_module_config_supplied_value_used():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "cache_time", "override": "allowed", "scope": "module", "default": "10m"},
         ]
     })
     modules_config = {"m": {"params": {"cache_time": "5m"}}}
-    assert _resolve_module_params(module, modules_config) == {"cache_time": "5m"}
+    assert _resolve_module_config(module, modules_config).module_params == {"cache_time": "5m"}
 
 
-def test_resolve_module_params_required_missing_raises():
+def test_resolve_module_config_required_missing_raises():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "region", "override": "required", "scope": "module"},
         ]
     })
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, {})
+        _resolve_module_config(module, {})
 
 
-def test_resolve_module_params_required_supplied_ok():
+def test_resolve_module_config_required_supplied_ok():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "region", "override": "required", "scope": "module"},
         ]
     })
     modules_config = {"m": {"params": {"region": "CH"}}}
-    assert _resolve_module_params(module, modules_config) == {"region": "CH"}
+    assert _resolve_module_config(module, modules_config).module_params == {"region": "CH"}
 
 
-def test_resolve_module_params_none_override_rejects_supplied_value():
+def test_resolve_module_config_none_override_rejects_supplied_value():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "data_url", "override": "none", "scope": "module", "default": "http://x"},
@@ -145,34 +145,62 @@ def test_resolve_module_params_none_override_rejects_supplied_value():
     })
     modules_config = {"m": {"params": {"data_url": "http://evil"}}}
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, modules_config)
+        _resolve_module_config(module, modules_config)
 
 
-def test_resolve_module_params_unknown_param_raises():
+def test_resolve_module_config_unknown_param_raises():
     module = ModuleDescriptor("m", {"parameters": []})
     modules_config = {"m": {"params": {"bogus": 1}}}
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, modules_config)
+        _resolve_module_config(module, modules_config)
 
 
-def test_resolve_module_params_rejects_device_scope_param_set_at_module_level():
+def test_resolve_module_config_device_scope_param_becomes_default():
+    # Inverted from the old scheme: a device-scoped param set under
+    # modules.<name>.params is no longer rejected -- it becomes a per-module
+    # default (device_param_defaults), still overridable per device.
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "station", "override": "allowed", "scope": "device", "default": "BER"},
         ]
     })
     modules_config = {"m": {"params": {"station": "ZRH"}}}
+    config = _resolve_module_config(module, modules_config)
+    assert config.module_params == {}
+    assert config.device_param_defaults == {"station": "ZRH"}
+
+
+def test_resolve_module_config_device_scope_none_override_still_rejects_module_level_value():
+    module = ModuleDescriptor("m", {
+        "parameters": [
+            {"name": "station", "override": "none", "scope": "device", "default": "BER"},
+        ]
+    })
+    modules_config = {"m": {"params": {"station": "ZRH"}}}
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, modules_config)
+        _resolve_module_config(module, modules_config)
 
 
-def test_resolve_module_params_ignores_unrelated_modules_config_when_no_module_scope_params():
+def test_resolve_module_config_device_scope_required_satisfied_by_module_level_value():
+    module = ModuleDescriptor("m", {
+        "parameters": [
+            {"name": "base_url", "override": "required", "scope": "device"},
+        ]
+    })
+    modules_config = {"m": {"params": {"base_url": "http://host"}}}
+    config = _resolve_module_config(module, modules_config)
+    assert config.device_param_defaults == {"base_url": "http://host"}
+
+
+def test_resolve_module_config_ignores_unrelated_modules_config_when_no_module_scope_params():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "station", "override": "required", "scope": "device"},
         ]
     })
-    assert _resolve_module_params(module, {"other": {"params": {"x": 1}}}) == {}
+    config = _resolve_module_config(module, {"other": {"params": {"x": 1}}})
+    assert config.module_params == {}
+    assert config.device_param_defaults == {}
 
 
 def test_merge_endpoints_defaults_log_aggregation_to_max():
@@ -285,6 +313,105 @@ def test_merge_endpoints_rejects_min_greater_than_max():
         _merge_endpoints(module, [], "dev")
 
 
+# ---------- endpoint/device profiles ----------
+
+def _profile_module():
+    return ModuleDescriptor("zwaylike", {
+        "endpoints": [],
+        "endpoint_profiles": {
+            "temperature": {"type": "float", "unit": "°C",
+                            "parameters": {"command_group": "SensorMultilevel", "value_id": "{node}.0.1"}},
+            "battery": {"type": "int", "unit": "%",
+                       "parameters": {"command_group": "Battery", "value_id": "{node}"}},
+        },
+        "device_profiles": {
+            "multisensor_t": [
+                {"key": "temp", "profile": "temperature"},
+                {"key": "battery", "profile": "battery"},
+            ],
+        },
+    })
+
+
+def test_module_descriptor_rejects_device_profiles_with_nonempty_endpoints():
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {
+            "endpoints": [{"key": "state"}],
+            "device_profiles": {"x": [{"key": "state", "profile": "y"}]},
+        })
+
+
+def test_expand_endpoint_specs_is_identity_when_no_profile_anywhere():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike",
+             "endpoints": [{"key": "state", "parameters": {"command_group": "SwitchBinary", "value_id": "7.1"}}]}
+    specs = _expand_endpoint_specs(module, entry, {}, "dev")
+    assert specs is entry["endpoints"]
+
+
+def test_expand_endpoint_specs_device_profile_substitutes_node():
+    module = _profile_module()
+    entry = {"id": "multi_liv", "module": "zwaylike", "profile": "multisensor_t"}
+    specs = _expand_endpoint_specs(module, entry, {"node": 11}, "multi_liv")
+    by_key = {s["key"]: s for s in specs}
+    assert by_key["temp"]["parameters"] == {"command_group": "SensorMultilevel", "value_id": "11.0.1"}
+    assert by_key["battery"]["parameters"] == {"command_group": "Battery", "value_id": "11"}
+
+
+def test_expand_endpoint_specs_device_endpoints_overlay_by_key_preserves_command_group():
+    # A device's own endpoints: tweaking one profile-derived parameter must
+    # not clobber the profile's other parameters (e.g. command_group) --
+    # see _overlay_endpoint_spec.
+    module = _profile_module()
+    entry = {"id": "sirene", "module": "zwaylike", "profile": "multisensor_t",
+             "endpoints": [{"key": "battery", "parameters": {"value_id": "16.0"}}]}
+    specs = _expand_endpoint_specs(module, entry, {"node": 16}, "sirene")
+    battery = next(s for s in specs if s["key"] == "battery")
+    assert battery["parameters"] == {"command_group": "Battery", "value_id": "16.0"}
+
+
+def test_expand_endpoint_specs_single_endpoint_profile_without_device_profile():
+    module = _profile_module()
+    entry = {"id": "fus18_meteo", "module": "zwaylike",
+             "endpoints": [{"key": "f18_temp", "profile": "temperature"}]}
+    specs = _expand_endpoint_specs(module, entry, {"node": 15}, "fus18_meteo")
+    assert specs[0]["parameters"]["value_id"] == "15.0.1"
+
+
+def test_expand_endpoint_specs_rejects_unset_template_param():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike", "profile": "multisensor_t"}
+    with pytest.raises(ConfigError):
+        _expand_endpoint_specs(module, entry, {"node": None}, "dev")
+
+
+def test_expand_endpoint_specs_rejects_unknown_device_profile():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike", "profile": "bogus"}
+    with pytest.raises(ConfigError):
+        _expand_endpoint_specs(module, entry, {}, "dev")
+
+
+def test_expand_endpoint_specs_rejects_unknown_endpoint_profile():
+    module = _profile_module()
+    entry = {"id": "dev", "module": "zwaylike", "endpoints": [{"key": "x", "profile": "bogus"}]}
+    with pytest.raises(ConfigError):
+        _expand_endpoint_specs(module, entry, {}, "dev")
+
+
+def test_expand_endpoint_specs_does_not_mutate_cached_module_profiles():
+    # module.endpoint_profiles/device_profiles are process-global-cached
+    # descriptors (_module_descriptors) -- expanding a profile for one
+    # device must not leave its substituted value behind for the next.
+    module = _profile_module()
+    entry = {"id": "a", "module": "zwaylike", "profile": "multisensor_t"}
+    _expand_endpoint_specs(module, entry, {"node": 11}, "a")
+    assert module.endpoint_profiles["temperature"]["parameters"]["value_id"] == "{node}.0.1"
+    specs = _expand_endpoint_specs(module, entry, {"node": 22}, "b")
+    by_key = {s["key"]: s for s in specs}
+    assert by_key["temp"]["parameters"]["value_id"] == "22.0.1"
+
+
 def test_resolve_interval_module_default_when_no_instance_override():
     module = ModuleDescriptor("m", {"update": "10s"})
     seconds = _resolve_interval(module, {}, {})
@@ -313,7 +440,6 @@ def test_load_system_builds_tree_with_dotted_ids(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
-log: { dest: stdout }
 intervals: { fast: 3s }
 devices:
   - id: living_light
@@ -412,6 +538,152 @@ devices:
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
+
+
+def test_load_system_modules_section_device_scoped_default_used_when_device_omits_it(tmp_path):
+    # zway's base_url is override: required, scope: device -- supplying it
+    # once under modules.zway.params lets every device below omit its own
+    # params: entirely.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    params:
+      base_url: http://192.168.1.1:8083
+devices:
+  - id: light_one
+    module: zway
+  - id: light_two
+    module: zway
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light_one"].params["base_url"] == "http://192.168.1.1:8083"
+    assert system.devices["light_two"].params["base_url"] == "http://192.168.1.1:8083"
+
+
+def test_load_system_modules_section_device_param_overrides_module_default(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    params:
+      base_url: http://192.168.1.1:8083
+devices:
+  - id: light
+    module: zway
+    params: { base_url: "http://other-controller:8083" }
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].params["base_url"] == "http://other-controller:8083"
+
+
+def test_load_system_modules_section_update_sits_between_device_and_module_yaml(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+intervals: { zwave: 30s }
+modules:
+  zway:
+    update: zwave
+    params: { base_url: "http://x:8083" }
+devices:
+  - id: light_default
+    module: zway
+  - id: light_override
+    module: zway
+    update: 5s
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light_default"].update_interval == 30.0
+    assert system.devices["light_override"].update_interval == 5.0
+
+
+def test_load_system_modules_section_update_null_means_never_poll(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    update: null
+    params: { base_url: "http://x:8083" }
+devices:
+  - id: light
+    module: zway
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].update_interval is None
+
+
+def test_load_system_rejects_unknown_key_under_modules_section(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    bogus_key: 1
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_typo_d_module_name_in_modules_section(tmp_path):
+    # A typo'd module NAME under modules: is validated up front, even
+    # though no device below actually uses "zwya" -- rather than being
+    # silently ignored (see load_system's eager modules_config validation
+    # pass, before _build_device is ever called).
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zwya:
+    params: { base_url: "http://x:8083" }
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_unknown_device_entry_key(tmp_path):
+    # A typo'd device-entry key (e.g. "profil" instead of "profile") must
+    # not be silently ignored: devices/zway/device.py documents that a
+    # misconfigured endpoint permanently reports None with no error, so
+    # catching the typo here, at load time, is the only safety net.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: virtual
+    bogus_key: 1
+    endpoints:
+      - key: state
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_unknown_endpoint_entry_key(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: virtual
+    endpoints:
+      - key: state
+        bogus_key: 1
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_merge_endpoints_rejects_unknown_endpoint_entry_key():
+    module = ModuleDescriptor("m", {"endpoints": []})
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [{"key": "state", "bogus_key": 1}], "dev")
 
 
 def test_load_system_sibling_local_ids_do_not_collide(tmp_path):
@@ -1216,17 +1488,23 @@ devices: !include a.yaml
 
 @pytest.fixture
 def _restore_phc_logger_levels():
-    # Some examples set per-module log_levels (e.g. scheduler: DEBUG), and
-    # configure_logging() applies those via logging.Logger.setLevel(), which
-    # is global, process-wide state with no built-in reset -- restore it so
-    # loading these examples doesn't leak into unrelated tests that run
-    # later in the same session (e.g. tests/test_logging_setup.py).
-    snapshot = {name: lg.level for name, lg in logging.Logger.manager.loggerDict.items()
-                if isinstance(lg, logging.Logger) and (name == "phc" or name.startswith("phc."))}
-    snapshot["phc"] = logging.getLogger("phc").level
+    # configure_logging() replaces the "phc" logger's level and handler
+    # list on every call -- global, process-wide state with no built-in
+    # reset -- so loading an example here must not leak into unrelated
+    # tests running later in the same session (e.g.
+    # tests/test_logging_setup.py). Restore both afterward, and close
+    # (rather than just drop) any handler this test's configure_logging()
+    # call installed and the restore is about to discard -- particularly a
+    # FileHandler, which would otherwise leak an open fd.
+    root = logging.getLogger("phc")
+    snapshot_level = root.level
+    snapshot_handlers = list(root.handlers)
     yield
-    for name, level in snapshot.items():
-        logging.getLogger(name).setLevel(level)
+    for handler in root.handlers:
+        if handler not in snapshot_handlers:
+            handler.close()
+    root.setLevel(snapshot_level)
+    root.handlers = snapshot_handlers
 
 
 @pytest.mark.parametrize("example_path", sorted(_EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
