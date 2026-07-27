@@ -320,9 +320,9 @@ def _profile_module():
         "endpoints": [],
         "endpoint_profiles": {
             "temperature": {"type": "float", "unit": "°C",
-                            "parameters": {"command_group": "SensorMultilevel", "value_id": "{node}.0.1"}},
+                            "parameters": {"command_group": "SensorMultilevel", "address": "{node}.0.1"}},
             "battery": {"type": "int", "unit": "%",
-                       "parameters": {"command_group": "Battery", "value_id": "{node}"}},
+                       "parameters": {"command_group": "Battery", "address": "{node}"}},
         },
         "device_profiles": {
             "multisensor_t": [
@@ -344,7 +344,7 @@ def test_module_descriptor_rejects_device_profiles_with_nonempty_endpoints():
 def test_expand_endpoint_specs_is_identity_when_no_profile_anywhere():
     module = _profile_module()
     entry = {"id": "dev", "module": "zwaylike",
-             "endpoints": [{"key": "state", "parameters": {"command_group": "SwitchBinary", "value_id": "7.1"}}]}
+             "endpoints": [{"key": "state", "parameters": {"command_group": "SwitchBinary", "address": "7.1"}}]}
     specs = _expand_endpoint_specs(module, entry, {}, "dev")
     assert specs is entry["endpoints"]
 
@@ -354,8 +354,8 @@ def test_expand_endpoint_specs_device_profile_substitutes_node():
     entry = {"id": "multi_liv", "module": "zwaylike", "profile": "multisensor_t"}
     specs = _expand_endpoint_specs(module, entry, {"node": 11}, "multi_liv")
     by_key = {s["key"]: s for s in specs}
-    assert by_key["temp"]["parameters"] == {"command_group": "SensorMultilevel", "value_id": "11.0.1"}
-    assert by_key["battery"]["parameters"] == {"command_group": "Battery", "value_id": "11"}
+    assert by_key["temp"]["parameters"] == {"command_group": "SensorMultilevel", "address": "11.0.1"}
+    assert by_key["battery"]["parameters"] == {"command_group": "Battery", "address": "11"}
 
 
 def test_expand_endpoint_specs_device_endpoints_overlay_by_key_preserves_command_group():
@@ -364,10 +364,10 @@ def test_expand_endpoint_specs_device_endpoints_overlay_by_key_preserves_command
     # see _overlay_endpoint_spec.
     module = _profile_module()
     entry = {"id": "sirene", "module": "zwaylike", "profile": "multisensor_t",
-             "endpoints": [{"key": "battery", "parameters": {"value_id": "16.0"}}]}
+             "endpoints": [{"key": "battery", "parameters": {"address": "16.0"}}]}
     specs = _expand_endpoint_specs(module, entry, {"node": 16}, "sirene")
     battery = next(s for s in specs if s["key"] == "battery")
-    assert battery["parameters"] == {"command_group": "Battery", "value_id": "16.0"}
+    assert battery["parameters"] == {"command_group": "Battery", "address": "16.0"}
 
 
 def test_expand_endpoint_specs_single_endpoint_profile_without_device_profile():
@@ -375,7 +375,7 @@ def test_expand_endpoint_specs_single_endpoint_profile_without_device_profile():
     entry = {"id": "fus18_meteo", "module": "zwaylike",
              "endpoints": [{"key": "f18_temp", "profile": "temperature"}]}
     specs = _expand_endpoint_specs(module, entry, {"node": 15}, "fus18_meteo")
-    assert specs[0]["parameters"]["value_id"] == "15.0.1"
+    assert specs[0]["parameters"]["address"] == "15.0.1"
 
 
 def test_expand_endpoint_specs_rejects_unset_template_param():
@@ -406,10 +406,10 @@ def test_expand_endpoint_specs_does_not_mutate_cached_module_profiles():
     module = _profile_module()
     entry = {"id": "a", "module": "zwaylike", "profile": "multisensor_t"}
     _expand_endpoint_specs(module, entry, {"node": 11}, "a")
-    assert module.endpoint_profiles["temperature"]["parameters"]["value_id"] == "{node}.0.1"
+    assert module.endpoint_profiles["temperature"]["parameters"]["address"] == "{node}.0.1"
     specs = _expand_endpoint_specs(module, entry, {"node": 22}, "b")
     by_key = {s["key"]: s for s in specs}
-    assert by_key["temp"]["parameters"]["value_id"] == "22.0.1"
+    assert by_key["temp"]["parameters"]["address"] == "22.0.1"
 
 
 def test_resolve_interval_module_default_when_no_instance_override():

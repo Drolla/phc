@@ -50,7 +50,7 @@ def _clear_module_state():
 
 
 def _parse_get_args(path: str) -> list:
-    """Pull the [[group, value_id], ...] argument list out of a
+    """Pull the [[group, address], ...] argument list out of a
     .../JS/Run/Get([...]) request path."""
     expr = urllib.parse.unquote(path.split("/JS/Run/", 1)[1])
     match = re.fullmatch(r"Get\((.*)\)", expr)
@@ -130,19 +130,19 @@ def _serve(*, login_ok: bool = True, get_response=None, get_status: int = 200,
 
 def _switch_endpoints():
     return [Endpoint("state", writable=True,
-                     parameters={"command_group": "SwitchBinary", "value_id": "20.1"})]
+                     parameters={"command_group": "SwitchBinary", "address": "20.1"})]
 
 
 def _sensor_endpoints():
     return [
-        Endpoint("state", parameters={"command_group": "SensorBinary", "value_id": "26"}),
-        Endpoint("battery", parameters={"command_group": "Battery", "value_id": "26.0"}),
+        Endpoint("state", parameters={"command_group": "SensorBinary", "address": "26"}),
+        Endpoint("battery", parameters={"command_group": "Battery", "address": "26.0"}),
     ]
 
 
 def _tagreader_endpoints():
     return [Endpoint("state", parameters={
-        "command_group": "TagReader", "value_id": "22", "node_id": "22"})]
+        "command_group": "TagReader", "address": "22", "node_id": "22"})]
 
 
 def _device(base_url, device_id="dev", endpoints=None, **params):
@@ -184,9 +184,9 @@ def test_zway_batches_three_sibling_devices_into_one_get():
 
 def test_zway_response_order_maps_back_to_identifiers():
     def responder(idents):
-        # Echo each identifier's value_id as a number, proving positional
+        # Echo each identifier's address as a number, proving positional
         # decode uses the actual request order, not declaration order.
-        return [float(value_id) for _group, value_id in idents]
+        return [float(address) for _group, address in idents]
 
     server, base_url = _serve(get_response=responder)
     try:

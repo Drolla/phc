@@ -6,7 +6,7 @@ description: >
   Define whatever endpoints one node needs (e.g. a switch's `state`, a
   sensor's `battery`); every endpoint must set its own `parameters`:
   `command_group` (one of SwitchBinary, SwitchMultilevel, SwitchMultiBinary,
-  SensorBinary, SensorMultilevel, Battery, TagReader) and `value_id` (an
+  SensorBinary, SensorMultilevel, Battery, TagReader) and `address` (an
   opaque zWay "node.instance[.datarecord]" identifier string, e.g. "20.1" or
   "11.0.1" -- passed through verbatim, never parsed by PHC). A TagReader
   endpoint additionally needs `node_id`, used for a one-time setup call
@@ -18,7 +18,7 @@ description: >
   common case where one node's endpoints all derive from the same node
   number (e.g. node 11's temperature is "11.0.1", its humidity "11.0.5",
   its battery "11") -- set `node:` in the device's `params` and `profile:`
-  on the device (or on one endpoint) instead of writing each `value_id` out
+  on the device (or on one endpoint) instead of writing each `address` out
   by hand. Writing endpoints fully explicitly, without `profile:` anywhere,
   keeps working exactly as before; the two styles can also mix on one
   device (e.g. a device profile for temp/humidity/battery, plus one
@@ -68,34 +68,34 @@ parameters:
       This node's zWay node number (e.g. 11), used only to fill in
       `{node}` templates in endpoint_profiles/device_profiles below --
       PHC never uses it for anything else. Irrelevant for a device that
-      writes its endpoints' `value_id`s out fully explicitly.
+      writes its endpoints' `address`es out fully explicitly.
 
 endpoints: []
 
 # A profile entry is a full endpoint spec, the same shape written by hand
 # (see the description above), with `{node}` templates in `parameters:`
 # values filled in from the device's own `node` param. `switch` carries no
-# value_id -- a switch's channel (e.g. the ".1" in "7.1") has no safe
+# address -- a switch's channel (e.g. the ".1" in "7.1") has no safe
 # default (channel 0 is real, so it can't be inferred from an unset
 # param), so a device using it must still supply its own
-# `parameters: { value_id: "7.1" }`.
+# `parameters: { address: "7.1" }`.
 endpoint_profiles:
   temperature:
     type: float
     unit: "°C"
-    parameters: { command_group: SensorMultilevel, value_id: "{node}.0.1" }
+    parameters: { command_group: SensorMultilevel, address: "{node}.0.1" }
   humidity:
     type: float
     unit: "%"
-    parameters: { command_group: SensorMultilevel, value_id: "{node}.0.5" }
+    parameters: { command_group: SensorMultilevel, address: "{node}.0.5" }
   battery:
     type: int
     unit: "%"
-    parameters: { command_group: Battery, value_id: "{node}" }
+    parameters: { command_group: Battery, address: "{node}" }
   motion:
     type: int
     values: { 0: "clear", 1: "motion" }
-    parameters: { command_group: SensorBinary, value_id: "{node}" }
+    parameters: { command_group: SensorBinary, address: "{node}" }
   switch:
     type: int
     writable: true

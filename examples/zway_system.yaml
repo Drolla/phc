@@ -35,14 +35,14 @@ devices:
   # A single endpoint using zway's `switch` endpoint profile (see
   # devices/zway/module.yaml) instead of writing out type/values/writable/
   # command_group by hand -- a switch's channel has no safe default, so
-  # value_id is still supplied explicitly.
+  # address is still supplied explicitly.
   - id: light_corridor
     module: zway
     name: Corridor Light
     endpoints:
       - key: state
         profile: switch
-        parameters: { value_id: "7.1" }
+        parameters: { address: "7.1" }
 
   # A whole device built from zway's motion_sensor device_profile: node: 12
   # fills in both endpoints' {node} templates (state -> "12", battery ->
@@ -62,7 +62,7 @@ devices:
     name: Front Door Tag Reader
     endpoints:
       - key: state
-        parameters: { command_group: TagReader, value_id: "22", node_id: "22" }
+        parameters: { command_group: TagReader, address: "22", node_id: "22" }
 
 tasks:
   - tag: garage_motion_light
