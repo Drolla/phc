@@ -39,6 +39,11 @@ through unchanged. An endpoint definition may opt into:
 - `min`/`max` — a numeric range hint, stored only (never enforced against
   a write) — e.g. used by [`extensions/web_ui/`](extensions/web_ui/) to
   decide whether a writable numeric endpoint gets a bounded slider.
+- `format` — a Python format-spec string (e.g. `".2f"`) applied by
+  `to_text()`. Defaults to `".1f"` for a `float` endpoint, since `str()` on
+  a raw float otherwise shows however many digits happen to round-trip
+  (e.g. `3.140000000000001`); set `format: ""` to opt back into full,
+  unrounded precision. Other `type`s default to no formatting.
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw

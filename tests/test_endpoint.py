@@ -156,6 +156,64 @@ def test_int_from_text_coerces():
     assert ep.from_text("42") == 42
 
 
+# ---------- format ----------
+
+def test_float_format_defaults_to_one_decimal():
+    ep = Endpoint("temperature", value_type="float")
+    assert ep.format == ".1f"
+    ep.set(3.140000000000001)
+    ep.update_state()
+    assert ep.to_text() == "3.1"
+
+
+def test_float_format_rounds_rather_than_truncates():
+    ep = Endpoint("temperature", value_type="float")
+    ep.set(3.98)
+    ep.update_state()
+    assert ep.to_text() == "4.0"
+
+
+def test_non_float_value_types_default_to_no_format():
+    assert Endpoint("count", value_type="int").format is None
+    assert Endpoint("flag", value_type="bool").format is None
+    assert Endpoint("state").format is None
+
+
+def test_explicit_format_overrides_float_default():
+    ep = Endpoint("temperature", value_type="float", format=".2f")
+    ep.set(3.14159)
+    ep.update_state()
+    assert ep.to_text() == "3.14"
+
+
+def test_empty_string_format_opts_out_of_rounding():
+    ep = Endpoint("temperature", value_type="float", format="")
+    ep.set(3.14159)
+    ep.update_state()
+    assert ep.to_text() == "3.14159"
+
+
+def test_format_applies_before_unit_is_appended():
+    ep = Endpoint("temperature", value_type="float", unit="°C")
+    ep.set(23.449)
+    ep.update_state()
+    assert ep.to_text() == "23.4 °C"
+
+
+def test_formatted_text_round_trips_through_from_text():
+    ep = Endpoint("temperature", value_type="float", unit="°C")
+    ep.set(23.449)
+    ep.update_state()
+    assert ep.from_text(ep.to_text()) == 23.4
+
+
+def test_explicit_int_format_applies():
+    ep = Endpoint("count", value_type="int", format="04d")
+    ep.set(7)
+    ep.update_state()
+    assert ep.to_text() == "0007"
+
+
 def test_bool_to_text_and_from_text():
     ep = Endpoint("flag", value_type="bool")
     ep.set(True)

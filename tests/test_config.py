@@ -278,6 +278,22 @@ def test_merge_endpoints_parses_type_unit_values():
     assert endpoints[0].values == {0: "off", 1: "on"}
 
 
+def test_merge_endpoints_passes_through_explicit_format():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temperature", "type": "float", "format": ".2f"}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {})
+    assert endpoints[0].format == ".2f"
+
+
+def test_merge_endpoints_float_endpoint_defaults_format_to_one_decimal():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temperature", "type": "float"}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {})
+    assert endpoints[0].format == ".1f"
+
+
 def test_merge_endpoints_rejects_invalid_type():
     module = ModuleDescriptor("m", {
         "endpoints": [{"key": "state", "type": "bogus"}],

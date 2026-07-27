@@ -34,10 +34,15 @@ class Endpoint:
     ("int", "float", "bool", or "str") opts an endpoint into the standard
     to_text()/from_text() formatting mechanism below, optionally combined
     with `unit` (a display unit, e.g. "°C"), `values` (a raw value -> text
-    label mapping, e.g. {0: "off", 1: "on"}), and/or `min`/`max` (a generic
-    numeric range hint, e.g. for a UI to render a bounded slider) -- like
+    label mapping, e.g. {0: "off", 1: "on"}), `min`/`max` (a generic numeric
+    range hint, e.g. for a UI to render a bounded slider) -- like
     `unit`/`values`, `min`/`max` are stored only, never enforced against
-    set()/from_text()."""
+    set()/from_text() -- and/or `format` (a Python format-spec string, e.g.
+    ".2f", applied by to_text()). `format` defaults to ".1f" for a `float`
+    endpoint (str() on a raw float otherwise shows however many digits
+    happen to round-trip, e.g. 3.140000000000001) -- pass format="" to opt
+    back into full, unrounded precision; other value_types default to no
+    formatting (str(value))."""
 
     kind: str = "generic"
 
@@ -45,7 +50,8 @@ class Endpoint:
                  params: dict | None = None, description: str = "",
                  value_type: str | None = None, unit: str | None = None,
                  values: dict | None = None, log_aggregation: str = "max",
-                 min: float | int | None = None, max: float | int | None = None):
+                 min: float | int | None = None, max: float | int | None = None,
+                 format: str | None = None):
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ValueError(f"endpoint {key!r}: invalid type {value_type!r}, "
                               f"expected one of {VALUE_TYPES}")
@@ -68,6 +74,7 @@ class Endpoint:
         self.log_aggregation = log_aggregation
         self.min = min
         self.max = max
+        self.format = format if format is not None else (".1f" if value_type == "float" else None)
 
         self._next_state = None
         self._state = None
@@ -150,8 +157,9 @@ class Endpoint:
 
     def to_text(self, value=_UNSET) -> str:
         """Format `value` (defaults to the current state) as display text,
-        per this endpoint's declared `values` mapping/`unit`/`value_type`
-        (see class docstring). The standard counterpart to from_text()."""
+        per this endpoint's declared `values` mapping/`unit`/`value_type`/
+        `format` (see class docstring). The standard counterpart to
+        from_text()."""
         if value is _UNSET:
             value = self.get()
         if value is None:
@@ -160,6 +168,8 @@ class Endpoint:
             return str(self.values[value])
         if self.value_type == "bool":
             text = "true" if value else "false"
+        elif self.format:
+            text = format(value, self.format)
         else:
             text = str(value)
         if self.unit and self.value_type in ("int", "float"):
@@ -170,7 +180,9 @@ class Endpoint:
         """Parse `text` (typically display text, but an already-raw value --
         e.g. a YAML-native 1 or "on" -- is also accepted) back into this
         endpoint's raw value, per its declared `values` mapping/`unit`/
-        `value_type`. The standard counterpart to to_text()."""
+        `value_type`. The standard counterpart to to_text() -- `int(s)`/
+        `float(s)` already parse the fixed-precision text a `format` like
+        ".1f" produces, so no separate un-formatting step is needed here."""
         if self.values is not None:
             for raw, label in self.values.items():
                 if raw == text or str(label).strip().lower() == str(text).strip().lower():
