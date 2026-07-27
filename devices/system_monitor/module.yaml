@@ -1,0 +1,87 @@
+description: >
+  Local computer performance monitoring: CPU load, memory use, network and
+  disk throughput, disk usage, CPU temperature, and uptime for the machine
+  phc itself runs on. Works on Windows and Linux (including Raspberry Pi);
+  endpoints with no available data source on the current platform (e.g.
+  CPU temperature without OpenHardwareMonitor on Windows) report null.
+
+update: "10s"
+
+parameters:
+  - name: disk_path
+    override: allowed
+    default: ""
+    description: >
+      Filesystem path/drive whose usage disk_usage_percent reports (e.g.
+      "/" on Linux, "D:\\" on Windows). Empty (default) auto-selects "/" on
+      Linux and the system drive on Windows.
+
+endpoints:
+  - key: cpu_percent
+    readable: true
+    writable: false
+    type: float
+    unit: "%"
+    description: Overall CPU utilization, percent, averaged since the last poll.
+  - key: memory_percent
+    readable: true
+    writable: false
+    type: float
+    unit: "%"
+    description: Physical memory (RAM) currently in use, percent.
+  - key: network_rx_rate
+    readable: true
+    writable: false
+    type: float
+    unit: "B/s"
+    description: >
+      Inbound network throughput averaged since the last poll,
+      bytes/second, summed across all interfaces.
+  - key: network_tx_rate
+    readable: true
+    writable: false
+    type: float
+    unit: "B/s"
+    description: >
+      Outbound network throughput averaged since the last poll,
+      bytes/second, summed across all interfaces.
+  - key: disk_usage_percent
+    readable: true
+    writable: false
+    type: float
+    unit: "%"
+    description: Used space on `disk_path`, percent.
+  - key: disk_read_rate
+    readable: true
+    writable: false
+    type: float
+    unit: "B/s"
+    description: >
+      Disk read throughput averaged since the last poll, bytes/second
+      (null if the platform exposes no disk I/O counters).
+  - key: disk_write_rate
+    readable: true
+    writable: false
+    type: float
+    unit: "B/s"
+    description: >
+      Disk write throughput averaged since the last poll, bytes/second
+      (null if the platform exposes no disk I/O counters).
+  - key: cpu_temperature
+    readable: true
+    writable: false
+    type: float
+    unit: "°C"
+    description: >
+      CPU temperature. On Linux, read via psutil.sensors_temperatures()
+      (works on Raspberry Pi's cpu_thermal sensor and x86 coretemp). On
+      Windows, read via OpenHardwareMonitor's WMI namespace
+      (root\OpenHardwareMonitor) -- requires OpenHardwareMonitor or
+      LibreHardwareMonitor running with administrator rights; null if
+      unavailable.
+  - key: uptime_seconds
+    readable: true
+    writable: false
+    type: float
+    unit: s
+    description: Seconds since the machine last booted.
