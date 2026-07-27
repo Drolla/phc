@@ -1,0 +1,358 @@
+# Demonstrates a complete PHC system tying together every device module and
+# extension in this repo, in one self-contained file. Run with:
+#   python phc.py --config examples/full_house_system.yaml
+# then open http://127.0.0.1:8080/ in a browser.
+#
+# This is the single-file, fictional-devices counterpart to fusion18/ (this
+# project's real home automation config, split across several per-module
+# files and gitignored for privacy -- see fusion18/README.md). Ties
+# together:
+#   - zway            -- physical Z-Wave devices behind a Razberry/zWay
+#                         controller (corridor_light/hallway_motion/
+#                         front_door_tag below share one controller, so
+#                         their status reads coalesce into a single fetch --
+#                         see examples/zway_system.yaml)
+#   - waveplus_bridge -- an Airthings Wave Plus air-quality sensor
+#   - meteoswiss      -- an outdoor MeteoSwiss weather station
+#   - sun             -- sun position, feeding random_light's sunset/sunrise
+#                         windows below
+#   - virtual         -- the surveillance control/siren/lights, with no real
+#                         hardware behind them (mirrors
+#                         examples/surveillance_system.yaml)
+#   - logdb + web_ui  -- history logging and the pages/graphs that display it
+#   - mail_alert + random_light -- an intrusion alert and randomized lighting
+#     while armed
+# See each module/extension's own example file for a narrower walkthrough
+# with more commentary on that piece alone.
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+intervals:
+  zwave: 30s
+  weather: 10m
+  radon: 1m
+
+modules:
+  meteoswiss:
+    params:
+      cache_time: 5m
+  # Every zway device below shares one controller, so its connection
+  # params and update interval are set once here rather than repeated on
+  # each device -- see examples/zway_system.yaml for the same pattern.
+  zway:
+    update: zwave
+    params: !include common/zway_controller_params.yaml
+
+devices:
+  - id: house
+    module: host
+    name: House
+    children:
+      - id: corridor_light
+        module: zway
+        name: Corridor Light
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "off", 255: "on" }
+            parameters: { command_group: SwitchBinary, address: "7.1" }
+
+      - id: hallway_motion
+        module: zway
+        name: Hallway Motion Sensor
+        endpoints:
+          - key: state
+            type: int
+            values: { 0: "clear", 1: "motion" }
+            parameters: { command_group: SensorBinary, address: "12" }
+          - key: battery
+            type: int
+            unit: "%"
+            parameters: { command_group: Battery, address: "12.0" }
+
+      - id: front_door_tag
+        module: zway
+        name: Front Door Tag Reader
+        endpoints:
+          - key: state
+            parameters: { command_group: TagReader, address: "22", node_id: "22" }
+
+      - id: cellar_air
+        module: waveplus_bridge
+        name: Cellar Air Quality
+        update: radon
+        params:
+          base_url: http://192.168.1.26:80/data
+          sensor_id: cellar
+          cache_time: 60s
+          data_validity_time: 5m
+
+      # Virtual stand-ins for the surveillance job set -- see
+      # examples/surveillance_system.yaml for the full arm/disarm/alarm
+      # walkthrough this mirrors. No `default:` on surveillance/armed (like
+      # that example): a seeded default would commit a spurious change
+      # event at config-load time that the `changed`-gated tasks below would
+      # otherwise react to on the very first tick.
+      - id: surveillance
+        module: virtual
+        name: Surveillance control
+        update: 2s
+        endpoints:
+          - key: armed
+            writable: true
+            type: int
+            values: { 0: "disarmed", 1: "armed" }
+
+      - id: siren
+        module: virtual
+        name: Siren
+        update: 2s
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+
+      - id: porch_light
+        module: virtual
+        name: Porch Light
+        update: 2s
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+
+      - id: alarm
+        module: virtual
+        name: Alarm active flag
+        update: 2s
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "clear", 1: "active" }
+            default: 0
+
+  - id: weather
+    module: host
+    name: Weather
+    children:
+      - id: bern
+        module: meteoswiss
+        name: Bern Weather
+        update: weather
+        params:
+          station: BER
+
+  - id: sun
+    module: sun
+    name: Sun
+    update: 1h
+    params:
+      latitude: 47.3769
+      longitude: 8.5417
+      timezone: Europe/Zurich
+
+extensions:
+  mail_alert:
+    house:
+      smtp_host: "smtp.example.com"
+      username: "alerts@example.com"
+      password: "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
+      from: "alerts@example.com"
+      to:
+        - "someone@example.com"
+        - "15555550123@sms.example.com"
+
+  random_light:
+    house:
+      enable_ref: "house.surveillance.armed"
+      pause_ref: "house.alarm.state"
+      lights:
+        # corridor_light inherits this instance's own default windows
+        # (sunset-relative evening cutoff, sunrise-relative morning start).
+        - device: "house.corridor_light.state"
+          default: true
+        # porch_light overrides all three per-light instead.
+        - device: "house.porch_light.state"
+          windows:
+            - { start: "20:00", end: "23:00" }
+          min_interval: 25m
+          probability_on: 0.3
+
+  logdb:
+    full_history:
+      selectors: ["house.*/*", "weather.*/*", "sun/*"]
+      csv_path: "logs/full_house_history.csv"
+      max_records: 100000
+      full_vector_interval: 100
+
+  web_ui:
+    home:
+      host: 0.0.0.0
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: home
+          title: Home
+          sections:
+            - id: security
+              title: Security
+              collapsed: false
+              selectors:
+                - "house.surveillance/*"
+                - "house.alarm/*"
+                - "house.hallway_motion/state"
+                - "house.siren/*"
+                - "house.front_door_tag/*"
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["house.corridor_light/*", "house.porch_light/*"]
+            - id: battery
+              title: Battery
+              collapsed: true
+              selectors: ["house.*/battery"]
+
+        - id: environment
+          title: Environment
+          sections:
+            - id: air_quality
+              title: Air Quality
+              collapsed: false
+              selectors: ["house.cellar_air/*"]
+            - id: weather
+              title: Weather
+              collapsed: false
+              selectors: ["weather.*/*"]
+            - id: sun
+              title: Sun
+              collapsed: true
+              selectors: ["sun/*"]
+
+        - id: history
+          title: History
+          sections:
+            - id: history_charts
+              title: History
+              collapsed: false
+              panels:
+                - kind: graph
+                  id: security_history
+                  logdb_instance: "logdb.full_history"
+                  title: "Security & Lights"
+                  selectors:
+                    - "house.surveillance/*"
+                    - "house.alarm/*"
+                    - "house.corridor_light/state"
+                    - "house.porch_light/state"
+                    - "house.siren/state"
+                  window: 24h
+                  decimation:
+                    - { older_than: 25h, factor: 3 }
+                    - { older_than: 8D, factor: 8 }
+                - kind: graph
+                  id: environment_history
+                  logdb_instance: "logdb.full_history"
+                  title: "Temperature & Radon"
+                  selectors: ["weather.*/temperature", "house.cellar_air/radon_st"]
+                  window: 24h
+                  decimation:
+                    - { older_than: 25h, factor: 3 }
+                    - { older_than: 8D, factor: 8 }
+
+tasks:
+  - tag: log_full_history
+    description: "Sample the whole system's state for the web UI's history graphs"
+    time: +5s
+    repeat: 1m
+    action: { kind: log_db, instance: "logdb.full_history" }
+
+  - tag: report_low_battery
+    description: "Log the hallway motion sensor's battery level whenever it changes"
+    condition: { device: "house.hallway_motion.battery", changed: true }
+    action: { kind: log, device: "house.hallway_motion", message: "hallway motion sensor battery changed to {text}" }
+
+  - tag: report_bern_temperature
+    description: "Log whenever the Bern temperature reading changes"
+    condition: { device: "weather.bern.temperature", changed: true }
+    action: { kind: log, device: "weather.bern", message: "Bern temperature changed to {state}" }
+
+  - tag: surveillance_enable
+    description: "Arming resets the alarm flag and forces lights off before random control takes over"
+    condition:
+      refs: { armed: "house.surveillance.armed" }
+      expr: "armed.changed and armed.state == 1"
+    actions:
+      - kind: script
+        code: |
+          log('surveillance enabled')
+          set_state('house.alarm.state', 0)
+      - kind: random_light
+        instance: "random_light.house"
+        force: 0
+
+  - tag: surveillance_disable
+    description: "Disarming clears the siren/lights and cancels pending follow-ups"
+    condition:
+      expr: "changed('house.surveillance.armed') and state('house.surveillance.armed') == 0"
+    actions:
+      - kind: script
+        code: |
+          log('surveillance disabled')
+          set_state('house.siren.state', 0)
+          set_state('house.corridor_light.state', 0)
+          set_state('house.alarm.state', 0)
+          kill_task('surv_*')
+      - kind: random_light
+        instance: "random_light.house"
+        force: 0
+
+  - tag: surveillance_random_light
+    description: "While armed and not alarmed, randomize the corridor/porch lights"
+    time: +5s
+    repeat: 1m
+    action: { kind: random_light, instance: "random_light.house" }
+
+  - tag: surveillance_intrusion
+    description: "Motion while armed raises the alarm, at most once per 5 minutes"
+    condition:
+      refs: { armed: "house.surveillance.armed", motion: "house.hallway_motion.state" }
+      expr: "armed.state == 1 and motion.changed and motion.state == 1"
+    min_interval: 5m
+    actions:
+      - kind: script
+        code: |
+          log('intrusion detected')
+          set_state('house.alarm.state', 1)
+          set_state('house.siren.state', 1)
+          create_task({
+              'tag': 'surv_siren_off',
+              'time': '+3m',
+              'action': { 'kind': 'set', 'device': 'house.siren.state', 'value': 0 },
+          })
+          create_task({
+              'tag': 'surv_light_off',
+              'time': '+45m',
+              'actions': [
+                  { 'kind': 'set', 'device': 'house.corridor_light.state', 'value': 0 },
+                  { 'kind': 'set', 'device': 'house.alarm.state', 'value': 0 },
+                  { 'kind': 'random_light', 'instance': 'random_light.house', 'force': 0 },
+              ],
+          })
+      - kind: random_light
+        instance: "random_light.house"
+        force: 1
+      - kind: mail_alert
+        instance: "mail_alert.house"
+        title: "Surveillance - Intrusion Alert"
+        message: "Motion detected while armed"

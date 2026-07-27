@@ -13,7 +13,7 @@ from core.intervals import parse_duration
 from core.registry import register_module
 
 # Every ZWayDevice instance registers its own endpoints' (command_group,
-# value_id) identifiers here, keyed by base_url, during setup() -- since
+# address) identifiers here, keyed by base_url, during setup() -- since
 # core/config.py::load_system() fully constructs (and setup()s) every device
 # before the Scheduler is ever created/ticked, this registry is guaranteed
 # complete before the first fetch. The shared per-base_url fetch below then
@@ -25,7 +25,7 @@ from core.registry import register_module
 # cache-by-connection idea as devices/waveplus_bridge's _response_cache,
 # extended since here the "request" is itself parameterized by which
 # devices exist, not a fixed URL.
-_identifiers: dict[str, dict[tuple[str, str], None]] = {}   # base_url -> ordered set of (group, value_id)
+_identifiers: dict[str, dict[tuple[str, str], None]] = {}   # base_url -> ordered set of (group, address)
 _response_cache: dict[str, tuple[float, dict, int]] = {}    # base_url -> (fetched_at, {ident: value}, n_idents)
 _response_cache_lock = asyncio.Lock()
 # Session cookie only, not a long-lived aiohttp.ClientSession -- see
@@ -43,11 +43,12 @@ class ZWayDevice(Device):
     (https://github.com/Drolla/thc/tree/master/modules/thc_zWay -- install
     thc_zWay.js on the zWay server yourself, PHC does not push it). Each
     endpoint's `parameters` name the zWay identifier it maps to:
-    `command_group` (one of SwitchBinary/SwitchMultilevel/SensorBinary/
-    SensorMultilevel/Battery/TagReader) and `value_id` (an opaque
-    "node.instance[.datarecord]" string, passed through verbatim -- PHC never
-    parses its internal structure). A TagReader endpoint additionally needs
-    `node_id`, used for the one-time Configure_TagReader call.
+    `command_group` (one of SwitchBinary/SwitchMultilevel/SwitchMultiBinary/
+    SensorBinary/SensorMultilevel/Battery/TagReader) and `address` (an
+    opaque "node.instance[.datarecord]" string, passed through verbatim --
+    PHC never parses its internal structure). A TagReader endpoint
+    additionally needs `node_id`, used for the one-time Configure_TagReader
+    call.
 
     Devices sharing one `base_url` share one cached Get() response per
     cache_time (see _identifiers/_response_cache above), so their reads
@@ -59,7 +60,7 @@ class ZWayDevice(Device):
 
     def setup(self):
         """Read this device's resolved params, then register its own
-        readable endpoints' (command_group, value_id) identifiers into the
+        readable endpoints' (command_group, address) identifiers into the
         shared per-base_url registry. Sync/no I/O -- safe because every
         device's setup() runs to completion before the Scheduler exists (see
         core.config.load_system())."""
@@ -72,16 +73,16 @@ class ZWayDevice(Device):
         self._cache_time = parse_duration(self.params.get("cache_time", "30s"))
         self._request_timeout = parse_duration(self.params.get("request_timeout", "10s"))
 
-        self._idents: dict[str, tuple[str, str]] = {}   # endpoint_key -> (command_group, value_id)
+        self._idents: dict[str, tuple[str, str]] = {}   # endpoint_key -> (command_group, address)
         self._tag_reader_nodes: dict[str, str] = {}      # endpoint_key -> node_id
 
         registry = _identifiers.setdefault(self._base_url, {})
         for key, ep in self.endpoints.items():
             command_group = ep.parameters.get("command_group")
-            value_id = ep.parameters.get("value_id")
-            if command_group is None or value_id is None:
+            address = ep.parameters.get("address")
+            if command_group is None or address is None:
                 continue   # misconfigured endpoint -- permanently reports None, never raises
-            ident = (command_group, str(value_id))
+            ident = (command_group, str(address))
             self._idents[key] = ident
             if ep.readable:
                 registry[ident] = None
@@ -114,8 +115,8 @@ class ZWayDevice(Device):
             ident = self._idents.get(key)
             if ident is None:
                 continue
-            command_group, value_id = ident
-            expr = f'Set([["{command_group}","{value_id}"]],{json.dumps(value)})'
+            command_group, address = ident
+            expr = f'Set([["{command_group}","{address}"]],{json.dumps(value)})'
             try:
                 await self._js_run(expr)
             except (aiohttp.ClientError, asyncio.TimeoutError):
@@ -154,7 +155,7 @@ class ZWayDevice(Device):
         return {identifier: raw_value}. Raises ValueError if the response
         isn't a same-length JSON array -- treated as a total failure (no
         partial trust) by _get_values()'s caller."""
-        args = json.dumps([[group, value_id] for group, value_id in idents], separators=(",", ":"))
+        args = json.dumps([[group, address] for group, address in idents], separators=(",", ":"))
         raw = await self._js_run(f"Get({args})")
         if not isinstance(raw, list) or len(raw) != len(idents):
             raise ValueError(f"zway: malformed/short Get() response for {self._base_url}")
