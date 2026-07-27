@@ -11,9 +11,9 @@
 
 heartbeat: 1s
 log:
-  dest: stdout
-log_levels:
-  default: INFO
+  - dest: stdout
+    levels:
+      default: INFO
 intervals:
   system_metrics: 10s
 
