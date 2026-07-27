@@ -223,12 +223,12 @@ devices:
         writable: true
         type: int
         values: { 0: "off", 255: "on" }
-        parameters: { command_group: SwitchBinary, value_id: "7.1" }
+        parameters: { command_group: SwitchBinary, address: "7.1" }
 ```
 
 `command_group` is one of `SwitchBinary`, `SwitchMultilevel`,
 `SwitchMultiBinary`, `SensorBinary`, `SensorMultilevel`, `Battery`, or
-`TagReader`; `value_id` is an opaque zWay `"node.instance[.datarecord]"`
+`TagReader`; `address` is an opaque zWay `"node.instance[.datarecord]"`
 identifier, passed through verbatim. A `TagReader` endpoint additionally
 needs `node_id`, used for a one-time setup call the first time that device
 is polled. `devices/zway/module.yaml` also ships an endpoint/device
@@ -511,9 +511,9 @@ resolved `params`; a `device_profiles` entry is a named list of
 # devices/zway/module.yaml
 endpoint_profiles:
   temperature: { type: float, unit: "°C",
-                 parameters: { command_group: SensorMultilevel, value_id: "{node}.0.1" } }
+                 parameters: { command_group: SensorMultilevel, address: "{node}.0.1" } }
   battery:     { type: int, unit: "%",
-                 parameters: { command_group: Battery, value_id: "{node}" } }
+                 parameters: { command_group: Battery, address: "{node}" } }
 device_profiles:
   multisensor_t: [ { key: temp, profile: temperature }, { key: battery, profile: battery } ]
 ```
@@ -534,7 +534,7 @@ devices:
 
 A device's own `endpoints:` overlays whatever its `profile:` provided, by
 `key` — deep-merging just `parameters:`, so tweaking one templated value
-(e.g. a node whose `value_id` doesn't follow the usual pattern) doesn't
+(e.g. a node whose `address` doesn't follow the usual pattern) doesn't
 silently drop a sibling parameter. Writing an endpoint out fully
 explicitly, with no `profile:` anywhere on the device, keeps working
 exactly as before — profiles are a shortcut, not a replacement for the
