@@ -7,7 +7,7 @@ import pytest
 
 from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _load_extensions,
                           _merge_endpoints, _merge_extension_params, _merge_params,
-                          _resolve_interval, _resolve_module_params, load_system)
+                          _resolve_interval, _resolve_module_config, load_system)
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -98,46 +98,46 @@ def test_merge_params_module_scope_rejects_device_level_value():
         _merge_params(module, {"cache_time": "1m"}, "dev", resolved_module_params={"cache_time": "5m"})
 
 
-def test_resolve_module_params_uses_default_when_absent():
+def test_resolve_module_config_uses_default_when_absent():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "cache_time", "override": "allowed", "scope": "module", "default": "10m"},
         ]
     })
-    assert _resolve_module_params(module, {}) == {"cache_time": "10m"}
+    assert _resolve_module_config(module, {}).module_params == {"cache_time": "10m"}
 
 
-def test_resolve_module_params_supplied_value_used():
+def test_resolve_module_config_supplied_value_used():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "cache_time", "override": "allowed", "scope": "module", "default": "10m"},
         ]
     })
     modules_config = {"m": {"params": {"cache_time": "5m"}}}
-    assert _resolve_module_params(module, modules_config) == {"cache_time": "5m"}
+    assert _resolve_module_config(module, modules_config).module_params == {"cache_time": "5m"}
 
 
-def test_resolve_module_params_required_missing_raises():
+def test_resolve_module_config_required_missing_raises():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "region", "override": "required", "scope": "module"},
         ]
     })
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, {})
+        _resolve_module_config(module, {})
 
 
-def test_resolve_module_params_required_supplied_ok():
+def test_resolve_module_config_required_supplied_ok():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "region", "override": "required", "scope": "module"},
         ]
     })
     modules_config = {"m": {"params": {"region": "CH"}}}
-    assert _resolve_module_params(module, modules_config) == {"region": "CH"}
+    assert _resolve_module_config(module, modules_config).module_params == {"region": "CH"}
 
 
-def test_resolve_module_params_none_override_rejects_supplied_value():
+def test_resolve_module_config_none_override_rejects_supplied_value():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "data_url", "override": "none", "scope": "module", "default": "http://x"},
@@ -145,34 +145,62 @@ def test_resolve_module_params_none_override_rejects_supplied_value():
     })
     modules_config = {"m": {"params": {"data_url": "http://evil"}}}
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, modules_config)
+        _resolve_module_config(module, modules_config)
 
 
-def test_resolve_module_params_unknown_param_raises():
+def test_resolve_module_config_unknown_param_raises():
     module = ModuleDescriptor("m", {"parameters": []})
     modules_config = {"m": {"params": {"bogus": 1}}}
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, modules_config)
+        _resolve_module_config(module, modules_config)
 
 
-def test_resolve_module_params_rejects_device_scope_param_set_at_module_level():
+def test_resolve_module_config_device_scope_param_becomes_default():
+    # Inverted from the old scheme: a device-scoped param set under
+    # modules.<name>.params is no longer rejected -- it becomes a per-module
+    # default (device_param_defaults), still overridable per device.
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "station", "override": "allowed", "scope": "device", "default": "BER"},
         ]
     })
     modules_config = {"m": {"params": {"station": "ZRH"}}}
+    config = _resolve_module_config(module, modules_config)
+    assert config.module_params == {}
+    assert config.device_param_defaults == {"station": "ZRH"}
+
+
+def test_resolve_module_config_device_scope_none_override_still_rejects_module_level_value():
+    module = ModuleDescriptor("m", {
+        "parameters": [
+            {"name": "station", "override": "none", "scope": "device", "default": "BER"},
+        ]
+    })
+    modules_config = {"m": {"params": {"station": "ZRH"}}}
     with pytest.raises(ConfigError):
-        _resolve_module_params(module, modules_config)
+        _resolve_module_config(module, modules_config)
 
 
-def test_resolve_module_params_ignores_unrelated_modules_config_when_no_module_scope_params():
+def test_resolve_module_config_device_scope_required_satisfied_by_module_level_value():
+    module = ModuleDescriptor("m", {
+        "parameters": [
+            {"name": "base_url", "override": "required", "scope": "device"},
+        ]
+    })
+    modules_config = {"m": {"params": {"base_url": "http://host"}}}
+    config = _resolve_module_config(module, modules_config)
+    assert config.device_param_defaults == {"base_url": "http://host"}
+
+
+def test_resolve_module_config_ignores_unrelated_modules_config_when_no_module_scope_params():
     module = ModuleDescriptor("m", {
         "parameters": [
             {"name": "station", "override": "required", "scope": "device"},
         ]
     })
-    assert _resolve_module_params(module, {"other": {"params": {"x": 1}}}) == {}
+    config = _resolve_module_config(module, {"other": {"params": {"x": 1}}})
+    assert config.module_params == {}
+    assert config.device_param_defaults == {}
 
 
 def test_merge_endpoints_defaults_log_aggregation_to_max():
@@ -409,6 +437,112 @@ devices:
   - id: meteo-bern
     module: meteoswiss
     params: { station: BER }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_modules_section_device_scoped_default_used_when_device_omits_it(tmp_path):
+    # zway's base_url is override: required, scope: device -- supplying it
+    # once under modules.zway.params lets every device below omit its own
+    # params: entirely.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    params:
+      base_url: http://192.168.1.1:8083
+devices:
+  - id: light_one
+    module: zway
+  - id: light_two
+    module: zway
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light_one"].params["base_url"] == "http://192.168.1.1:8083"
+    assert system.devices["light_two"].params["base_url"] == "http://192.168.1.1:8083"
+
+
+def test_load_system_modules_section_device_param_overrides_module_default(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    params:
+      base_url: http://192.168.1.1:8083
+devices:
+  - id: light
+    module: zway
+    params: { base_url: "http://other-controller:8083" }
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].params["base_url"] == "http://other-controller:8083"
+
+
+def test_load_system_modules_section_update_sits_between_device_and_module_yaml(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+intervals: { zwave: 30s }
+modules:
+  zway:
+    update: zwave
+    params: { base_url: "http://x:8083" }
+devices:
+  - id: light_default
+    module: zway
+  - id: light_override
+    module: zway
+    update: 5s
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light_default"].update_interval == 30.0
+    assert system.devices["light_override"].update_interval == 5.0
+
+
+def test_load_system_modules_section_update_null_means_never_poll(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    update: null
+    params: { base_url: "http://x:8083" }
+devices:
+  - id: light
+    module: zway
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].update_interval is None
+
+
+def test_load_system_rejects_unknown_key_under_modules_section(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    bogus_key: 1
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_typo_d_module_name_in_modules_section(tmp_path):
+    # A typo'd module NAME under modules: is validated up front, even
+    # though no device below actually uses "zwya" -- rather than being
+    # silently ignored (see load_system's eager modules_config validation
+    # pass, before _build_device is ever called).
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zwya:
+    params: { base_url: "http://x:8083" }
+devices: []
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)

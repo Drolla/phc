@@ -86,36 +86,81 @@ def _load_module_descriptor(module_name: str) -> ModuleDescriptor:
     return descriptor
 
 
-def _resolve_module_params(module: ModuleDescriptor, modules_config: dict) -> dict:
-    """Resolve `scope: module` parameter values for one module type, from the
-    top-level `modules.<name>.params` config. Computed once per module name
-    per load_system() call (see _build_device's resolved_module_params_cache)
-    -- unlike _module_descriptors, this cannot be a cross-call global cache
-    since modules_config is specific to the one system YAML being loaded."""
-    module_params = dict((modules_config.get(module.name) or {}).get("params") or {})
-    declared = {p["name"]: p for p in module.parameters if p.get("scope", "device") == "module"}
+# Sentinel distinguishing "modules.<name>.update was not set" from a stored
+# None ("this module's devices never poll by default") -- plain dict.get()
+# can't tell those apart, and the distinction matters the same way it
+# already does for a device's own `update: null` (see _resolve_interval).
+_UNSET = object()
 
-    resolved = {}
+
+class _ModuleConfig:
+    """Resolved top-level `modules.<name>:` entry for one module type:
+
+    - module_params: `scope: module` parameter values (one shared value for
+      every device of this module type) -- same as the old
+      _resolve_module_params() return value.
+    - device_param_defaults: `scope: device` parameter values supplied under
+      modules.<name>.params, which become a *default* for every device of
+      this module, still overridable per device -- new in this scheme.
+    - update: this module's default update interval (falls between a
+      device's own `update:` and module.yaml's `update:`), or the _UNSET
+      sentinel if modules.<name>.update was not set.
+
+    Computed once per module name per load_system() call (see
+    _build_device's resolved_module_params_cache) -- unlike
+    _module_descriptors, this cannot be a cross-call global cache since
+    modules_config is specific to the one system YAML being loaded."""
+
+    def __init__(self, module_params: dict, device_param_defaults: dict, update=_UNSET):
+        self.module_params = module_params
+        self.device_param_defaults = device_param_defaults
+        self.update = update
+
+
+def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _ModuleConfig:
+    """Resolve one module type's top-level `modules.<name>:` entry (see
+    _ModuleConfig). `scope: module` params keep their original semantics
+    exactly: settable only here, `override: none` rejects a value set here,
+    `override: required` must be supplied here. `scope: device` params set
+    here become per-module defaults instead -- `override: required` is
+    satisfied by a module-level value, and `override: none` still rejects
+    one being set here at all. Raises ConfigError on an unrecognized
+    parameter (i.e. not declared by the module at any scope)."""
+    module_entry = modules_config.get(module.name) or {}
+    module_config_params = dict(module_entry.get("params") or {})
+    update = module_entry.get("update", _UNSET)
+
+    declared = {p["name"]: p for p in module.parameters}
+
+    module_params = {}
+    device_param_defaults = {}
     for name, spec in declared.items():
+        scope = spec.get("scope", "device")
         override = spec.get("override", "allowed")
-        if name in module_params:
+        if name in module_config_params:
             if override == "none":
                 raise ConfigError(
                     f"module {module.name!r}: parameter {name!r} is not overridable "
                     f"(override: none) but modules.{module.name}.params sets it")
-            resolved[name] = module_params.pop(name)
-        elif override == "required":
-            raise ConfigError(
-                f"module {module.name!r}: parameter {name!r} is required but not supplied "
-                f"in modules.{module.name}.params")
-        else:
-            resolved[name] = spec.get("default")
+            value = module_config_params.pop(name)
+            if scope == "module":
+                module_params[name] = value
+            else:
+                device_param_defaults[name] = value
+        elif scope == "module":
+            if override == "required":
+                raise ConfigError(
+                    f"module {module.name!r}: parameter {name!r} is required but not supplied "
+                    f"in modules.{module.name}.params")
+            module_params[name] = spec.get("default")
+        # scope == "device" and not set here: no entry in
+        # device_param_defaults -- _merge_params falls back to spec["default"].
 
-    if module_params:
-        unknown = ", ".join(repr(k) for k in module_params)
+    if module_config_params:
+        unknown = ", ".join(repr(k) for k in module_config_params)
         raise ConfigError(f"module {module.name!r}: unrecognized parameter(s) {unknown}")
 
-    return resolved
+    return _ModuleConfig(module_params, device_param_defaults, update)
 
 
 class ExtensionDescriptor:
@@ -223,15 +268,21 @@ def _load_extensions(raw: dict, flat: dict[str, Device]) -> dict[str, object]:
 
 
 def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: str,
-                   resolved_module_params: dict | None = None) -> dict:
+                   resolved_module_params: dict | None = None,
+                   module_param_defaults: dict | None = None) -> dict:
     """Merge one device instance's `params` against its module's declared
-    parameters: device-scoped params come from `instance_params` (honoring
-    each parameter's `override` rule and `default`), module-scoped params
-    come from the already-resolved `resolved_module_params`. Raises
-    ConfigError on an unrecognized, missing-but-required, or
+    parameters. `scope: module` params come from the already-resolved
+    `resolved_module_params` (_ModuleConfig.module_params). `scope: device`
+    params are resolved device `params.<name>` -> `module_param_defaults`
+    (_ModuleConfig.device_param_defaults, a per-module default from
+    modules.<name>.params -- never popped, since it is shared/cached across
+    every device of this module) -> module.yaml's own `default:`, with
+    `override: required` satisfied by either the device or the module-level
+    default. Raises ConfigError on an unrecognized, missing-but-required, or
     not-overridable parameter."""
     instance_params = dict(instance_params or {})
     resolved_module_params = resolved_module_params or {}
+    module_param_defaults = module_param_defaults or {}
     declared = {p["name"]: p for p in module.parameters}
 
     merged = {}
@@ -252,6 +303,11 @@ def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: st
                     f"device {device_id!r}: parameter {name!r} is not overridable "
                     f"(override: none) but instance config sets it")
             merged[name] = instance_params.pop(name)
+        elif name in module_param_defaults:
+            # override: none for a param set under modules.<name>.params was
+            # already rejected once, in _resolve_module_config, before any
+            # device gets here.
+            merged[name] = module_param_defaults[name]
         elif override == "required":
             raise ConfigError(
                 f"device {device_id!r}: parameter {name!r} is required but not supplied")
@@ -332,13 +388,21 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list,
     return endpoints, seeds
 
 
-def _resolve_interval(module: ModuleDescriptor, instance_entry: dict,
-                       intervals_map: dict) -> float | None:
-    """Resolve a device's update interval: instance `update` overrides the
-    module's default; a named value is looked up in `intervals_map` (the
-    system YAML's top-level `intervals:`) before being parsed as a duration.
-    Returns None if unset (the device is then never auto-polled)."""
-    value = instance_entry.get("update", module.update)
+def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_map: dict,
+                       module_update=_UNSET) -> float | None:
+    """Resolve a device's update interval: the device's own `update:` ->
+    `module_update` (_ModuleConfig.update, from modules.<name>.update) ->
+    the module's own `update:` default. A named value is looked up in
+    `intervals_map` (the system YAML's top-level `intervals:`) before being
+    parsed as a duration. Returns None if unset (the device is then never
+    auto-polled) -- an explicit `update: null` at any of the three levels
+    means exactly that, distinct from the key being absent there."""
+    if "update" in instance_entry:
+        value = instance_entry["update"]
+    elif module_update is not _UNSET:
+        value = module_update
+    else:
+        value = module.update
     if value is None:
         return None
     if isinstance(value, str) and value in intervals_map:
@@ -361,7 +425,7 @@ _MODULES_ENTRY_KEYS = {"params", "update"}
 
 def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | None,
                    flat: dict[str, Device], modules_config: dict,
-                   resolved_module_params_cache: dict[str, dict]) -> Device:
+                   module_config_cache: dict[str, "_ModuleConfig"]) -> Device:
     """Recursively build one `devices:` YAML entry (and its children) into a
     Device tree, registering every device by qualified id in `flat` as it
     goes. Raises ConfigError on a duplicate qualified id or an unrecognized
@@ -374,19 +438,20 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     module = _load_module_descriptor(module_name)
     device_cls = get_device_class(module_name)
 
-    if module_name not in resolved_module_params_cache:
-        resolved_module_params_cache[module_name] = _resolve_module_params(module, modules_config)
-    resolved_module_params = resolved_module_params_cache[module_name]
+    if module_name not in module_config_cache:
+        module_config_cache[module_name] = _resolve_module_config(module, modules_config)
+    module_config = module_config_cache[module_name]
 
-    params = _merge_params(module, entry.get("params", {}), device_id, resolved_module_params)
+    params = _merge_params(module, entry.get("params", {}), device_id,
+                           module_config.module_params, module_config.device_param_defaults)
     endpoints, seeds = _merge_endpoints(module, entry.get("endpoints", []), device_id)
-    update_interval = _resolve_interval(module, entry, intervals_map)
+    update_interval = _resolve_interval(module, entry, intervals_map, module_config.update)
 
     qualified_id = f"{parent_qualified_id}.{device_id}" if parent_qualified_id else device_id
 
     children = [
         _build_device(child_entry, intervals_map, qualified_id, flat, modules_config,
-                      resolved_module_params_cache)
+                      module_config_cache)
         for child_entry in entry.get("children", [])
     ]
 
@@ -638,10 +703,20 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     fetch_timeout_raw = raw.get("fetch_timeout")
     fetch_timeout = parse_duration(fetch_timeout_raw) if fetch_timeout_raw is not None else None
 
+    # Validate every modules.<name>: entry up front, regardless of whether a
+    # device actually uses that module -- otherwise a typo'd module name
+    # (e.g. "zwya" instead of "zway") is silently ignored here and only
+    # surfaces later, confusingly, as "parameter 'base_url' is required" on
+    # the first zway device. _load_module_descriptor raises ConfigError for
+    # an unknown module name; _resolve_module_config validates its params.
     flat: dict[str, Device] = {}
-    resolved_module_params_cache: dict[str, dict] = {}
+    module_config_cache: dict[str, _ModuleConfig] = {}
+    for module_name in modules_config:
+        module = _load_module_descriptor(module_name)
+        module_config_cache[module_name] = _resolve_module_config(module, modules_config)
+
     roots = [
-        _build_device(entry, intervals_map, None, flat, modules_config, resolved_module_params_cache)
+        _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache)
         for entry in raw.get("devices", [])
     ]
 
