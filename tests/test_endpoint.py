@@ -76,14 +76,14 @@ def test_state_property_matches_get_set():
     assert ep.event == "on"
 
 
-def test_writable_readable_and_parameters_defaults():
+def test_writable_readable_and_params_defaults():
     ep = Endpoint("state")
     assert ep.readable is True
     assert ep.writable is False
-    assert ep.parameters == {}
+    assert ep.params == {}
 
-    ep2 = Endpoint("temp", readable=True, writable=False, parameters={"column": "tre200s0"})
-    assert ep2.parameters == {"column": "tre200s0"}
+    ep2 = Endpoint("temp", readable=True, writable=False, params={"column": "tre200s0"})
+    assert ep2.params == {"column": "tre200s0"}
 
 
 # ---------- type / unit / values ----------

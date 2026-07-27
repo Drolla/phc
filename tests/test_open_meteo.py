@@ -73,8 +73,8 @@ def _device(base_url, latitude=47.37, longitude=8.55, cache_time=None):
         "weather",
         params=params,
         endpoints=[
-            Endpoint("temperature", parameters={"field": "temperature_2m"}),
-            Endpoint("humidity", parameters={"field": "relative_humidity_2m"}),
+            Endpoint("temperature", params={"field": "temperature_2m"}),
+            Endpoint("humidity", params={"field": "relative_humidity_2m"}),
         ],
         update_interval=0.0,
     )
