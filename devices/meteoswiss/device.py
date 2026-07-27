@@ -59,7 +59,7 @@ class MeteoSwissDevice(Device):
             # cancels this coroutine -- that CancelledError is not caught here,
             # so the fetch is cleanly abandoned.)
             row = None
-        return {key: self._extract(row, ep.parameters.get("column"))
+        return {key: self._extract(row, ep.params.get("column"))
                 for key, ep in self.endpoints.items()}
 
     async def _fetch_station_row(self) -> dict | None:

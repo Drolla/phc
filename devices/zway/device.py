@@ -42,7 +42,7 @@ class ZWayDevice(Device):
     functions on a Razberry/zWay controller
     (https://github.com/Drolla/thc/tree/master/modules/thc_zWay -- install
     thc_zWay.js on the zWay server yourself, PHC does not push it). Each
-    endpoint's `parameters` name the zWay identifier it maps to:
+    endpoint's `params` name the zWay identifier it maps to:
     `command_group` (one of SwitchBinary/SwitchMultilevel/SwitchMultiBinary/
     SensorBinary/SensorMultilevel/Battery/TagReader) and `address` (an
     opaque "node.instance[.datarecord]" string, passed through verbatim --
@@ -78,8 +78,8 @@ class ZWayDevice(Device):
 
         registry = _identifiers.setdefault(self._base_url, {})
         for key, ep in self.endpoints.items():
-            command_group = ep.parameters.get("command_group")
-            address = ep.parameters.get("address")
+            command_group = ep.params.get("command_group")
+            address = ep.params.get("address")
             if command_group is None or address is None:
                 continue   # misconfigured endpoint -- permanently reports None, never raises
             ident = (command_group, str(address))
@@ -87,7 +87,7 @@ class ZWayDevice(Device):
             if ep.readable:
                 registry[ident] = None
             if command_group == "TagReader":
-                node_id = ep.parameters.get("node_id")
+                node_id = ep.params.get("node_id")
                 if node_id is not None:
                     self._tag_reader_nodes[key] = str(node_id)
 

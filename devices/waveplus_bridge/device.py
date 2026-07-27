@@ -53,7 +53,7 @@ class WavePlusBridgeDevice(Device):
             # every endpoint as unavailable, mirroring meteoswiss/open_meteo.
             payload = None
         sensor = self._select_sensor(payload)
-        return {key: self._extract(sensor, ep.parameters.get("field"))
+        return {key: self._extract(sensor, ep.params.get("field"))
                 for key, ep in self.endpoints.items()}
 
     def _select_sensor(self, payload: dict | None) -> dict | None:
