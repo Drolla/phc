@@ -21,13 +21,8 @@ _response_cache_lock = asyncio.Lock()
 
 @register_module("open_meteo")
 class OpenMeteoDevice(Device):
-    """One location's current weather conditions from the free Open-Meteo
-    forecast API. Native-async, same shape as MeteoSwissDevice:
-    receive_async() awaits the JSON response directly on the event loop (not
-    offloaded to a worker thread), and the parsed `current` block is cached
-    for up to `cache_time` so polling faster than Open-Meteo's own refresh
-    cadence doesn't re-download identical content. Read-only: transmit() is
-    not overridden, so writes are simply dropped.
+    """One location's current weather from the free Open-Meteo API. Async,
+    cached to avoid re-downloading on rapid polls. Read-only.
     """
 
     def setup(self):
@@ -45,8 +40,7 @@ class OpenMeteoDevice(Device):
         self._cache_time = parse_duration(self.params.get("cache_time", "10m"))
 
     async def receive_async(self) -> dict:
-        """Async counterpart of the base receive(): await the current-weather
-        block and return it as {endpoint_key: raw_value}."""
+        """Fetch current-weather block, return {endpoint_key: value}."""
         try:
             current = await self._get_current()
         except (aiohttp.ClientError, asyncio.TimeoutError):
@@ -57,9 +51,8 @@ class OpenMeteoDevice(Device):
                 for key, ep in self.endpoints.items()}
 
     async def _get_current(self) -> dict | None:
-        """Return the shared `current` dict, reusing a cached copy if it is
-        still within this device's own cache_time -- same double-checked
-        locking as meteoswiss's _get_csv_text."""
+        """Return `current` dict, reusing cached copy if fresh.
+        Uses double-checked locking."""
         now = time.monotonic()
         cached = _response_cache.get(self._url)
         if cached is not None and (now - cached[0]) < self._cache_time:
@@ -84,8 +77,7 @@ class OpenMeteoDevice(Device):
 
     @staticmethod
     def _extract(current: dict | None, field: str | None):
-        """Pull one value out of the `current` block by field name, or None
-        if the block or field is unavailable."""
+        """Extract one field from current dict, or None if unavailable."""
         if current is None or field is None:
             return None
         return current.get(field)

@@ -1,13 +1,9 @@
 description: >
-  A virtual device that deliberately takes time to respond, for
-  demonstrating what happens when a real device is slow or occasionally
-  flaky to reach -- e.g. a network sensor or an overloaded gateway. Reads
-  and writes behave like the `virtual` module, except every access is
-  delayed. The delay has natural variation around a normal value, and can
-  randomly "spike" to a much longer (and itself variable) delay to
-  simulate occasional flakiness. All latency values are seconds and
-  accept fractions (e.g. 0.2 for 200ms). Define whatever endpoints you
-  need for your own device instance.
+  Virtual device with injected latency for testing scheduler behavior under
+  slow I/O. Like `virtual` but each read/write is delayed with natural
+  variation (jitter) and occasional random spikes to simulate flakiness.
+  All latency values are in seconds (fractions allowed, e.g. 0.2 for 200ms).
+  Define whatever endpoints your device instance needs.
 
 update: "5s"
 
@@ -23,9 +19,7 @@ parameters:
     override: allowed
     default: 0.3
     description: >
-      Fractional variation applied to read_latency, e.g. 0.3 means the
-      actual delay is uniformly picked between 70% and 130% of
-      read_latency.
+      Fractional variation around read_latency (e.g. 0.3 = ±30%).
   - name: read_spike_probability
     override: allowed
     default: 0.05
@@ -40,8 +34,7 @@ parameters:
     override: allowed
     default: 0.3
     description: >
-      Fractional variation applied to read_spike_latency, same meaning as
-      read_jitter but for spikes.
+      Fractional variation around read_spike_latency (same as read_jitter).
   - name: write_latency
     override: allowed
     default: 0.2
@@ -53,9 +46,7 @@ parameters:
     override: allowed
     default: 0.3
     description: >
-      Fractional variation applied to write_latency, e.g. 0.3 means the
-      actual delay is uniformly picked between 70% and 130% of
-      write_latency.
+      Fractional variation around write_latency (e.g. 0.3 = ±30%).
   - name: write_spike_probability
     override: allowed
     default: 0.05
@@ -70,7 +61,6 @@ parameters:
     override: allowed
     default: 0.3
     description: >
-      Fractional variation applied to write_spike_latency, same meaning
-      as write_jitter but for spikes.
+      Fractional variation around write_spike_latency (same as write_jitter).
 
 endpoints: []

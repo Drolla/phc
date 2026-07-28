@@ -1,11 +1,9 @@
 description: >
-  Live radon and air-quality readings from an Airthings Wave Plus unit, via
-  a WavePlus_Bridge HTTP server (https://github.com/Drolla/WavePlus_Bridge)
-  that polls one or more Wave Plus units over BLE and re-exposes their
-  latest readings as JSON. One device per sensor unit -- set `sensor_id` to
-  the unit's name/serial as configured in the bridge. Multiple sensor units
-  behind the same bridge share one `base_url` and therefore one HTTP fetch
-  per cache window (see devices/waveplus_bridge/device.py).
+  Live radon and air-quality readings from an Airthings Wave Plus unit via
+  WavePlus_Bridge (HTTP server that polls units over BLE and exposes readings
+  as JSON). One device per sensor unit; set `sensor_id` to the unit's name/serial
+  as configured on the bridge. Multiple units behind one bridge share `base_url`
+  and batch into one HTTP fetch per cache window.
 
 update: "1m"
 
@@ -27,13 +25,11 @@ parameters:
     override: allowed
     default: "60s"
     description: >
-      How long a fetched bridge response may be reused before re-fetching
-      (e.g. "60s", "5m" -- any value parse_duration accepts). All devices
-      sharing the same base_url share one cached fetch, so this is the
-      old THC module's min_update_period equivalent: it controls how often
-      the bridge is actually re-polled, independent of each device's own
-      `update` interval. Set the same value on every device behind one
-      bridge to get full sharing.
+      How long a bridge response may be reused (e.g. "60s", "5m" -- any
+      value parse_duration accepts). All devices sharing base_url share one
+      cached fetch, controlling how often the bridge is re-polled independent
+      of each device's `update` interval. Set the same value on every device
+      behind one bridge to maximize batching.
   - name: data_validity_time
     override: allowed
     default: "5m"

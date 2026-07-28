@@ -22,20 +22,9 @@ _csv_cache_lock = asyncio.Lock()
 
 @register_module("meteoswiss")
 class MeteoSwissDevice(Device):
-    """One MeteoSwiss automatic weather station. Native-async: receive_async()
-    awaits the shared SwissMetNet CSV (all stations, refreshed by MeteoSwiss
-    every ~10 minutes) over aiohttp -- awaited directly on the event loop, not
-    offloaded to a worker thread like the default Device bridge -- and picks
-    out this device's station row. The downloaded CSV text is cached (shared
-    across every station device, keyed by data_url) for up to `cache_time`,
-    so polling faster than MeteoSwiss's own refresh cadence, or configuring
-    several stations, doesn't re-download identical content. Staging into
-    endpoints and recursing into any children is handled generically by the
-    base Device.fetch(). Read-only: transmit() is not overridden, so writes
-    are simply dropped.
-
-    Data set: https://opendata.swiss/en/dataset/automatische-wetterstationen-aktuelle-messwerte
-    Station codes: https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
+    """One MeteoSwiss weather station from the shared SwissMetNet CSV. Async,
+    cached per data_url to batch multiple stations into one HTTP request.
+    Read-only.
     """
 
     def setup(self):
@@ -48,16 +37,10 @@ class MeteoSwissDevice(Device):
         self._cache_time = parse_duration(self.params.get("cache_time", "10m"))
 
     async def receive_async(self) -> dict:
-        """Async counterpart of the base receive(): await the station row over
-        aiohttp and return it as {endpoint_key: raw_value}."""
+        """Fetch this station's row from CSV, return {endpoint_key: value}."""
         try:
             row = await self._fetch_station_row()
         except (aiohttp.ClientError, asyncio.TimeoutError):
-            # Network/HTTP failure or the request's own 10s timeout: report
-            # every endpoint as unavailable, as the previous urllib version did
-            # on OSError. (If the Scheduler's fetch_timeout fires instead, it
-            # cancels this coroutine -- that CancelledError is not caught here,
-            # so the fetch is cleanly abandoned.)
             row = None
         return {key: self._extract(row, ep.params.get("column"))
                 for key, ep in self.endpoints.items()}
@@ -73,11 +56,8 @@ class MeteoSwissDevice(Device):
         return None
 
     async def _get_csv_text(self) -> str:
-        """Return the shared CSV text, reusing a cached copy if it is still
-        within this device's own cache_time. The cache itself is shared by
-        data_url, but freshness is judged per caller -- so two stations may
-        configure different cache_time values against the same cached fetch
-        without needing to reconcile whose value "wins"."""
+        """Return CSV text, reusing cached copy if fresh. Cache is shared by
+        data_url; freshness is per-caller (per-device cache_time)."""
         now = time.monotonic()
         cached = _csv_cache.get(self._data_url)
         if cached is not None and (now - cached[0]) < self._cache_time:
@@ -94,12 +74,7 @@ class MeteoSwissDevice(Device):
             return text
 
     async def _download_csv(self) -> str:
-        """Download the shared SwissMetNet CSV and return it as text."""
-        # A short-lived session per download is fine here: even uncached,
-        # this fetches on the order of once every ~10 minutes, so there is no
-        # connection reuse to gain, and it avoids holding an open session
-        # across the device's whole lifetime (which would need an async
-        # teardown hook the framework doesn't have).
+        """Download CSV and return as text."""
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(self._data_url) as response:
@@ -108,8 +83,8 @@ class MeteoSwissDevice(Device):
 
     @staticmethod
     def _extract(row: dict | None, column: str | None):
-        """Pull one numeric value out of `row` by CSV column name, returning
-        None for a missing row/column or MeteoSwiss's own "-"/empty markers."""
+        """Extract one numeric value from row, returning None for missing
+        row/column or MeteoSwiss markers ("-"/empty)."""
         if row is None or column is None:
             return None
         value = row.get(column, "-")

@@ -12,19 +12,14 @@ from core.registry import register_module
 
 
 def _now(tzinfo):
-    """Thin wrapper around datetime.now() so tests can monkeypatch a fixed
-    reference time instead of depending on the wall clock."""
+    """datetime.now() wrapper for testing (allows monkeypatching time)."""
     return datetime.now(tzinfo)
 
 
 @register_module("sun")
 class SunDevice(Device):
-    """Pure computation: today's sunrise/sunset/dawn/dusk/solar-noon plus the
-    current solar elevation/azimuth, derived from latitude/longitude and the
-    system clock via astral. No network access, no hardware -- receive() is
-    plain synchronous math, cheap enough to run unmodified on the default
-    thread-bridge path (no receive_async() override needed, unlike the
-    network-bound meteoswiss/open_meteo modules).
+    """Pure computation via astral: today's sunrise/sunset/dawn/dusk/solar-noon
+    and current solar elevation/azimuth. No network or hardware. Synchronous.
     """
 
     def setup(self):

@@ -1,9 +1,7 @@
 description: >
-  Live current-conditions weather for any location worldwide, from the free
-  Open-Meteo forecast API (https://open-meteo.com, no API key required).
-  Unlike devices/meteoswiss, which only covers the Swiss weather-station
-  network, this works anywhere -- set `latitude`/`longitude` to the location
-  to track. One device per location.
+  Current-conditions weather from the free Open-Meteo API for any location
+  worldwide (no API key). Set `latitude`/`longitude` to track a location.
+  One device per location.
 
 update: "10m"
 
@@ -23,14 +21,9 @@ parameters:
     override: allowed
     default: "10m"
     description: >
-      How long a downloaded response for this device's exact
-      latitude/longitude may be reused before re-fetching (e.g. "10m", "30s"
-      -- any value parse_duration accepts). Open-Meteo's current-conditions
-      block itself only changes roughly every 10-15 minutes, so caching for
-      up to this long costs no real freshness. Set to "0s" to always
-      re-fetch. Unlike meteoswiss's cache_time, this is per-device (not
-      scope: module) since each device's request URL already differs by
-      location.
+      How long a response for this location may be reused before re-fetching
+      (e.g. "10m", "30s" -- any value parse_duration accepts). Per-device
+      since each location has its own request URL.
 
 endpoint_parameters:
   - name: field
