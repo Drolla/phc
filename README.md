@@ -44,6 +44,13 @@ through unchanged. An endpoint definition may opt into:
   a raw float otherwise shows however many digits happen to round-trip
   (e.g. `3.140000000000001`); set `format: ""` to opt back into full,
   unrounded precision. Other `type`s default to no formatting.
+- `name` — an optional per-instance display label (e.g. `"Corridor Light"`),
+  distinct from `description` (free-form documentation text). A UI prefers
+  `name` over `description` over the endpoint's own `key` when picking a
+  label. Typically left unset on a module's own endpoints/profiles (which
+  don't know what a specific installation will call the thing) and set at
+  the system-config level instead — see [Endpoint and device
+  profiles](#endpoint-and-device-profiles).
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw
@@ -212,7 +219,9 @@ script ported from the earlier THC project that you install on the zWay
 server yourself (PHC does not push it there). One `zway` device is one
 physical Z-Wave node; give it whatever endpoints that node needs (a switch's
 `state`, a sensor's `battery`, ...), each naming its own zWay identifier via
-`params`:
+`command_group` and `address` — a declared endpoint parameter of this
+module (see `devices/zway/module.yaml`'s `endpoint_parameters:`), written
+as an ordinary top-level field on the endpoint:
 
 ```yaml
 modules:
@@ -228,18 +237,50 @@ devices:
         writable: true
         type: int
         values: { 0: "off", 255: "on" }
-        params: { command_group: SwitchBinary, address: "7.1" }
+        command_group: SwitchBinary
+        address: "7.1"
 ```
 
 `command_group` is one of `SwitchBinary`, `SwitchMultilevel`,
 `SwitchMultiBinary`, `SensorBinary`, `SensorMultilevel`, `Battery`, or
 `TagReader`; `address` is an opaque zWay `"node.instance[.datarecord]"`
-identifier, passed through verbatim. A `TagReader` endpoint additionally
-needs `node_id`, used for a one-time setup call the first time that device
-is polled. `devices/zway/module.yaml` also ships an endpoint/device
-profile library for the common case where one node's endpoints all derive
-from the same node number — see [Endpoint and device
-profiles](#endpoint-and-device-profiles) above.
+identifier, passed through verbatim. A device with a `TagReader` endpoint
+additionally needs its own `node` param set (the zWay node number) — used
+for a one-time `Configure_TagReader` setup call the first time that device
+is polled, the same `node` used to fill in any `{node}` template below.
+
+`devices/zway/module.yaml` ships a two-axis profile library instead of
+writing every endpoint out fully explicitly: an `endpoint_profile`
+(prefixed `zway_`, named after its command group, e.g.
+`zway_switch_binary`, `zway_sensor_multilevel_temperature`) captures the
+*access pattern* — type, units, writability — shared by every product using
+that command group, while a `device_profile` names one *product* — e.g.
+`fibaro-fgs222`, `everspring-st814`, `popp-z-weather` (see
+`devices/zway/module.yaml` for the full list) — supplying that product's
+own addresses, which an `endpoint_profile` never hardcodes (the same
+command group wires up differently on different hardware). Set `node:` in
+the device's `params` and `device_profile:` on the device to get a whole
+product's endpoints at once, then complete them by `key` with a
+human-readable `name:`:
+
+```yaml
+devices:
+  - id: light_corridor
+    module: zway
+    name: Corridor Light Switch
+    device_profile: fibaro-fgs222
+    params: { node: 7 }
+    endpoints:
+      - { key: sw1, name: "Corridor Light" }
+      - { key: sw2, name: "Closet Light" }
+```
+
+See [Endpoint and device profiles](#endpoint-and-device-profiles) below for
+how the two libraries combine, and
+[`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
+example with a relay switch, a PIR motion sensor, a temperature/humidity
+sensor with one address overridden, a tag reader, and a multi-endpoint
+weather station.
 
 Every `zway` device behind the same controller (`base_url`) self-registers
 its endpoints' identifiers into a shared, module-level registry; whichever
@@ -251,9 +292,7 @@ batching the old THC `thc_zWay` module did, rather than one round-trip per
 device. Set the same `update` interval on every device behind one
 controller to keep them polling together and get full sharing -- typically
 by setting both `update` and `params` once under `modules.zway`, as above,
-rather than repeating them on every device. See
-[`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
-example with a light switch, a motion+battery sensor, and a TagReader node.
+rather than repeating them on every device.
 
 ### Web UI
 
@@ -502,49 +541,77 @@ A parameter declared `scope: module` (e.g. `meteoswiss`'s `data_url`/
 that module type, settable *only* under `modules.<name>.params` — setting
 it on a device's own `params:` is a `ConfigError`.
 
+A module may similarly declare `endpoint_parameters:` — its own per-endpoint
+protocol fields (e.g. zway's `command_group`/`address`), a list of `{name,
+description}` entries mirroring `parameters:`'s device-level schema, but
+with no `default`/`override`/`scope` (an endpoint has no equivalent of
+`modules.<name>.params` to resolve against). A declared name becomes a
+legal top-level key on any endpoint spec of that module, folded into
+`Endpoint.params` once every profile/overlay/`{param}` step has resolved —
+see the next section for how that combines with profiles. There is no
+`params: { ... }` nesting on an endpoint any more; an undeclared field
+anywhere on an endpoint spec (a typo, or a value that belongs under the
+device's own `params:` instead) is a `ConfigError` naming the field.
+
 ## Endpoint and device profiles
 
 A module can also declare a reusable library of endpoints in its
-`module.yaml`, for devices whose endpoints mostly differ by one templated
-value (e.g. a Z-Wave node number). An `endpoint_profiles` entry is a full
-endpoint spec — the same shape written out by hand — with `{param}`
-templates in any of its fields (typically `params:` values, but
-`description`/`unit`/`values` work too), filled in from the device's own
-resolved `params`; a `device_profiles` entry is a named list of
-`{key, endpoint_profile}` pairs:
+`module.yaml`, split along two independent axes: an **endpoint profile**
+captures the *access pattern* — type, units, writability, and (for a module
+with `endpoint_parameters:`) protocol fields like zway's `command_group` —
+shared by several products, while a **device profile** names one *product*,
+with optional `brand`/`type`/`product`/`description` metadata plus a keyed
+`endpoints:` list that completes each endpoint profile with what's specific
+to that product (typically an `address`, which an endpoint profile never
+hardcodes, since the same access pattern wires up differently on different
+hardware):
 
 ```yaml
 # devices/zway/module.yaml
+endpoint_parameters:
+  - name: command_group
+  - name: address
+
 endpoint_profiles:
-  temperature: { type: float, unit: "°C",
-                 params: { command_group: SensorMultilevel, address: "{node}.0.1" } }
-  battery:     { type: int, unit: "%",
-                 params: { command_group: Battery, address: "{node}" } }
+  zway_sensor_multilevel_temperature: { type: float, unit: "°C", command_group: SensorMultilevel }
+  zway_battery: { type: int, unit: "%", command_group: Battery }
+
 device_profiles:
-  multisensor_t: [ { key: temp, endpoint_profile: temperature }, { key: battery, endpoint_profile: battery } ]
+  everspring-st814:
+    brand: Everspring
+    product: ST814
+    description: Temperature/Humidity Sensor
+    endpoints:
+      - { key: temp, endpoint_profile: zway_sensor_multilevel_temperature, address: "{node}.0.1" }
+      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
 ```
 
 ```yaml
 devices:
   - id: multi_liv
     module: zway
-    device_profile: multisensor_t   # whole device, from device_profiles
-    params: { node: 11 }            # fills in every {node} template above
+    name: Living Room Multisensor
+    device_profile: everspring-st814   # whole device, from device_profiles
+    params: { node: 11 }               # fills in every {node} template above
+    endpoints:
+      - { key: temp, name: "Living Room Temperature" }   # complete a profile-derived endpoint by key
   - id: fus18_meteo
     module: zway
     endpoints:
       - key: f18_temp
-        endpoint_profile: temperature   # single endpoint, no device profile
+        endpoint_profile: zway_sensor_multilevel_temperature   # single endpoint, no device profile
+        address: "{node}.0.1"
     params: { node: 15 }
 ```
 
 A device's own `endpoints:` overlays whatever its `device_profile:`/
-`endpoint_profile:` provided, by `key` — deep-merging just `params:`, so
-tweaking one templated value (e.g. a node whose `address` doesn't follow
-the usual pattern) doesn't silently drop a sibling param. Writing an
-endpoint out fully explicitly, with neither key anywhere on the device,
-keeps working exactly as before — profiles are a shortcut, not a
-replacement for the underlying `key`/`type`/`values`/`params`/... spec.
+`endpoint_profile:` provided, by `key` — replacing only the fields it sets
+(e.g. `address:`), so tweaking one value doesn't drop a profile-derived
+sibling like `command_group`. Writing an endpoint out fully explicitly,
+with neither key anywhere on the device, keeps working exactly as before —
+profiles are a shortcut, not a replacement for the underlying
+`key`/`type`/`values`/... spec plus whatever the module's own
+`endpoint_parameters:` declare.
 
 `{param}` template substitution itself is independent of profiles: it runs
 on every endpoint's fields for every device of every module, whether that
@@ -553,22 +620,25 @@ unconditional `endpoints:`. A module that never declares any templates
 (most of them, today) is unaffected, since a spec with no `{...}` anywhere
 just passes through unchanged.
 
-See [`devices/zway/module.yaml`](devices/zway/module.yaml) and
-[`examples/zway_system.yaml`](examples/zway_system.yaml) for a worked
-example mixing a whole-device profile, a single-endpoint profile, a
-profile with one field overridden, and fully explicit endpoints all on one
-system.
+See [`devices/zway/module.yaml`](devices/zway/module.yaml) for the full
+product list and [`examples/zway_system.yaml`](examples/zway_system.yaml)
+for a worked example mixing a whole-device profile with named endpoints, a
+device profile with one field overridden, and a single endpoint profile
+without a device profile.
 
 ## Adding a device module
 
 A new device type is a new `devices/<name>/` package containing:
 
 - `device.py` — a `Device` subclass decorated with `@register_module("<name>")`.
-- `module.yaml` — its declared parameters and endpoints.
+- `module.yaml` — its declared parameters, endpoints, and (if any endpoint
+  needs a protocol field like zway's `command_group`/`address`) declared
+  `endpoint_parameters:`.
 
 See any existing module (e.g. [`devices/virtual/`](devices/virtual/)) for
-the minimal shape, or [`devices/meteoswiss/`](devices/meteoswiss/) for a
-fuller, network-backed example.
+the minimal shape, [`devices/meteoswiss/`](devices/meteoswiss/) for a
+fuller, network-backed example, or [`devices/zway/`](devices/zway/) for one
+using `endpoint_parameters:` and a two-axis endpoint/device profile library.
 
 ## Tests
 
