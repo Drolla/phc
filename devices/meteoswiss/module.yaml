@@ -33,6 +33,10 @@ parameters:
       refreshes the published file, so caching for up to this long costs no
       real freshness. Set to "0s" to always re-fetch.
 
+endpoint_parameters:
+  - name: column
+    description: Which column of the shared CSV file this endpoint reads.
+
 endpoints:
   - key: temperature
     readable: true
@@ -40,39 +44,39 @@ endpoints:
     type: float
     unit: "°C"
     description: Air temperature, degrees Celsius
-    params: { column: tre200s0 }
+    column: tre200s0
   - key: precipitation
     readable: true
     writable: false
     type: float
     unit: mm
     description: 10-minute precipitation, mm
-    params: { column: rre150z0 }
+    column: rre150z0
   - key: direction
     readable: true
     writable: false
     type: float
     unit: "°"
     description: Wind direction, degrees
-    params: { column: dkl010z0 }
+    column: dkl010z0
   - key: speed
     readable: true
     writable: false
     type: float
     unit: m/s
     description: Wind speed, m/s
-    params: { column: fu3010z0 }
+    column: fu3010z0
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
     description: QNH pressure, hPa
-    params: { column: pp0qnhs0 }
+    column: pp0qnhs0
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
     description: Relative humidity, percent
-    params: { column: ure200s0 }
+    column: ure200s0

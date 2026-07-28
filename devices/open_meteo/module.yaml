@@ -32,6 +32,10 @@ parameters:
       scope: module) since each device's request URL already differs by
       location.
 
+endpoint_parameters:
+  - name: field
+    description: Which field of the Open-Meteo current-conditions response this endpoint reads.
+
 endpoints:
   - key: temperature
     readable: true
@@ -39,42 +43,42 @@ endpoints:
     type: float
     unit: "°C"
     description: Air temperature, degrees Celsius
-    params: { field: temperature_2m }
+    field: temperature_2m
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
     description: Relative humidity, percent
-    params: { field: relative_humidity_2m }
+    field: relative_humidity_2m
   - key: precipitation
     readable: true
     writable: false
     type: float
     unit: mm
     description: Precipitation over the current hour, mm
-    params: { field: precipitation }
+    field: precipitation
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
     description: Mean sea-level pressure, hPa
-    params: { field: pressure_msl }
+    field: pressure_msl
   - key: wind_speed
     readable: true
     writable: false
     type: float
     unit: m/s
     description: Wind speed, m/s
-    params: { field: wind_speed_10m }
+    field: wind_speed_10m
   - key: wind_direction
     readable: true
     writable: false
     type: float
     unit: "°"
     description: Wind direction, degrees
-    params: { field: wind_direction_10m }
+    field: wind_direction_10m
   - key: weather_code
     readable: true
     writable: false
@@ -84,11 +88,11 @@ endpoints:
       cloudy/overcast, 45/48=fog, 51-67=drizzle, 61-67=rain, 71-77=snow,
       80-82=rain showers, 85/86=snow showers, 95-99=thunderstorm). See
       https://open-meteo.com/en/docs for the full table.
-    params: { field: weather_code }
+    field: weather_code
   - key: is_day
     readable: true
     writable: false
     type: int
     values: { 0: "night", 1: "day" }
     description: 1 if it is currently daytime at the location, 0 if night
-    params: { field: is_day }
+    field: is_day

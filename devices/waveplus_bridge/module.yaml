@@ -47,6 +47,10 @@ parameters:
       timestamp is missing from the response, this check is skipped (fails
       open) rather than treated as stale.
 
+endpoint_parameters:
+  - name: field
+    description: Which field of the bridge's per-unit JSON payload this endpoint reads.
+
 endpoints:
   - key: temperature
     readable: true
@@ -54,46 +58,46 @@ endpoints:
     type: float
     unit: "°C"
     description: Air temperature, degrees Celsius
-    params: { field: temperature }
+    field: temperature
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
     description: Relative humidity, percent
-    params: { field: humidity }
+    field: humidity
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
     description: Barometric pressure, hPa
-    params: { field: pressure }
+    field: pressure
   - key: radon_st
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
     description: Short-term (up to ~24h) average radon concentration, Bq/m3
-    params: { field: radon_st }
+    field: radon_st
   - key: radon_lt
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
     description: Long-term (up to ~1 year) average radon concentration, Bq/m3
-    params: { field: radon_lt }
+    field: radon_lt
   - key: co2
     readable: true
     writable: false
     type: float
     unit: ppm
     description: CO2 concentration, ppm
-    params: { field: co2 }
+    field: co2
   - key: voc
     readable: true
     writable: false
     type: float
     unit: ppb
     description: Total volatile organic compounds (TVOC), ppb
-    params: { field: voc }
+    field: voc
