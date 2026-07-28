@@ -42,12 +42,18 @@ class Endpoint:
     endpoint (str() on a raw float otherwise shows however many digits
     happen to round-trip, e.g. 3.140000000000001) -- pass format="" to opt
     back into full, unrounded precision; other value_types default to no
-    formatting (str(value))."""
+    formatting (str(value)).
+
+    `name` is an optional per-instance display label (e.g. "Corridor Light
+    1st Floor" for a device-profile endpoint whose module-level description
+    is generic) -- distinct from `description`, which is free-form
+    documentation text. A UI should prefer `name` over `description` over
+    `key` when picking a label (see extensions/web_ui)."""
 
     kind: str = "generic"
 
     def __init__(self, key: str, *, readable: bool = True, writable: bool = False,
-                 params: dict | None = None, description: str = "",
+                 params: dict | None = None, description: str = "", name: str = "",
                  value_type: str | None = None, unit: str | None = None,
                  values: dict | None = None, log_aggregation: str = "max",
                  min: float | int | None = None, max: float | int | None = None,
@@ -68,6 +74,7 @@ class Endpoint:
         # individual keys (merged per-key in config._merge_endpoints).
         self.params = params or {}
         self.description = description
+        self.name = name
         self.value_type = value_type
         self.unit = unit
         self.values = values
