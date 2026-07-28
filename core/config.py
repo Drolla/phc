@@ -122,7 +122,12 @@ _DEVICE_PROFILE_KEYS = {"brand", "type", "product", "description", "endpoints"}
 # unrecognized key is rejected here rather than silently ignored.
 _DEVICE_ENTRY_KEYS = {"id", "module", "name", "endpoints", "update", "children",
                       "device_profile"}
-_MODULES_ENTRY_KEYS = {"update"}
+# device_profiles/endpoint_profiles here let a system config extend a
+# module's profile library with its own entries (see
+# _build_effective_module) -- e.g. for a household-specific fixture that
+# isn't a real shared product and so doesn't belong in the module's own
+# module.yaml.
+_MODULES_ENTRY_KEYS = {"update", "device_profiles", "endpoint_profiles"}
 
 
 def _parse_profile_library(owner_label: str, raw_endpoint_profiles: dict | None,
@@ -311,9 +316,11 @@ def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _M
     parameter (i.e. not declared by the module at any scope)."""
     module_entry = modules_config.get(module.name) or {}
     # A declared param is an ordinary top-level field here, same as on a
-    # device entry -- `update:` is the one reserved key at this level (see
-    # _MODULES_ENTRY_KEYS), so everything else is a parameter value.
-    module_config_params = {k: v for k, v in module_entry.items() if k != "update"}
+    # device entry -- the _MODULES_ENTRY_KEYS are reserved at this level
+    # (device_profiles/endpoint_profiles are handled separately by
+    # _build_effective_module), so everything else is a parameter value.
+    module_config_params = {k: v for k, v in module_entry.items()
+                             if k not in _MODULES_ENTRY_KEYS}
     update = module_entry.get("update", _UNSET)
 
     declared = {p["name"]: p for p in module.parameters}
@@ -350,6 +357,67 @@ def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _M
             f"parameter declared by module {module.name!r}")
 
     return _ModuleConfig(module_params, device_param_defaults, update)
+
+
+def _build_effective_module(module: ModuleDescriptor, modules_config: dict) -> ModuleDescriptor:
+    """Return the ModuleDescriptor `_expand_endpoint_specs` should actually
+    resolve device_profile:/endpoint_profile: against for this module:
+    `module` itself, unless modules.<name> supplies its own
+    device_profiles/endpoint_profiles, in which case those are merged in on
+    a COPY (module-scoped, exactly like a module's own module.yaml library
+    -- a system-supplied profile for module X is invisible to a device of
+    any other module).
+
+    Never mutates `module` in place: `module` is the process-global,
+    never-invalidated object cached by _load_module_descriptor (shared
+    across every load_system() call in the process), so mutating its
+    .device_profiles/.endpoint_profiles would leak one system config's
+    profiles into another's use of the same module. The common case (no
+    system-level profiles for this module) returns `module` unchanged --
+    no copy, no cost.
+
+    A system-supplied profile name colliding with one module.yaml already
+    declares is a ConfigError, not a silent override -- consistent with
+    this module's general refusal to let config ambiguously shadow itself
+    (see e.g. the parameter-name collision checks in ModuleDescriptor,
+    or the duplicate-device-id check in _build_device). The
+    device_profiles-vs-nonempty-endpoints: mutual exclusivity that
+    ModuleDescriptor.__init__ already enforces for module.yaml alone (see
+    its docstring) is extended here to also cover a system-supplied
+    device_profiles against the module's own `endpoints:` -- same
+    base/overlay ambiguity, regardless of which side the device_profiles
+    came from."""
+    module_entry = modules_config.get(module.name) or {}
+    raw_endpoint_profiles = module_entry.get("endpoint_profiles")
+    raw_device_profiles = module_entry.get("device_profiles")
+    if not raw_endpoint_profiles and not raw_device_profiles:
+        return module
+
+    system_endpoint_profiles, system_device_profiles = _parse_profile_library(
+        f"modules.{module.name}", raw_endpoint_profiles, raw_device_profiles,
+        module.endpoint_param_names)
+
+    endpoint_collision = set(system_endpoint_profiles) & set(module.endpoint_profiles)
+    if endpoint_collision:
+        raise ConfigError(
+            f"modules.{module.name}: endpoint_profiles name(s) {sorted(endpoint_collision)} "
+            f"already declared by module {module.name!r} in module.yaml")
+    device_collision = set(system_device_profiles) & set(module.device_profiles)
+    if device_collision:
+        raise ConfigError(
+            f"modules.{module.name}: device_profiles name(s) {sorted(device_collision)} "
+            f"already declared by module {module.name!r} in module.yaml")
+    if module.endpoints and system_device_profiles:
+        raise ConfigError(
+            f"modules.{module.name}: device_profiles and this module's non-empty module.yaml "
+            f"endpoints: are mutually exclusive, the same as within module.yaml itself -- "
+            f"endpoints: is unconditional (every device gets them) while device_profiles is "
+            f"opt-in, so combining them leaves no well-defined base/overlay order")
+
+    effective = copy.copy(module)
+    effective.endpoint_profiles = {**module.endpoint_profiles, **system_endpoint_profiles}
+    effective.device_profiles = {**module.device_profiles, **system_device_profiles}
+    return effective
 
 
 class ExtensionDescriptor:
@@ -766,7 +834,8 @@ def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_
 
 def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | None,
                    flat: dict[str, Device], modules_config: dict,
-                   module_config_cache: dict[str, "_ModuleConfig"]) -> Device:
+                   module_config_cache: dict[str, "_ModuleConfig"],
+                   effective_module_cache: dict[str, ModuleDescriptor]) -> Device:
     """Recursively build one `devices:` YAML entry (and its children) into a
     Device tree, registering every device by qualified id in `flat` as it
     goes. Raises ConfigError on a duplicate qualified id or an unrecognized
@@ -785,10 +854,14 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
         module_config_cache[module_name] = _resolve_module_config(module, modules_config)
     module_config = module_config_cache[module_name]
 
+    if module_name not in effective_module_cache:
+        effective_module_cache[module_name] = _build_effective_module(module, modules_config)
+    effective_module = effective_module_cache[module_name]
+
     instance_params = {k: v for k, v in entry.items() if k not in _DEVICE_ENTRY_KEYS}
     params = _merge_params(module, instance_params, device_id,
                            module_config.module_params, module_config.device_param_defaults)
-    endpoint_specs = _expand_endpoint_specs(module, entry, device_id)
+    endpoint_specs = _expand_endpoint_specs(effective_module, entry, device_id)
     endpoints, seeds = _merge_endpoints(module, endpoint_specs, device_id, params)
     update_interval = _resolve_interval(module, entry, intervals_map, module_config.update)
 
@@ -796,7 +869,7 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
 
     children = [
         _build_device(child_entry, intervals_map, qualified_id, flat, modules_config,
-                      module_config_cache)
+                      module_config_cache, effective_module_cache)
         for child_entry in entry.get("children", [])
     ]
 
@@ -1055,15 +1128,20 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     # (e.g. "zwya" instead of "zway") is silently ignored here and only
     # surfaces later, confusingly, as "parameter 'base_url' is required" on
     # the first zway device. _load_module_descriptor raises ConfigError for
-    # an unknown module name; _resolve_module_config validates its params.
+    # an unknown module name; _resolve_module_config validates its params;
+    # _build_effective_module validates any modules.<name>.device_profiles/
+    # endpoint_profiles overlay.
     flat: dict[str, Device] = {}
     module_config_cache: dict[str, _ModuleConfig] = {}
+    effective_module_cache: dict[str, ModuleDescriptor] = {}
     for module_name in modules_config:
         module = _load_module_descriptor(module_name)
         module_config_cache[module_name] = _resolve_module_config(module, modules_config)
+        effective_module_cache[module_name] = _build_effective_module(module, modules_config)
 
     roots = [
-        _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache)
+        _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache,
+                      effective_module_cache)
         for entry in raw.get("devices", [])
     ]
 
