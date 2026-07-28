@@ -114,7 +114,7 @@ def test_resolve_module_config_supplied_value_used():
             {"name": "cache_time", "override": "allowed", "scope": "module", "default": "10m"},
         ]
     })
-    modules_config = {"m": {"params": {"cache_time": "5m"}}}
+    modules_config = {"m": {"cache_time": "5m"}}
     assert _resolve_module_config(module, modules_config).module_params == {"cache_time": "5m"}
 
 
@@ -134,7 +134,7 @@ def test_resolve_module_config_required_supplied_ok():
             {"name": "region", "override": "required", "scope": "module"},
         ]
     })
-    modules_config = {"m": {"params": {"region": "CH"}}}
+    modules_config = {"m": {"region": "CH"}}
     assert _resolve_module_config(module, modules_config).module_params == {"region": "CH"}
 
 
@@ -144,14 +144,14 @@ def test_resolve_module_config_none_override_rejects_supplied_value():
             {"name": "data_url", "override": "none", "scope": "module", "default": "http://x"},
         ]
     })
-    modules_config = {"m": {"params": {"data_url": "http://evil"}}}
+    modules_config = {"m": {"data_url": "http://evil"}}
     with pytest.raises(ConfigError):
         _resolve_module_config(module, modules_config)
 
 
 def test_resolve_module_config_unknown_param_raises():
     module = ModuleDescriptor("m", {"parameters": []})
-    modules_config = {"m": {"params": {"bogus": 1}}}
+    modules_config = {"m": {"bogus": 1}}
     with pytest.raises(ConfigError):
         _resolve_module_config(module, modules_config)
 
@@ -165,7 +165,7 @@ def test_resolve_module_config_device_scope_param_becomes_default():
             {"name": "station", "override": "allowed", "scope": "device", "default": "BER"},
         ]
     })
-    modules_config = {"m": {"params": {"station": "ZRH"}}}
+    modules_config = {"m": {"station": "ZRH"}}
     config = _resolve_module_config(module, modules_config)
     assert config.module_params == {}
     assert config.device_param_defaults == {"station": "ZRH"}
@@ -177,7 +177,7 @@ def test_resolve_module_config_device_scope_none_override_still_rejects_module_l
             {"name": "station", "override": "none", "scope": "device", "default": "BER"},
         ]
     })
-    modules_config = {"m": {"params": {"station": "ZRH"}}}
+    modules_config = {"m": {"station": "ZRH"}}
     with pytest.raises(ConfigError):
         _resolve_module_config(module, modules_config)
 
@@ -188,7 +188,7 @@ def test_resolve_module_config_device_scope_required_satisfied_by_module_level_v
             {"name": "base_url", "override": "required", "scope": "device"},
         ]
     })
-    modules_config = {"m": {"params": {"base_url": "http://host"}}}
+    modules_config = {"m": {"base_url": "http://host"}}
     config = _resolve_module_config(module, modules_config)
     assert config.device_param_defaults == {"base_url": "http://host"}
 
@@ -199,7 +199,7 @@ def test_resolve_module_config_ignores_unrelated_modules_config_when_no_module_s
             {"name": "station", "override": "required", "scope": "device"},
         ]
     })
-    config = _resolve_module_config(module, {"other": {"params": {"x": 1}}})
+    config = _resolve_module_config(module, {"other": {"x": 1}})
     assert config.module_params == {}
     assert config.device_param_defaults == {}
 
@@ -671,15 +671,14 @@ def test_load_system_modules_section_sets_module_scoped_param_for_all_instances(
 heartbeat: 1s
 modules:
   meteoswiss:
-    params:
-      cache_time: 5m
+    cache_time: 5m
 devices:
   - id: meteo-bern
     module: meteoswiss
-    params: { station: BER }
+    station: BER
   - id: meteo-zurich
     module: meteoswiss
-    params: { station: ZRH }
+    station: ZRH
 """)
     system = load_system(system_yaml)
     assert system.devices["meteo-bern"].params["cache_time"] == "5m"
@@ -693,7 +692,7 @@ heartbeat: 1s
 devices:
   - id: meteo-bern
     module: meteoswiss
-    params: { station: BER }
+    station: BER
 """)
     system = load_system(system_yaml)
     assert system.devices["meteo-bern"].params["cache_time"] == "10m"
@@ -706,7 +705,8 @@ heartbeat: 1s
 devices:
   - id: meteo-bern
     module: meteoswiss
-    params: { station: BER, cache_time: 1m }
+    station: BER
+    cache_time: 1m
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
@@ -718,12 +718,11 @@ def test_load_system_rejects_unknown_modules_section_param(tmp_path):
 heartbeat: 1s
 modules:
   meteoswiss:
-    params:
-      bogus: 1
+    bogus: 1
 devices:
   - id: meteo-bern
     module: meteoswiss
-    params: { station: BER }
+    station: BER
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
@@ -731,15 +730,14 @@ devices:
 
 def test_load_system_modules_section_device_scoped_default_used_when_device_omits_it(tmp_path):
     # zway's base_url is override: required, scope: device -- supplying it
-    # once under modules.zway.params lets every device below omit its own
-    # params: entirely.
+    # once directly under modules.zway lets every device below omit it
+    # entirely.
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
 modules:
   zway:
-    params:
-      base_url: http://192.168.1.1:8083
+    base_url: http://192.168.1.1:8083
 devices:
   - id: light_one
     module: zway
@@ -757,12 +755,11 @@ def test_load_system_modules_section_device_param_overrides_module_default(tmp_p
 heartbeat: 1s
 modules:
   zway:
-    params:
-      base_url: http://192.168.1.1:8083
+    base_url: http://192.168.1.1:8083
 devices:
   - id: light
     module: zway
-    params: { base_url: "http://other-controller:8083" }
+    base_url: "http://other-controller:8083"
 """)
     system = load_system(system_yaml)
     assert system.devices["light"].params["base_url"] == "http://other-controller:8083"
@@ -776,7 +773,7 @@ intervals: { zwave: 30s }
 modules:
   zway:
     update: zwave
-    params: { base_url: "http://x:8083" }
+    base_url: "http://x:8083"
 devices:
   - id: light_default
     module: zway
@@ -796,7 +793,7 @@ heartbeat: 1s
 modules:
   zway:
     update: null
-    params: { base_url: "http://x:8083" }
+    base_url: "http://x:8083"
 devices:
   - id: light
     module: zway
@@ -828,7 +825,7 @@ def test_load_system_rejects_typo_d_module_name_in_modules_section(tmp_path):
 heartbeat: 1s
 modules:
   zwya:
-    params: { base_url: "http://x:8083" }
+    base_url: "http://x:8083"
 devices: []
 """)
     with pytest.raises(ConfigError):
@@ -1658,16 +1655,14 @@ tasks:
 # ---------- !include ----------
 
 def test_load_system_include_as_mapping_value(tmp_path):
-    (tmp_path / "params.yaml").write_text("""
-station: BER
-""")
+    (tmp_path / "station.yaml").write_text("BER\n")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
 devices:
   - id: meteo-bern
     module: meteoswiss
-    params: !include params.yaml
+    station: !include station.yaml
 """)
     system = load_system(system_yaml)
     assert system.devices["meteo-bern"].params["station"] == "BER"
@@ -1740,6 +1735,156 @@ devices: !include a.yaml
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
+
+
+# ---------- <<: !include (merge-key) ----------
+
+def test_load_system_merge_include_extends_a_mapping(tmp_path):
+    (tmp_path / "conn.yaml").write_text("""
+base_url: http://192.168.1.21:8083
+user: admin
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+intervals: { zwave: 30s }
+modules:
+  zway:
+    update: zwave
+    <<: !include conn.yaml
+devices:
+  - id: light
+    module: zway
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].params["base_url"] == "http://192.168.1.21:8083"
+    assert system.devices["light"].params["user"] == "admin"
+    assert system.devices["light"].update_interval == 30.0
+
+
+def test_load_system_merge_include_own_keys_win_over_fragment(tmp_path):
+    (tmp_path / "conn.yaml").write_text("""
+base_url: http://fragment:8083
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    <<: !include conn.yaml
+    base_url: http://own-key-wins:8083
+devices:
+  - id: light
+    module: zway
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].params["base_url"] == "http://own-key-wins:8083"
+
+
+def test_load_system_merge_include_populates_device_params(tmp_path):
+    (tmp_path / "conn.yaml").write_text("""
+base_url: http://192.168.1.21:8083
+user: admin
+password: secret
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: zway
+    <<: !include conn.yaml
+""")
+    system = load_system(system_yaml)
+    params = system.devices["light"].params
+    assert params["base_url"] == "http://192.168.1.21:8083"
+    assert params["user"] == "admin"
+    assert params["password"] == "secret"
+
+
+def test_load_system_merge_include_nested_include_resolves_relative_to_fragment(tmp_path):
+    # conn.yaml's own !include of "secret.yaml" only resolves if it's taken
+    # relative to sub/ (where secret.yaml actually lives), not relative to
+    # tmp_path/ (the root system.yaml's directory) -- same relative-path
+    # rule as a plain (non-merge) !include, see
+    # test_load_system_include_resolves_relative_to_including_file.
+    sub_dir = tmp_path / "sub"
+    sub_dir.mkdir()
+    (sub_dir / "secret.yaml").write_text("supersecret\n")
+    (sub_dir / "conn.yaml").write_text("""
+base_url: http://192.168.1.21:8083
+password: !include secret.yaml
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: zway
+    <<: !include sub/conn.yaml
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].params["password"] == "supersecret"
+
+
+def test_load_system_merge_include_rejects_non_mapping_target(tmp_path):
+    (tmp_path / "conn.yaml").write_text("just a string\n")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: zway
+    <<: !include conn.yaml
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_merge_include_missing_file_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: zway
+    <<: !include missing.yaml
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_merge_include_circular_raises(tmp_path):
+    (tmp_path / "a.yaml").write_text("<<: !include b.yaml\n")
+    (tmp_path / "b.yaml").write_text("<<: !include a.yaml\n")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: zway
+    <<: !include a.yaml
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_merge_anchor_still_works(tmp_path):
+    # Plain `<<: *anchor` (no !include involved) must still work exactly as
+    # PyYAML's own merge-key support already provided.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: zway
+    <<: &conn
+      base_url: http://192.168.1.21:8083
+      user: admin
+""")
+    system = load_system(system_yaml)
+    assert system.devices["light"].params["base_url"] == "http://192.168.1.21:8083"
+    assert system.devices["light"].params["user"] == "admin"
 
 
 @pytest.fixture

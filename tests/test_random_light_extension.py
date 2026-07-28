@@ -374,7 +374,9 @@ devices:
         default: 0
   - id: sun
     module: sun
-    params: { latitude: 47.3769, longitude: 8.5417, timezone: Europe/Zurich }
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
 
 extensions:
   random_light:
