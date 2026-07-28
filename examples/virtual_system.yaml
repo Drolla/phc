@@ -18,6 +18,21 @@ log:
 intervals:
   fast: 3s
 
+# A household-specific fixture (not a real product, so it doesn't belong in
+# devices/virtual/module.yaml's own, generic module.yaml) can be defined
+# once here and reused across devices via device_profile: -- see "Endpoint
+# and device profiles" in README.md.
+modules:
+  virtual:
+    device_profiles:
+      siren:
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+
 devices:
   - !include common/living_light_device.yaml
 
@@ -41,6 +56,16 @@ devices:
             type: int
             unit: "%"
             default: 0
+
+      - id: siren_hallway
+        module: virtual
+        name: Hallway Siren
+        device_profile: siren
+
+      - id: siren_garage
+        module: virtual
+        name: Garage Siren
+        device_profile: siren
 
 tasks:
   - tag: blink
