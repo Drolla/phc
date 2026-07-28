@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _expand_endpoint_specs,
-                          _load_extensions, _merge_endpoints, _merge_extension_params,
-                          _merge_params, _resolve_interval, _resolve_module_config,
-                          _substitute_endpoint_spec, load_system)
+from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _build_effective_module,
+                          _expand_endpoint_specs, _load_extensions, _merge_endpoints,
+                          _merge_extension_params, _merge_params, _resolve_interval,
+                          _resolve_module_config, _substitute_endpoint_spec, load_system)
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -601,6 +601,77 @@ def test_expand_and_substitute_device_profile_end_to_end():
     assert by_key["battery"]["address"] == "11"
 
 
+def test_build_effective_module_is_identity_when_no_system_profiles():
+    # The common case (no modules.<name>.device_profiles/endpoint_profiles
+    # at all) must return `module` itself unchanged -- no copy, no cost.
+    module = _profile_module()
+    assert _build_effective_module(module, {}) is module
+    assert _build_effective_module(module, {"zwaylike": {"update": "5s"}}) is module
+
+
+def test_build_effective_module_merges_system_device_profile():
+    module = ModuleDescriptor("virtual", {"endpoints": []})
+    modules_config = {"virtual": {"device_profiles": {
+        "siren": {"endpoints": [{"key": "state", "writable": True, "type": "int",
+                                 "values": {0: "off", 1: "on"}, "default": 0}]},
+    }}}
+    effective = _build_effective_module(module, modules_config)
+    assert effective.name == module.name
+    assert "siren" in effective.device_profiles
+    assert effective.device_profiles["siren"]["endpoints"][0]["key"] == "state"
+
+
+def test_build_effective_module_does_not_mutate_cached_module_descriptor():
+    # module is the process-global _module_descriptors-cached object --
+    # merging a system profile onto the effective view must never touch it,
+    # or one system config's profiles would leak into another's use of the
+    # same module (see _expand_endpoint_specs_does_not_mutate_cached_module_
+    # profiles for the equivalent discipline on the module.yaml-only path).
+    module = ModuleDescriptor("virtual", {"endpoints": []})
+    modules_config = {"virtual": {"device_profiles": {
+        "siren": {"endpoints": [{"key": "state"}]},
+    }}}
+    _build_effective_module(module, modules_config)
+    assert module.device_profiles == {}
+    assert module.endpoint_profiles == {}
+
+
+def test_build_effective_module_rejects_device_profile_name_collision():
+    module = _profile_module()
+    modules_config = {"zwaylike": {"device_profiles": {
+        "multisensor_t": {"endpoints": [{"key": "x"}]},
+    }}}
+    with pytest.raises(ConfigError):
+        _build_effective_module(module, modules_config)
+
+
+def test_build_effective_module_rejects_endpoint_profile_name_collision():
+    module = _profile_module()
+    modules_config = {"zwaylike": {"endpoint_profiles": {
+        "temperature": {"type": "float"},
+    }}}
+    with pytest.raises(ConfigError):
+        _build_effective_module(module, modules_config)
+
+
+def test_build_effective_module_rejects_device_profiles_combined_with_nonempty_module_endpoints():
+    module = ModuleDescriptor("m", {"endpoints": [{"key": "x"}]})
+    modules_config = {"m": {"device_profiles": {"y": {"endpoints": [{"key": "z"}]}}}}
+    with pytest.raises(ConfigError):
+        _build_effective_module(module, modules_config)
+
+
+def test_build_effective_module_validates_endpoint_spec_keys_of_system_profile():
+    # Proves the shared _parse_profile_library validation is actually wired
+    # in for the system-config path, not just device_profiles' own shape.
+    module = ModuleDescriptor("virtual", {"endpoints": []})
+    modules_config = {"virtual": {"device_profiles": {
+        "siren": {"endpoints": [{"key": "state", "bogus_field": 1}]},
+    }}}
+    with pytest.raises(ConfigError):
+        _build_effective_module(module, modules_config)
+
+
 def test_resolve_interval_module_default_when_no_instance_override():
     module = ModuleDescriptor("m", {"update": "10s"})
     seconds = _resolve_interval(module, {}, {})
@@ -826,6 +897,87 @@ heartbeat: 1s
 modules:
   zwya:
     base_url: "http://x:8083"
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_resolves_device_profile_defined_under_modules_section(tmp_path):
+    # A system config can extend a module's profile library too (see
+    # _build_effective_module) -- device_profile: siren resolves against a
+    # profile that exists only in this system YAML, not in virtual's own
+    # module.yaml.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  virtual:
+    device_profiles:
+      siren:
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+devices:
+  - id: siren_one
+    module: virtual
+    device_profile: siren
+  - id: siren_two
+    module: virtual
+    device_profile: siren
+""")
+    system = load_system(system_yaml)
+    assert system.devices["siren_one"].get("state") == 0
+    assert system.devices["siren_two"].get("state") == 0
+
+
+def test_load_system_rejects_system_device_profile_name_colliding_with_module_yaml_profile(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    base_url: "http://x:8083"
+    device_profiles:
+      fibaro-fgs222:
+        endpoints:
+          - key: state
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_system_device_profiles_under_module_with_nonempty_endpoints(tmp_path):
+    # meteoswiss's module.yaml declares six unconditional endpoints: -- same
+    # base/overlay ambiguity as module.yaml declaring both itself.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  meteoswiss:
+    device_profiles:
+      x:
+        endpoints:
+          - key: y
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_malformed_system_device_profile_entry(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  virtual:
+    device_profiles:
+      siren:
+        brand: Acme
 devices: []
 """)
     with pytest.raises(ConfigError):
