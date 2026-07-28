@@ -227,7 +227,9 @@ as an ordinary top-level field on the endpoint:
 modules:
   zway:
     update: 30s
-    params: { base_url: "http://192.168.1.21:8083", user: admin, password: admin }
+    base_url: "http://192.168.1.21:8083"
+    user: admin
+    password: admin
 
 devices:
   - id: light_corridor
@@ -260,10 +262,9 @@ every product using that command group, while a `device_profile` names one
 `fibaro-fgs222`, `everspring-st814`, `popp-z-weather` (see
 `devices/zway/module.yaml` for the full list) — supplying that product's
 own addresses, which an `endpoint_profile` never hardcodes (the same
-command group wires up differently on different hardware). Set `node:` in
-the device's `params` and `device_profile:` on the device to get a whole
-product's endpoints at once, then complete them by `key` with a
-human-readable `name:`:
+command group wires up differently on different hardware). Set `node:` and
+`device_profile:` directly on the device to get a whole product's endpoints
+at once, then complete them by `key` with a human-readable `name:`:
 
 ```yaml
 devices:
@@ -271,7 +272,7 @@ devices:
     module: zway
     name: Corridor Light Switch
     device_profile: fibaro-fgs222
-    params: { node: 7 }
+    node: 7
     endpoints:
       - { key: sw1, name: "Corridor Light" }
       - { key: sw2, name: "Closet Light" }
@@ -490,70 +491,99 @@ devices:
   - id: sun
     module: sun
     update: 1h
-    params: !include common/sun_zurich_params.yaml
+    latitude: 47.3769
+    longitude: 8.5417
 ```
 
 The path is resolved relative to the file the `!include` appears in, not the
 root config or the current directory, so an included file can itself use
 `!include` to pull in further files. This is a plain substitution (the tagged
 node is replaced by the included file's parsed content) rather than a merge,
-so a shared fragment works best when it's either a fully self-contained block
-(e.g. a whole device) or a nested value that doesn't vary between the files
-including it (e.g. just the `params:` of a device whose other fields differ
-per file). See [`examples/common/`](examples/common/) for fragments shared
-between several of the example systems, and any example file under
+so a shared fragment works best when it's a fully self-contained block, e.g.
+a whole device (as `common/living_light_device.yaml` is above).
+
+For a fragment that only supplies *some* of a mapping's fields -- e.g. a
+device's or module's shared params, alongside other fields (`update:`, `id:`)
+that differ per file -- use `<<: !include <relative-path>` instead, which
+merges the included mapping's keys into the surrounding mapping rather than
+replacing it wholesale. The surrounding mapping's own keys win over the
+fragment's, the same precedence a plain YAML `<<: *anchor` merge already has:
+
+```yaml
+# common/sun_zurich_params.yaml
+latitude: 47.3769
+longitude: 8.5417
+timezone: Europe/Zurich
+```
+
+```yaml
+devices:
+  - id: sun
+    module: sun
+    update: 1h              # this device's own field, not in the fragment
+    <<: !include common/sun_zurich_params.yaml
+```
+
+See [`examples/common/`](examples/common/) for fragments shared between
+several of the example systems, and any example file under
 [`examples/`](examples/) that references them for real usage.
 
 ## Modules and shared configuration
 
 A `module.yaml` declares each parameter's `scope` (default `device`) and
-`override` (default `allowed`; `required` or `none` are the other two).
-`scope: device` params are normally set per device, under that device's own
-`params:`. The top-level `modules:` section lets several devices of one
-module type share configuration instead of repeating it on every device:
+`override` (default `allowed`; `required` or `none` are the other two). A
+declared parameter is an ordinary top-level field, set directly on a device
+entry (`scope: device`) or under that module's entry in the top-level
+`modules:` section (either scope) -- there is no `params:` nesting. The
+top-level `modules:` section lets several devices of one module type share
+configuration instead of repeating it on every device:
 
 ```yaml
 modules:
   zway:
-    update: zwave                              # falls between a device's own update: and module.yaml's default
-    params: !include common/zway_controller_params.yaml   # base_url/user/password/cache_time, shared by every zway device
+    update: zwave                       # falls between a device's own update: and module.yaml's default
+    <<: !include common/zway_controller_params.yaml   # base_url/user/password/cache_time, shared by every zway device
 
 devices:
   - id: light_corridor
     module: zway
-    endpoints: [ ... ]   # no params:/update: of its own -- both come from modules.zway above
+    endpoints: [ ... ]   # no params of its own -- both come from modules.zway above
   - id: sensor_garage
     module: zway
-    params: { base_url: "http://a-different-controller:8083" }   # overrides just this one param
+    base_url: "http://a-different-controller:8083"   # overrides just this one param
     endpoints: [ ... ]
 ```
 
-Precedence for a `scope: device` param: the device's own `params.<name>` →
-`modules.<name>.params.<name>` → the module's own `default:`. A param
-declared `override: required` (e.g. zway's `base_url`) can be satisfied by
-either the device or the module-level value — this is what lets every
+Precedence for a `scope: device` param: the device's own field → the same
+field set directly under `modules.<name>` → the module's own `default:`. A
+param declared `override: required` (e.g. zway's `base_url`) can be satisfied
+by either the device or the module-level value — this is what lets every
 device behind one controller omit `base_url` entirely once it's set under
-`modules.zway.params`. `override: none` rejects a value being set anywhere
-but the module's own `default:`. `modules.<name>.update` works the same
-way for a device's update interval: device `update:` → `modules.<name>.update`
-→ the module's own `update:` default.
+`modules.zway`. `override: none` rejects a value being set anywhere but the
+module's own `default:`. `modules.<name>.update` works the same way for a
+device's update interval: device `update:` → `modules.<name>.update` → the
+module's own `update:` default. `update` is the one key reserved at the
+`modules.<name>` level -- a module cannot declare a parameter named `update`,
+or `params` (reserved even though it's no longer a device/modules key
+either, since a parameter literally named `params` would be indistinguishable
+from the old nested-dict spelling).
 
 A parameter declared `scope: module` (e.g. `meteoswiss`'s `data_url`/
 `cache_time`) is different: it has exactly one value for every device of
-that module type, settable *only* under `modules.<name>.params` — setting
-it on a device's own `params:` is a `ConfigError`.
+that module type, settable *only* directly under `modules.<name>` — setting
+it on a device is a `ConfigError`.
 
 A module may similarly declare `endpoint_parameters:` — its own per-endpoint
 protocol fields (e.g. zway's `command_group`/`address`), a list of `{name,
 description}` entries mirroring `parameters:`'s device-level schema, but
 with no `default`/`override`/`scope` (an endpoint has no equivalent of
-`modules.<name>.params` to resolve against). A declared name becomes a
-legal top-level key on any endpoint spec of that module, folded into
+`modules.<name>` to resolve against). A declared name becomes a legal
+top-level key on any endpoint spec of that module, folded into
 `Endpoint.params` once every profile/overlay/`{param}` step has resolved —
 see the next section for how that combines with profiles. There is no
-`params: { ... }` nesting on an endpoint any more; an undeclared field
-anywhere on an endpoint spec (a typo, or a value that belongs under the
-device's own `params:` instead) is a `ConfigError` naming the field.
+`params: { ... }` nesting on a device entry or an endpoint any more; an
+undeclared field anywhere on either (a typo, or a value meant for the other
+one) is a `ConfigError` naming the field.
 
 ## Endpoint and device profiles
 
@@ -597,16 +627,16 @@ devices:
     module: zway
     name: Living Room Multisensor
     device_profile: everspring-st814   # whole device, from device_profiles
-    params: { node: 11 }               # fills in every {node} template above
+    node: 11                           # fills in every {node} template above
     endpoints:
       - { key: temp, name: "Living Room Temperature" }   # complete a profile-derived endpoint by key
   - id: fus18_meteo
     module: zway
+    node: 15
     endpoints:
       - key: f18_temp
         endpoint_profile: sensor_multilevel_temperature   # single endpoint, no device profile
         address: "{node}.0.1"
-    params: { node: 15 }
 ```
 
 A device's own `endpoints:` overlays whatever its `device_profile:`/
