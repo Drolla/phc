@@ -125,6 +125,51 @@ _DEVICE_ENTRY_KEYS = {"id", "module", "name", "endpoints", "update", "children",
 _MODULES_ENTRY_KEYS = {"update"}
 
 
+def _parse_profile_library(owner_label: str, raw_endpoint_profiles: dict | None,
+                            raw_device_profiles: dict | None, endpoint_param_names: set,
+                            extra_endpoint_specs=()) -> tuple[dict, dict]:
+    """Parse+validate one endpoint_profiles/device_profiles mapping pair --
+    shared by ModuleDescriptor.__init__ (a module.yaml's own library) and
+    _build_effective_module (a system YAML's modules.<name>.device_profiles/
+    endpoint_profiles overlay). `owner_label` (e.g. "module 'zway'" or
+    "modules.zway") only names the source in error messages.
+    `extra_endpoint_specs` are endpoint specs validated alongside the two
+    libraries but not returned -- only ModuleDescriptor passes its own
+    unconditional `endpoints:` here, folding them into the same
+    key-validation pass. Returns (endpoint_profiles, device_profiles) as
+    plain dicts. Does not check name collisions against a second source, or
+    the endpoints:/device_profiles mutual-exclusion rule -- both are
+    specific to which two sources are being combined and stay with the
+    caller."""
+    endpoint_profiles = raw_endpoint_profiles or {}
+    device_profiles = {}
+    for profile_name, profile_raw in (raw_device_profiles or {}).items():
+        if not isinstance(profile_raw, dict):
+            raise ConfigError(
+                f"{owner_label}: device_profiles[{profile_name!r}] must be a mapping "
+                f"with brand/type/product/description/endpoints -- a bare list of endpoint "
+                f"specs is the old device_profiles shape and is no longer supported")
+        unknown = set(profile_raw) - _DEVICE_PROFILE_KEYS
+        if unknown:
+            raise ConfigError(
+                f"{owner_label}: device_profiles[{profile_name!r}] has unrecognized "
+                f"key(s) {sorted(unknown)}")
+        if "endpoints" not in profile_raw:
+            raise ConfigError(
+                f"{owner_label}: device_profiles[{profile_name!r}] is missing required "
+                f"key 'endpoints'")
+        device_profiles[profile_name] = dict(profile_raw)
+    allowed_endpoint_keys = _ENDPOINT_ENTRY_KEYS | endpoint_param_names
+    for spec in (*extra_endpoint_specs, *endpoint_profiles.values(),
+                 *(ep for profile in device_profiles.values() for ep in profile["endpoints"])):
+        unknown = set(spec) - allowed_endpoint_keys
+        if unknown:
+            raise ConfigError(
+                f"{owner_label}: endpoint spec {spec.get('key')!r} has unrecognized "
+                f"key(s) {sorted(unknown)}")
+    return endpoint_profiles, device_profiles
+
+
 class ModuleDescriptor:
     """Parsed module.yaml for one device module.
 
@@ -194,33 +239,9 @@ class ModuleDescriptor:
                 f"collide with a reserved endpoint field name")
         self.endpoints = raw.get("endpoints") or []
         self.update = raw.get("update", None)
-        self.endpoint_profiles = raw.get("endpoint_profiles") or {}
-        self.device_profiles = {}
-        for profile_name, profile_raw in (raw.get("device_profiles") or {}).items():
-            if not isinstance(profile_raw, dict):
-                raise ConfigError(
-                    f"module {name!r}: device_profiles[{profile_name!r}] must be a mapping "
-                    f"with brand/type/product/description/endpoints -- a bare list of endpoint "
-                    f"specs is the old device_profiles shape and is no longer supported")
-            unknown = set(profile_raw) - _DEVICE_PROFILE_KEYS
-            if unknown:
-                raise ConfigError(
-                    f"module {name!r}: device_profiles[{profile_name!r}] has unrecognized "
-                    f"key(s) {sorted(unknown)}")
-            if "endpoints" not in profile_raw:
-                raise ConfigError(
-                    f"module {name!r}: device_profiles[{profile_name!r}] is missing required "
-                    f"key 'endpoints'")
-            self.device_profiles[profile_name] = dict(profile_raw)
-        allowed_endpoint_keys = _ENDPOINT_ENTRY_KEYS | self.endpoint_param_names
-        for spec in (*self.endpoints, *self.endpoint_profiles.values(),
-                     *(ep for profile in self.device_profiles.values()
-                       for ep in profile["endpoints"])):
-            unknown = set(spec) - allowed_endpoint_keys
-            if unknown:
-                raise ConfigError(
-                    f"module {name!r}: endpoint spec {spec.get('key')!r} has unrecognized "
-                    f"key(s) {sorted(unknown)}")
+        self.endpoint_profiles, self.device_profiles = _parse_profile_library(
+            f"module {name!r}", raw.get("endpoint_profiles"), raw.get("device_profiles"),
+            self.endpoint_param_names, extra_endpoint_specs=self.endpoints)
         if self.device_profiles and self.endpoints:
             raise ConfigError(
                 f"module {name!r}: device_profiles and a non-empty endpoints: are mutually "
