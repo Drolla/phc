@@ -21,21 +21,19 @@ devices:
     module: waveplus_bridge
     name: Cellar Office Air Quality
     update: radon
-    params:
-      base_url: http://192.168.1.26:80/data
-      sensor_id: cellar_office
-      cache_time: 60s
-      data_validity_time: 5m
+    base_url: http://192.168.1.26:80/data
+    sensor_id: cellar_office
+    cache_time: 60s
+    data_validity_time: 5m
 
   - id: cellar_room
     module: waveplus_bridge
     name: Cellar Room Air Quality
     update: radon
-    params:
-      base_url: http://192.168.1.26:80/data
-      sensor_id: cellar_room
-      cache_time: 60s
-      data_validity_time: 5m
+    base_url: http://192.168.1.26:80/data
+    sensor_id: cellar_room
+    cache_time: 60s
+    data_validity_time: 5m
 
 tasks:
   - tag: report_cellar_office_radon

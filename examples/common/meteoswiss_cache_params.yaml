@@ -4,5 +4,4 @@
 # without setting its own update:.
 meteoswiss:
   update: weather
-  params:
-    cache_time: 5m
+  cache_time: 5m

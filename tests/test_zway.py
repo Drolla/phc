@@ -141,8 +141,7 @@ def _sensor_endpoints():
 
 
 def _tagreader_endpoints():
-    return [Endpoint("state", params={
-        "command_group": "TagReader", "address": "22", "node_id": "22"})]
+    return [Endpoint("state", params={"command_group": "TagReader", "address": "22"})]
 
 
 def _device(base_url, device_id="dev", endpoints=None, **params):
@@ -168,7 +167,7 @@ def test_zway_batches_three_sibling_devices_into_one_get():
     try:
         light = _device(base_url, "light")
         sensor = _device(base_url, "sensor", endpoints=_sensor_endpoints())
-        tag = _device(base_url, "tag", endpoints=_tagreader_endpoints())
+        tag = _device(base_url, "tag", endpoints=_tagreader_endpoints(), node=22)
         scheduler = Scheduler({"light": light, "sensor": sensor, "tag": tag})
         scheduler.tick(now=0.0)
         scheduler.close()
@@ -314,7 +313,7 @@ def test_zway_write_ignores_unknown_endpoint_key():
 def test_zway_configure_tag_reader_fires_once():
     server, base_url = _serve(get_response=[1])
     try:
-        tag = _device(base_url, "tag", endpoints=_tagreader_endpoints(), cache_time="50ms")
+        tag = _device(base_url, "tag", endpoints=_tagreader_endpoints(), node=22, cache_time="50ms")
         scheduler = Scheduler({"tag": tag})
         scheduler.tick(now=0.0)
         time.sleep(0.1)   # past cache_time -- forces a second Get, but not a second configure
@@ -322,6 +321,21 @@ def test_zway_configure_tag_reader_fires_once():
         scheduler.close()
         assert server.configure_hits == 1
         assert server.get_hits == 2
+    finally:
+        server.shutdown()
+
+
+def test_zway_skips_configure_when_tag_reader_device_has_no_node():
+    # Never raises -- a TagReader endpoint on a device with no `node` param
+    # is simply not configured, mirroring how a misconfigured
+    # command_group/address permanently reports None instead of erroring.
+    server, base_url = _serve(get_response=[1])
+    try:
+        tag = _device(base_url, "tag", endpoints=_tagreader_endpoints())
+        scheduler = Scheduler({"tag": tag})
+        scheduler.tick(now=0.0)
+        scheduler.close()
+        assert server.configure_hits == 0
     finally:
         server.shutdown()
 

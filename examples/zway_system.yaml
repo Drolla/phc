@@ -17,7 +17,7 @@ intervals:
   zwave: 30s
   zwave_meteo: 5m
 
-# All three devices below share one Razberry/zWay controller, so its
+# All five devices below share one Razberry/zWay controller, so its
 # connection params and update interval are set once here -- rather than
 # repeated on each device -- under modules.zway; their status reads then
 # automatically coalesce into a single combined Get() request per poll
@@ -30,70 +30,69 @@ intervals:
 modules:
   zway:
     update: zwave
-    params: !include common/zway_controller_params.yaml
+    <<: !include common/zway_controller_params.yaml
 
 devices:
-  # A single endpoint using zway's `switch` endpoint profile (see
-  # devices/zway/module.yaml) instead of writing out type/values/writable/
-  # command_group by hand -- a switch's channel has no safe default, so
-  # address is still supplied explicitly.
+  # A whole device built from zway's fibaro-fgs222 device_profile (see
+  # devices/zway/module.yaml): node: 7 fills in both relays' {node}
+  # templates ("7.1"/"7.2"). The device's own `endpoints:` then names each
+  # relay by key -- a device_profile only ever supplies the mechanics
+  # (command_group/address/type/...), never a human label.
   - id: light_corridor
     module: zway
-    name: Corridor Light
+    name: Corridor Light Switch
+    device_profile: fibaro-fgs222
+    node: 7
     endpoints:
-      - key: state
-        endpoint_profile: switch
-        params: { address: "7.1" }
+      - { key: sw1, name: "Corridor Light" }
+      - { key: sw2, name: "Closet Light" }
 
-  # A whole device built from zway's motion_sensor device_profile: node: 12
-  # fills in both endpoints' {node} templates (state -> "12", battery ->
-  # "12").
+  # everspring-pir_sensor: node: 12 fills in both endpoints' {node}
+  # templates (state -> "12", battery -> "12").
   - id: sensor_garage
     module: zway
     name: Garage Motion Sensor
-    device_profile: motion_sensor
-    params: { node: 12 }
+    device_profile: everspring-pir_sensor
+    node: 12
 
-  # A device profile (multisensor_th: temp/humidity/battery) whose `hum`
-  # endpoint is then tweaked by one field: this unit's humidity sensor is
-  # wired to a non-standard sub-instance, so its `address` is overridden
-  # while `command_group` (from the profile) is kept -- demonstrating the
-  # params: deep-merge-by-key overlay (see
-  # core.config._overlay_endpoint_spec) rather than a wholesale replace.
-  # temp/battery are left exactly as the profile provides them.
+  # everspring-st814 (temperature/humidity), whose `hum` endpoint is then
+  # tweaked by one field: this unit's humidity sensor is wired to a
+  # non-standard sub-instance, so its `address` is overridden while
+  # `command_group` (from the profile) is kept -- demonstrating the
+  # overlay-by-key merge (see core.config._overlay_endpoint_spec) rather
+  # than a wholesale replace. `temp`/`battery` are left exactly as the
+  # profile provides them.
   - id: sensor_workshop
     module: zway
     name: Workshop Multisensor
-    device_profile: multisensor_th
-    params: { node: 15 }
+    device_profile: everspring-st814
+    node: 15
     endpoints:
       - key: hum
-        params: { address: "15.1.5" }
+        address: "15.1.5"
 
-  # Fully explicit, no device_profile:/endpoint_profile: at all -- TagReader
-  # needs node_id, which the profile library doesn't model, and this is
-  # only one endpoint anyway. Writing endpoints out by hand like this keeps
-  # working unchanged whether or not a module ships any profiles.
+  # benext-tag_reader: a device with a TagReader endpoint needs its own
+  # `node` param set (for the one-time Configure_TagReader call -- see
+  # devices/zway/device.py), which this device already has for its {node}
+  # templates anyway. Node 22's own SwitchBinary write path (its ack LED/
+  # lock feedback) comes along as the profile's `ack` endpoint.
   - id: tag_reader_front
     module: zway
     name: Front Door Tag Reader
-    endpoints:
-      - key: state
-        params: { command_group: TagReader, address: "22", node_id: "22" }
+    device_profile: benext-tag_reader
+    node: 22
 
   # A whole POPP Z-Weather outdoor sensor (product 005206) built entirely
-  # from zway's popp_zweather device_profile: node: 30 fills in all seven
+  # from zway's popp-z-weather device_profile: node: 30 fills in all seven
   # endpoints' {node} templates in one go (temp/hum/lum/pres/dew/vel/
-  # battery) -- contrast with sensor_garage above (also a device profile,
-  # but only two endpoints) and light_corridor (a single endpoint
-  # profile). update: zwave_meteo overrides modules.zway's zwave default,
+  # battery). update: zwave_meteo overrides modules.zway's zwave default,
   # since this sensor reports far less often than a switch/motion sensor.
   - id: weather_station
     module: zway
     name: Outdoor Weather Station
     update: zwave_meteo
-    device_profile: popp_zweather
-    params: { node: 30 }
+    device_profile: popp-z-weather
+    node: 30
 
 tasks:
   - tag: garage_motion_light
@@ -101,7 +100,7 @@ tasks:
     condition: { device: "sensor_garage.state", changed: true }
     action:
       kind: set
-      device: "light_corridor.state"
+      device: "light_corridor.sw1"
       value: 255
 
   - tag: report_low_battery

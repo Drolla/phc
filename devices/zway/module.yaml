@@ -4,28 +4,35 @@ description: >
   (https://github.com/Drolla/thc/tree/master/modules/thc_zWay) installed on
   the zWay server itself -- install it there yourself, PHC does not push it.
   Define whatever endpoints one node needs (e.g. a switch's `state`, a
-  sensor's `battery`); every endpoint must set its own `params`:
-  `command_group` (one of SwitchBinary, SwitchMultilevel, SwitchMultiBinary,
-  SensorBinary, SensorMultilevel, Battery, TagReader) and `address` (an
-  opaque zWay "node.instance[.datarecord]" identifier string, e.g. "20.1" or
-  "11.0.1" -- passed through verbatim, never parsed by PHC). A TagReader
-  endpoint additionally needs `node_id`, used for a one-time setup call
-  before its readings are meaningful. Devices sharing one `base_url` share
-  one cached batched status request per `cache_time` -- see `cache_time`
-  below.
+  sensor's `battery`); every endpoint must set its own `command_group` (one
+  of SwitchBinary, SwitchMultilevel, SwitchMultiBinary, SensorBinary,
+  SensorMultilevel, Battery, TagReader) and `address` (an opaque zWay
+  "node.instance[.datarecord]" identifier string, e.g. "20.1" or "11.0.1" --
+  passed through verbatim, never parsed by PHC). Devices sharing one
+  `base_url` share one cached batched status request per `cache_time` --
+  see `cache_time` below.
 
-  endpoint_profiles/device_profiles below are an optional shortcut for the
-  common case where one node's endpoints all derive from the same node
-  number (e.g. node 11's temperature is "11.0.1", its humidity "11.0.5",
-  its battery "11") -- set `node:` in the device's `params` and
-  `device_profile:` on the device (or `endpoint_profile:` on one endpoint)
-  instead of writing each `address` out by hand. `{param}` templates like
-  `{node}` are resolved on any endpoint's fields, whether or not a profile
-  is used, so writing endpoints fully explicitly, without `device_profile:`/
-  `endpoint_profile:` anywhere, keeps working exactly as before; the two
-  styles can also mix on one device (e.g. a device profile for
-  temp/humidity/battery, plus one fully-explicit endpoint for something the
-  library doesn't cover).
+  endpoint_profiles/device_profiles below are the recommended shortcut,
+  split along two independent axes: an endpoint_profile (named after its
+  command group -- e.g. `switch_binary`, `sensor_multilevel_temperature`;
+  no module-name prefix needed, since a profile is only ever resolved
+  against the module of the device referencing it) captures the *access
+  pattern* -- type, units, writability -- shared by every product using
+  that command group, while a device_profile names one *product* --
+  brand/type/product/description metadata plus a keyed `endpoints:` list
+  supplying that product's addresses (which an endpoint_profile never
+  hardcodes, since the same command group wires up differently on
+  different hardware -- an FGS222's two relays are "{node}.1"/"{node}.2",
+  a siren's channel is "{node}.0", a PIR's is the bare "{node}"). Set
+  `node:` in the device's `params` and `device_profile:` on the device (or
+  `endpoint_profile:` on one endpoint) instead of writing each
+  `command_group`/`address` out by hand. `{param}` templates like `{node}`
+  are resolved on any endpoint's
+  fields, whether or not a profile is used, so writing endpoints fully
+  explicitly, without `device_profile:`/`endpoint_profile:` anywhere, keeps
+  working exactly as before; the two styles can also mix on one device
+  (e.g. a device profile for temp/humidity/battery, plus one fully-explicit
+  endpoint for something the library doesn't cover).
 
 update: "1m"
 
@@ -68,82 +75,201 @@ parameters:
     override: allowed
     default: null
     description: >
-      This node's zWay node number (e.g. 11), used only to fill in
-      `{node}` templates in endpoint_profiles/device_profiles below --
-      PHC never uses it for anything else. Irrelevant for a device that
-      writes its endpoints' `address`es out fully explicitly.
+      This node's zWay node number (e.g. 11) -- fills in `{node}` templates
+      in endpoint_profiles/device_profiles below, and is also the argument
+      to the one-time Configure_TagReader(node) call a TagReader endpoint
+      needs before its readings are meaningful. Irrelevant for a device
+      that writes its endpoints' `address`es out fully explicitly and has
+      no TagReader endpoint.
+
+endpoint_parameters:
+  - name: command_group
+    description: >
+      SwitchBinary, SwitchMultilevel, SwitchMultiBinary, SensorBinary,
+      SensorMultilevel, Battery, or TagReader.
+  - name: address
+    description: >
+      Opaque zWay "node.instance[.datarecord]" identifier, passed through
+      verbatim.
 
 endpoints: []
 
 # A profile entry is a full endpoint spec, the same shape written by hand
-# (see the description above), with `{node}` templates in `params:` values
-# filled in from the device's own `node` param. `switch` carries no address
-# -- a switch's channel (e.g. the ".1" in "7.1") has no safe default
-# (channel 0 is real, so it can't be inferred from an unset param), so a
-# device using it must still supply its own `params: { address: "7.1" }`.
+# (see the description above), with `{node}` templates filled in from the
+# device's own `node` param. No endpoint_profile below sets `address` --
+# that's a product's wiring, not the command group's, and belongs in a
+# device_profiles entry instead (see below).
 endpoint_profiles:
-  temperature:
-    type: float
-    unit: "°C"
-    params: { command_group: SensorMultilevel, address: "{node}.0.1" }
-  humidity:
-    type: float
-    unit: "%"
-    params: { command_group: SensorMultilevel, address: "{node}.0.5" }
-  battery:
-    type: int
-    unit: "%"
-    params: { command_group: Battery, address: "{node}" }
-  motion:
-    type: int
-    values: { 0: "clear", 1: "motion" }
-    params: { command_group: SensorBinary, address: "{node}" }
-  switch:
+  switch_binary:
     type: int
     writable: true
     values: { 0: "off", 255: "on" }
-    params: { command_group: SwitchBinary }
-  luminance:
-    type: float
+    command_group: SwitchBinary
+  switch_multilevel:
+    type: int
+    writable: true
+    min: 0
+    max: 99
+    command_group: SwitchMultilevel
+  switch_multi_binary:
+    type: int
+    writable: true
+    min: 0
+    max: 3
+    command_group: SwitchMultiBinary
+  sensor_binary:
+    type: int
+    values: { 0: "clear", 1: "triggered" }
+    command_group: SensorBinary
+  battery:
+    type: int
     unit: "%"
-    params: { command_group: SensorMultilevel, address: "{node}.0.3" }
-  pressure:
-    type: float
-    unit: kPa
-    params: { command_group: SensorMultilevel, address: "{node}.0.9" }
-  dew_point:
+    command_group: Battery
+  tag_reader:
+    type: str
+    command_group: TagReader
+  sensor_multilevel_temperature:
     type: float
     unit: "°C"
-    params: { command_group: SensorMultilevel, address: "{node}.0.11" }
-  wind_velocity:
+    command_group: SensorMultilevel
+  sensor_multilevel_humidity:
+    type: float
+    unit: "%"
+    command_group: SensorMultilevel
+  sensor_multilevel_luminance:
+    type: float
+    unit: "%"
+    command_group: SensorMultilevel
+  sensor_multilevel_pressure:
+    type: float
+    unit: kPa
+    command_group: SensorMultilevel
+  sensor_multilevel_dew_point:
+    type: float
+    unit: "°C"
+    command_group: SensorMultilevel
+  sensor_multilevel_wind_velocity:
     type: float
     unit: m/s
-    params: { command_group: SensorMultilevel, address: "{node}.0.6" }
+    command_group: SensorMultilevel
+  sensor_multilevel_radiation:
+    type: float
+    command_group: SensorMultilevel
 
-# A device_profiles entry is a named list of {key, endpoint_profile} pairs
-# -- set `device_profile: <name>` on a device (alongside
-# `params: { node: ... }`) to get all of them at once; the device's own
-# `endpoints:` can still tweak or add to what the profile provides
-# (overlaid by key -- see core.config._expand_endpoint_specs).
+# A device_profiles entry names one product: optional brand/type/product/
+# description metadata (documentation only, never used at runtime) plus a
+# keyed `endpoints:` list, each referencing an endpoint_profile above and
+# supplying that product's own address. Set `device_profile: <name>` on a
+# device (alongside `params: { node: ... }`) to get all of them at once;
+# the device's own `endpoints:` can still tweak or add to what the profile
+# provides (overlaid by key -- see core.config._expand_endpoint_specs),
+# e.g. to give an endpoint a human-readable `name:`.
 device_profiles:
-  multisensor_th:
-    - { key: temp, endpoint_profile: temperature }
-    - { key: hum, endpoint_profile: humidity }
-    - { key: battery, endpoint_profile: battery }
-  multisensor_t:
-    - { key: temp, endpoint_profile: temperature }
-    - { key: battery, endpoint_profile: battery }
-  motion_sensor:
-    - { key: state, endpoint_profile: motion }
-    - { key: battery, endpoint_profile: battery }
+  fibaro-fgs222:
+    brand: Fibaro
+    type: Binary Power Switch
+    product: FGS222
+    description: Double Relay Switch FGS-222
+    endpoints:
+      - { key: sw1, endpoint_profile: switch_binary, address: "{node}.1" }
+      - { key: sw2, endpoint_profile: switch_binary, address: "{node}.2" }
+
+  # Same FGS222 hardware as fibaro-fgs222, but wired to aggregate both
+  # relays into one 2-bit level via SwitchMultiBinary (node.lowInstance.
+  # highInstance) instead of driving each relay as its own switch -- used
+  # for the radon fan speed controls.
+  fibaro-fgs222-level:
+    brand: Fibaro
+    type: Binary Power Switch (2-bit level)
+    product: FGS222
+    description: Double Relay Switch FGS-222, aggregated into one 0-3 level
+    endpoints:
+      - { key: level, endpoint_profile: switch_multi_binary, address: "{node}.1.2" }
+
+  hsm02-hsm02:
+    brand: HSM02
+    type: Routing Binary Sensor
+    product: HSM02
+    description: Door Window Sensor
+    endpoints:
+      - { key: state, endpoint_profile: sensor_binary, address: "{node}.1",
+          values: { 0: "closed", 1: "open" } }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
+
+  duwi:
+    brand: duwi
+    type: Binary Power Switch
+    product: Insert switch
+    description: One paddle wall switch
+    endpoints:
+      - { key: sw, endpoint_profile: switch_binary, address: "{node}.1" }
+
+  everspring-st814:
+    brand: Everspring
+    type: Routing Multilevel Sensor
+    product: ST814
+    description: Temperature/Humidity Sensor
+    endpoints:
+      - { key: temp, endpoint_profile: sensor_multilevel_temperature, address: "{node}.0.1" }
+      - { key: hum, endpoint_profile: sensor_multilevel_humidity, address: "{node}.0.5" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
+
   # POPP Z-Weather outdoor sensor (product 005206,
   # https://popp.eu/products/z-weather) -- six SensorMultilevel readings
   # plus battery, all on the same node.
-  popp_zweather:
-    - { key: temp, endpoint_profile: temperature }
-    - { key: hum, endpoint_profile: humidity }
-    - { key: lum, endpoint_profile: luminance }
-    - { key: pres, endpoint_profile: pressure }
-    - { key: dew, endpoint_profile: dew_point }
-    - { key: vel, endpoint_profile: wind_velocity }
-    - { key: battery, endpoint_profile: battery }
+  popp-z-weather:
+    brand: POPP/Stagetronics
+    type: Routing Multilevel Sensor
+    product: Z-Weather
+    description: Weather station
+    endpoints:
+      - { key: temp, endpoint_profile: sensor_multilevel_temperature, address: "{node}.0.1" }
+      - { key: hum, endpoint_profile: sensor_multilevel_humidity, address: "{node}.0.5" }
+      - { key: lum, endpoint_profile: sensor_multilevel_luminance, address: "{node}.0.3" }
+      - { key: pres, endpoint_profile: sensor_multilevel_pressure, address: "{node}.0.9" }
+      - { key: dew, endpoint_profile: sensor_multilevel_dew_point, address: "{node}.0.11" }
+      - { key: vel, endpoint_profile: sensor_multilevel_wind_velocity, address: "{node}.0.6" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
+
+  everspring-siren_300_series:
+    brand: Everspring
+    product: Z-Wave Indoor Siren (US) 300 Series
+    description: Indoor Siren (US) - 300 series
+    endpoints:
+      # This product's battery lives at "{node}.0", not the bare "{node}"
+      # every other battery in this file uses.
+      - { key: state, endpoint_profile: switch_binary, address: "{node}.0" }
+      - { key: battery, endpoint_profile: battery, address: "{node}.0" }
+
+  benext-tag_reader:
+    brand: BeNeXt
+    type: Tag Reader
+    description: Tag Reader
+    endpoints:
+      - { key: state, endpoint_profile: tag_reader, address: "{node}" }
+      # The reader's own SwitchBinary write path (drives its ack LED/lock
+      # feedback) -- a separate endpoint since one PHC endpoint carries one
+      # command group, and TagReader (read) / SwitchBinary (write) differ.
+      - { key: ack, endpoint_profile: switch_binary, address: "{node}" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
+
+  everspring-pir_sensor:
+    brand: Everspring
+    type: Routing Binary Sensor
+    product: Z-Wave PIR Sensor(US)-300 Series
+    description: Motion Detector with Light Detection
+    endpoints:
+      # The original hardware reports inverted and needs latching
+      # (-inverse 1 -sticky 1 in the old THC config) -- neither is modeled
+      # here yet; verify the raw values against a live read.
+      - { key: state, endpoint_profile: sensor_binary, address: "{node}",
+          values: { 0: "clear", 1: "motion" } }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
+
+  # Not in the original product list -- added because it has no brand/
+  # product identification in the source THC config, just this comment.
+  rm80-radiation_monitor:
+    product: RM-80
+    description: Radiation monitor
+    endpoints:
+      - { key: radiation, endpoint_profile: sensor_multilevel_radiation, address: "{node}.2.2" }

@@ -22,8 +22,7 @@ devices:
     module: system_monitor
     name: This Machine
     update: system_metrics
-    params:
-      disk_path: ""   # auto: "/" on Linux, system drive on Windows
+    disk_path: ""   # auto: "/" on Linux, system drive on Windows
 
 extensions:
   # Feeds the "History" graph panels below -- see the log_system_metrics

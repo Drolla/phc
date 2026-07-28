@@ -58,6 +58,18 @@ def test_graph_panel_series_title_falls_back_to_qualified_label():
     assert panel.series_titles == ["lamp/power"]
 
 
+def test_graph_panel_series_title_prefers_name_over_description():
+    lamp = VirtualDevice("lamp", endpoints=[
+        Endpoint("power", writable=True, value_type="int",
+                 name="Corridor Light", description="Lamp power"),
+    ])
+    flat = {"lamp": lamp}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["lamp/*"])
+
+    assert panel.series_titles == ["Corridor Light"]
+
+
 def test_graph_panel_requires_non_empty_id():
     flat = {}
     with pytest.raises(ConfigError):

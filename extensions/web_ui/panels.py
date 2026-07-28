@@ -112,8 +112,9 @@ class GraphPanel(Panel):
         # exactly ("<qualified_id>/<endpoint_key>"), since these labels are
         # looked up directly against the referenced LogDb instance's columns.
         self.labels = [f"{qid}/{key}" for qid, key in self.pairs]
-        self.series_titles = [flat[qid].endpoint(key).description or f"{qid}/{key}"
-                               for qid, key in self.pairs]
+        self.series_titles = [
+            flat[qid].endpoint(key).name or flat[qid].endpoint(key).description or f"{qid}/{key}"
+            for qid, key in self.pairs]
         self.title = title or id
         self.unit = unit
         self.window = parse_duration(window)

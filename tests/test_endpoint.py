@@ -343,3 +343,14 @@ def test_subscribe_log_is_idempotent_and_does_not_reset_sticky_value():
     ep.update_log_value()
     ep.subscribe_log("logger")
     assert ep.get_log_value("logger") == 5
+
+
+def test_name_defaults_to_empty_string():
+    ep = Endpoint("state")
+    assert ep.name == ""
+
+
+def test_name_is_distinct_from_description():
+    ep = Endpoint("state", name="Corridor Light", description="A relay-driven switch")
+    assert ep.name == "Corridor Light"
+    assert ep.description == "A relay-driven switch"

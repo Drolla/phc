@@ -26,15 +26,14 @@ devices:
     module: sun
     name: Sun
     update: sun
-    params: !include common/sun_zurich_params.yaml
+    <<: !include common/sun_zurich_params.yaml
 
   - id: zurich-weather
     module: open_meteo
     name: Zurich Weather
     update: weather
-    params:
-      latitude: 47.3769
-      longitude: 8.5417
+    latitude: 47.3769
+    longitude: 8.5417
 
   - !include common/meteo_bern_device.yaml
 

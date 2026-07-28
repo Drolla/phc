@@ -5,5 +5,4 @@
 id: meteo-bern
 module: meteoswiss
 name: Bern Weather
-params:
-  station: BER
+station: BER

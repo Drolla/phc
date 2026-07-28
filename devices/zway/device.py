@@ -32,7 +32,7 @@ _response_cache_lock = asyncio.Lock()
 # _js_run()'s docstring for why a fresh session is still opened per request.
 _session_cookies: dict[str, str] = {}   # base_url -> Cookie header value
 _session_lock = asyncio.Lock()
-_configured_tag_readers: set[tuple[str, str]] = set()   # (base_url, node_id) already configured
+_configured_tag_readers: set[tuple[str, str]] = set()   # (base_url, node) already configured
 
 
 @register_module("zway")
@@ -46,9 +46,11 @@ class ZWayDevice(Device):
     `command_group` (one of SwitchBinary/SwitchMultilevel/SwitchMultiBinary/
     SensorBinary/SensorMultilevel/Battery/TagReader) and `address` (an
     opaque "node.instance[.datarecord]" string, passed through verbatim --
-    PHC never parses its internal structure). A TagReader endpoint
-    additionally needs `node_id`, used for the one-time Configure_TagReader
-    call.
+    PHC never parses its internal structure). A device with a TagReader
+    endpoint additionally needs its own `node` param set (the zWay node
+    number), used for the one-time Configure_TagReader call -- one zway
+    device is one physical node, so this is the same node number used to
+    fill in any `{node}` template.
 
     Devices sharing one `base_url` share one cached Get() response per
     cache_time (see _identifiers/_response_cache above), so their reads
@@ -74,7 +76,7 @@ class ZWayDevice(Device):
         self._request_timeout = parse_duration(self.params.get("request_timeout", "10s"))
 
         self._idents: dict[str, tuple[str, str]] = {}   # endpoint_key -> (command_group, address)
-        self._tag_reader_nodes: dict[str, str] = {}      # endpoint_key -> node_id
+        has_tag_reader = False
 
         registry = _identifiers.setdefault(self._base_url, {})
         for key, ep in self.endpoints.items():
@@ -87,9 +89,14 @@ class ZWayDevice(Device):
             if ep.readable:
                 registry[ident] = None
             if command_group == "TagReader":
-                node_id = ep.params.get("node_id")
-                if node_id is not None:
-                    self._tag_reader_nodes[key] = str(node_id)
+                has_tag_reader = True
+
+        # This device's own node number -- needed only if it actually has a
+        # TagReader endpoint (see _ensure_tag_readers_configured); one zway
+        # device is one physical node, so this is the same `node` param
+        # that fills in any `{node}` template on the device's endpoints.
+        node = self.params.get("node")
+        self._tag_reader_node: str | None = str(node) if has_tag_reader and node is not None else None
 
     async def receive_async(self) -> dict:
         """Async counterpart of the base receive(): configure any not-yet-
@@ -164,22 +171,24 @@ class ZWayDevice(Device):
     # ---------- TagReader one-time configure ----------
 
     async def _ensure_tag_readers_configured(self) -> None:
-        """Call Configure_TagReader(node_id) once for each of this device's
-        TagReader nodes not yet configured on this base_url -- setup() is
-        sync/no-I/O, so this one-time call is deferred to run lazily here,
-        the first time this device is actually fetched. Added to
-        _configured_tag_readers only on success, so a transient failure
-        retries on the next poll instead of being silently skipped
-        forever."""
-        for node_id in self._tag_reader_nodes.values():
-            key = (self._base_url, node_id)
-            if key in _configured_tag_readers:
-                continue
-            try:
-                await self._js_run(f"Configure_TagReader({node_id})")
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                continue
-            _configured_tag_readers.add(key)
+        """Call Configure_TagReader(node) once for this device's own node, if
+        it has a TagReader endpoint and hasn't been configured yet on this
+        base_url -- setup() is sync/no-I/O, so this one-time call is
+        deferred to run lazily here, the first time this device is actually
+        fetched. Added to _configured_tag_readers only on success, so a
+        transient failure retries on the next poll instead of being
+        silently skipped forever."""
+        node = self._tag_reader_node
+        if node is None:
+            return
+        key = (self._base_url, node)
+        if key in _configured_tag_readers:
+            return
+        try:
+            await self._js_run(f"Configure_TagReader({node})")
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            return
+        _configured_tag_readers.add(key)
 
     # ---------- HTTP + session/auth ----------
 

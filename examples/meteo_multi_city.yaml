@@ -27,26 +27,22 @@ devices:
   - id: meteo-zurich
     module: meteoswiss
     name: Zurich Weather
-    params:
-      station: KLO
+    station: KLO
 
   - id: meteo-geneva
     module: meteoswiss
     name: Geneva Weather
-    params:
-      station: GVE
+    station: GVE
 
   - id: meteo-basel
     module: meteoswiss
     name: Basel Weather
-    params:
-      station: BAS
+    station: BAS
 
   - id: meteo-lugano
     module: meteoswiss
     name: Lugano Weather
-    params:
-      station: LUG
+    station: LUG
 
 tasks:
   - tag: report_bern

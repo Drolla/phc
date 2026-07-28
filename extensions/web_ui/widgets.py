@@ -31,7 +31,7 @@ def describe_endpoint(qualified_id: str, endpoint: Endpoint) -> dict:
     return {
         "device": qualified_id,
         "endpoint": endpoint.key,
-        "label": endpoint.description or endpoint.key,
+        "label": endpoint.name or endpoint.description or endpoint.key,
         "widget": infer_widget_kind(endpoint),
         "value": endpoint.get(),
         "text": endpoint.to_text(),

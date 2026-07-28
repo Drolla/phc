@@ -87,6 +87,12 @@ def test_describe_endpoint_label_defaults_to_key_when_no_description():
     assert described["label"] == "state"
 
 
+def test_describe_endpoint_label_prefers_name_over_description():
+    ep = Endpoint("sw1", name="Corridor Light", description="Relay 1 of a double switch")
+    described = describe_endpoint("d", ep)
+    assert described["label"] == "Corridor Light"
+
+
 # ---------- describe_device pruning ----------
 
 def _lamp_with_children():
