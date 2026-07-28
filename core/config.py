@@ -31,7 +31,42 @@ _include_stack: list[Path] = []
 
 class _IncludeLoader(yaml.SafeLoader):
     """SafeLoader that also understands !include <relative-path>, so a
-    system YAML can pull in child YAML files (see _include_constructor)."""
+    system YAML can pull in child YAML files (see _include_constructor), and
+    <<: !include <relative-path>, which merges the included mapping's keys
+    into the surrounding mapping -- the surrounding mapping's own keys win,
+    the same precedence an ordinary `<<: *anchor` merge already has (see
+    construct_mapping below). Only a single !include as the merge value is
+    supported (not a sequence mixing !include with *anchor merges)."""
+
+    def construct_mapping(self, node, deep=False):
+        if not isinstance(node, yaml.MappingNode):
+            return super().construct_mapping(node, deep=deep)
+        # Pull any `<<: !include ...` pairs out of the node's own value list
+        # before handing the rest to the normal PyYAML construction (which
+        # still runs its own merge-key handling, e.g. `<<: *anchor`, on
+        # whatever's left) -- PyYAML's own merge machinery works purely at
+        # the node level (splicing raw (key, value) node pairs together
+        # before any construction happens), so it can't merge in an
+        # !include's *constructed* dict; this constructs each !include
+        # target first and merges the resulting dicts by hand instead.
+        included = {}
+        kept = []
+        for key_node, value_node in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge" and value_node.tag == "!include":
+                target = self.construct_object(value_node, deep=True)
+                if not isinstance(target, dict):
+                    raise ConfigError(
+                        f"'<<: !include' target must be a mapping, got "
+                        f"{type(target).__name__} ({value_node.start_mark})")
+                included.update(target)
+            else:
+                kept.append((key_node, value_node))
+        node.value = kept
+        result = super().construct_mapping(node, deep=deep)
+        if not included:
+            return result
+        included.update(result)
+        return included
 
 
 def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
@@ -76,9 +111,30 @@ _ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "name", "descript
 # never consumed at runtime (see ModuleDescriptor.device_profiles).
 _DEVICE_PROFILE_KEYS = {"brand", "type", "product", "description", "endpoints"}
 
+# Keys _build_device recognizes on a device entry, and modules.<name>:
+# recognizes on a module entry -- `params:` is deliberately absent from
+# both: a declared device/module parameter (module.yaml's `parameters:`) is
+# an ordinary top-level field, the same choice already made for endpoint
+# parameters above. A typo'd key here fails open elsewhere in the stack --
+# e.g. a misspelled "device_profil:" silently yields a device with zero
+# endpoints, and devices/zway/device.py's setup() documents that a
+# misconfigured endpoint "permanently reports None, never raises" -- so an
+# unrecognized key is rejected here rather than silently ignored.
+_DEVICE_ENTRY_KEYS = {"id", "module", "name", "endpoints", "update", "children",
+                      "device_profile"}
+_MODULES_ENTRY_KEYS = {"update"}
+
 
 class ModuleDescriptor:
     """Parsed module.yaml for one device module.
+
+    parameters declares this module's device-level params -- a list of
+    {name, description, default, override, scope} entries (see
+    _merge_params/_resolve_module_config). A declared name is an ordinary
+    top-level field on a device entry (and, for a scope: module param,
+    under modules.<name> too) -- there is no params: nesting -- verified
+    here to not collide with a device/modules entry key or with the literal
+    name "params" itself.
 
     endpoint_profiles/device_profiles (see _expand_endpoint_specs) are an
     optional reusable-endpoint library a module can ship: an endpoint
@@ -107,7 +163,7 @@ class ModuleDescriptor:
     fields (e.g. zway's command_group/address) -- a list of {name,
     description} entries, mirroring `parameters:`'s device-level param
     schema but with no default/override/scope (an endpoint has no
-    equivalent of modules.<name>.params to resolve against). Declared names
+    equivalent of modules.<name> to resolve against). Declared names
     become legal top-level keys on any endpoint spec of this module,
     verified here to not collide with a core endpoint field, and folded
     into Endpoint.params by _merge_endpoints once every spec is fully
@@ -118,14 +174,24 @@ class ModuleDescriptor:
         self.name = name
         self.description = raw.get("description", "")
         self.parameters = raw.get("parameters") or []
-        self.endpoint_parameters = raw.get("endpoint_parameters") or []
-        self.endpoint_param_names = {p["name"] for p in self.endpoint_parameters}
-        reserved = _ENDPOINT_ENTRY_KEYS | {"params"}
-        collision = self.endpoint_param_names & reserved
+        param_names = {p["name"] for p in self.parameters}
+        # "params" itself is reserved even though it's no longer a device/
+        # modules entry key -- a device param literally named "params"
+        # would be indistinguishable from the old nested-dict spelling.
+        reserved = _DEVICE_ENTRY_KEYS | _MODULES_ENTRY_KEYS | {"params"}
+        collision = param_names & reserved
         if collision:
             raise ConfigError(
-                f"module {name!r}: endpoint_parameters name(s) {sorted(collision)} collide "
-                f"with a reserved endpoint field name")
+                f"module {name!r}: parameters name(s) {sorted(collision)} collide "
+                f"with a reserved device/modules entry key")
+        self.endpoint_parameters = raw.get("endpoint_parameters") or []
+        self.endpoint_param_names = {p["name"] for p in self.endpoint_parameters}
+        endpoint_reserved = _ENDPOINT_ENTRY_KEYS | {"params"}
+        endpoint_collision = self.endpoint_param_names & endpoint_reserved
+        if endpoint_collision:
+            raise ConfigError(
+                f"module {name!r}: endpoint_parameters name(s) {sorted(endpoint_collision)} "
+                f"collide with a reserved endpoint field name")
         self.endpoints = raw.get("endpoints") or []
         self.update = raw.get("update", None)
         self.endpoint_profiles = raw.get("endpoint_profiles") or {}
@@ -194,9 +260,10 @@ class _ModuleConfig:
     - module_params: `scope: module` parameter values (one shared value for
       every device of this module type) -- same as the old
       _resolve_module_params() return value.
-    - device_param_defaults: `scope: device` parameter values supplied under
-      modules.<name>.params, which become a *default* for every device of
-      this module, still overridable per device -- new in this scheme.
+    - device_param_defaults: `scope: device` parameter values supplied
+      directly under modules.<name>, which become a *default* for every
+      device of this module, still overridable per device -- new in this
+      scheme.
     - update: this module's default update interval (falls between a
       device's own `update:` and module.yaml's `update:`), or the _UNSET
       sentinel if modules.<name>.update was not set.
@@ -222,7 +289,10 @@ def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _M
     one being set here at all. Raises ConfigError on an unrecognized
     parameter (i.e. not declared by the module at any scope)."""
     module_entry = modules_config.get(module.name) or {}
-    module_config_params = dict(module_entry.get("params") or {})
+    # A declared param is an ordinary top-level field here, same as on a
+    # device entry -- `update:` is the one reserved key at this level (see
+    # _MODULES_ENTRY_KEYS), so everything else is a parameter value.
+    module_config_params = {k: v for k, v in module_entry.items() if k != "update"}
     update = module_entry.get("update", _UNSET)
 
     declared = {p["name"]: p for p in module.parameters}
@@ -236,7 +306,7 @@ def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _M
             if override == "none":
                 raise ConfigError(
                     f"module {module.name!r}: parameter {name!r} is not overridable "
-                    f"(override: none) but modules.{module.name}.params sets it")
+                    f"(override: none) but modules.{module.name} sets it")
             value = module_config_params.pop(name)
             if scope == "module":
                 module_params[name] = value
@@ -246,14 +316,17 @@ def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _M
             if override == "required":
                 raise ConfigError(
                     f"module {module.name!r}: parameter {name!r} is required but not supplied "
-                    f"in modules.{module.name}.params")
+                    f"under modules.{module.name}")
             module_params[name] = spec.get("default")
         # scope == "device" and not set here: no entry in
         # device_param_defaults -- _merge_params falls back to spec["default"].
 
     if module_config_params:
-        unknown = ", ".join(repr(k) for k in module_config_params)
-        raise ConfigError(f"module {module.name!r}: unrecognized parameter(s) {unknown}")
+        unknown = ", ".join(repr(k) for k in sorted(module_config_params))
+        raise ConfigError(
+            f"modules.{module.name}: unrecognized key(s) {unknown} -- not a reserved "
+            f"modules.<name> key ({', '.join(sorted(_MODULES_ENTRY_KEYS))}) and not a "
+            f"parameter declared by module {module.name!r}")
 
     return _ModuleConfig(module_params, device_param_defaults, update)
 
@@ -365,12 +438,14 @@ def _load_extensions(raw: dict, flat: dict[str, Device]) -> dict[str, object]:
 def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: str,
                    resolved_module_params: dict | None = None,
                    module_param_defaults: dict | None = None) -> dict:
-    """Merge one device instance's `params` against its module's declared
-    parameters. `scope: module` params come from the already-resolved
-    `resolved_module_params` (_ModuleConfig.module_params). `scope: device`
-    params are resolved device `params.<name>` -> `module_param_defaults`
-    (_ModuleConfig.device_param_defaults, a per-module default from
-    modules.<name>.params -- never popped, since it is shared/cached across
+    """Merge one device instance's declared-parameter fields (already
+    separated from its other entry keys by the caller -- see _build_device)
+    against its module's declared parameters. `scope: module` params come
+    from the already-resolved `resolved_module_params`
+    (_ModuleConfig.module_params). `scope: device` params are resolved
+    device-entry field -> `module_param_defaults`
+    (_ModuleConfig.device_param_defaults, a per-module default set directly
+    under modules.<name> -- never popped, since it is shared/cached across
     every device of this module) -> module.yaml's own `default:`, with
     `override: required` satisfied by either the device or the module-level
     default. Raises ConfigError on an unrecognized, missing-but-required, or
@@ -386,8 +461,8 @@ def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: st
             if name in instance_params:
                 raise ConfigError(
                     f"device {device_id!r}: parameter {name!r} is module-scoped "
-                    f"(scope: module) and cannot be set in this device's params; "
-                    f"set it under modules.{module.name}.params instead")
+                    f"(scope: module) and cannot be set on this device; "
+                    f"set it under modules.{module.name} instead")
             merged[name] = resolved_module_params.get(name, spec.get("default"))
             continue
 
@@ -399,9 +474,9 @@ def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: st
                     f"(override: none) but instance config sets it")
             merged[name] = instance_params.pop(name)
         elif name in module_param_defaults:
-            # override: none for a param set under modules.<name>.params was
-            # already rejected once, in _resolve_module_config, before any
-            # device gets here.
+            # override: none for a param set directly under modules.<name>
+            # was already rejected once, in _resolve_module_config, before
+            # any device gets here.
             merged[name] = module_param_defaults[name]
         elif override == "required":
             raise ConfigError(
@@ -410,8 +485,11 @@ def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: st
             merged[name] = spec.get("default")
 
     if instance_params:
-        unknown = ", ".join(repr(k) for k in instance_params)
-        raise ConfigError(f"device {device_id!r}: unrecognized parameter(s) {unknown}")
+        unknown = ", ".join(repr(k) for k in sorted(instance_params))
+        raise ConfigError(
+            f"device {device_id!r}: unrecognized key(s) {unknown} -- not a device entry key "
+            f"({', '.join(sorted(_DEVICE_ENTRY_KEYS))}) and not a parameter declared by "
+            f"module {module.name!r}")
 
     return merged
 
@@ -665,30 +743,20 @@ def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_
     return parse_duration(value)
 
 
-# Keys _build_device recognizes on a device entry. A typo'd key here fails
-# open elsewhere in the stack -- e.g. a misspelled "device_profil:" silently
-# yields a device with zero endpoints, and devices/zway/device.py's setup()
-# documents that a misconfigured endpoint "permanently reports None, never
-# raises" -- so an unrecognized key is rejected here rather than silently
-# ignored. (_ENDPOINT_ENTRY_KEYS/_DEVICE_PROFILE_KEYS live earlier, next to
-# ModuleDescriptor, which now needs them too.)
-_DEVICE_ENTRY_KEYS = {"id", "module", "name", "params", "endpoints", "update", "children",
-                      "device_profile"}
-_MODULES_ENTRY_KEYS = {"params", "update"}
-
-
 def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | None,
                    flat: dict[str, Device], modules_config: dict,
                    module_config_cache: dict[str, "_ModuleConfig"]) -> Device:
     """Recursively build one `devices:` YAML entry (and its children) into a
     Device tree, registering every device by qualified id in `flat` as it
     goes. Raises ConfigError on a duplicate qualified id or an unrecognized
-    entry key."""
+    entry key. Which keys count as "device entry keys" vs. "params" depends
+    on the module (a declared parameter is an ordinary top-level field, see
+    ModuleDescriptor), so unlike `_DEVICE_PROFILE_KEYS`-style checks this
+    can't validate `entry`'s keys until after the module is loaded --
+    _merge_params raises on whatever's left in `instance_params` once its
+    own declared names are picked out."""
     device_id = entry["id"]
     module_name = entry["module"]
-    unknown = set(entry) - _DEVICE_ENTRY_KEYS
-    if unknown:
-        raise ConfigError(f"device {device_id!r}: unrecognized key(s) {sorted(unknown)}")
     module = _load_module_descriptor(module_name)
     device_cls = get_device_class(module_name)
 
@@ -696,7 +764,8 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
         module_config_cache[module_name] = _resolve_module_config(module, modules_config)
     module_config = module_config_cache[module_name]
 
-    params = _merge_params(module, entry.get("params", {}), device_id,
+    instance_params = {k: v for k, v in entry.items() if k not in _DEVICE_ENTRY_KEYS}
+    params = _merge_params(module, instance_params, device_id,
                            module_config.module_params, module_config.device_param_defaults)
     endpoint_specs = _expand_endpoint_specs(module, entry, device_id)
     endpoints, seeds = _merge_endpoints(module, endpoint_specs, device_id, params)
@@ -952,10 +1021,6 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
 
     intervals_map = raw.get("intervals") or {}
     modules_config = raw.get("modules") or {}
-    for module_name, module_entry in modules_config.items():
-        unknown = set(module_entry or {}) - _MODULES_ENTRY_KEYS
-        if unknown:
-            raise ConfigError(f"modules.{module_name}: unrecognized key(s) {sorted(unknown)}")
     heartbeat = parse_duration(raw.get("heartbeat", "1s"))
 
     max_workers = raw.get("max_workers")
