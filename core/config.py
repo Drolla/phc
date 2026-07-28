@@ -209,6 +209,11 @@ class ModuleDescriptor:
     "profile endpoints" the base and the other the overlay depending on
     call order, which is not something a reader of the YAML could tell.
 
+    A system config can extend this library too, under modules.<name> in
+    the system YAML, without touching this module's own module.yaml -- see
+    _build_effective_module, which merges those onto a copy of this
+    descriptor (this cached instance itself is never mutated).
+
     endpoint_parameters declares this module's own per-endpoint protocol
     fields (e.g. zway's command_group/address) -- a list of {name,
     description} entries, mirroring `parameters:`'s device-level param

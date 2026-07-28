@@ -661,6 +661,53 @@ for a worked example mixing a whole-device profile with named endpoints, a
 device profile with one field overridden, and a single endpoint profile
 without a device profile.
 
+### Extending a module's profile library from a system config
+
+A system config can add to a module's `device_profiles`/`endpoint_profiles`
+library too, under that module's own entry in the top-level `modules:`
+section (see "Modules and shared configuration" above), using exactly the
+same shape `module.yaml` uses:
+
+```yaml
+modules:
+  virtual:
+    device_profiles:
+      siren:
+        endpoints:
+          - key: state
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+
+devices:
+  - id: siren_hallway
+    module: virtual
+    device_profile: siren
+  - id: siren_garage
+    module: virtual
+    device_profile: siren
+```
+
+Resolution stays module-scoped exactly like a `module.yaml`-declared
+profile — `device_profile: siren` above only resolves against `virtual`,
+invisible to a device of any other module. A name colliding with one
+`module.yaml` already declares is a `ConfigError`, not a silent override,
+and (as within `module.yaml` itself) `device_profiles` can't be combined
+with a module whose own `endpoints:` is non-empty (e.g. `meteoswiss`) —
+same base/overlay ambiguity either way.
+
+Reach for this instead of editing the module's own `module.yaml` when a
+profile is specific to your setup rather than a real shared product — e.g.
+a `virtual` siren with no real hardware behind it doesn't belong in
+`devices/virtual/module.yaml`'s generic library. It also composes with
+`<<: !include` for free, since that's a plain YAML merge key: a
+`device_profiles:` block can live in a shared `common/*.yaml` file included
+from multiple system configs, the same way
+[`examples/common/zway_controller_params.yaml`](examples/common/zway_controller_params.yaml)
+is today. See [`examples/virtual_system.yaml`](examples/virtual_system.yaml)
+for a worked example.
+
 ## Adding a device module
 
 A new device type is a new `devices/<name>/` package containing:
