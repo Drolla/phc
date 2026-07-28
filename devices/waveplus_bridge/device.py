@@ -21,15 +21,10 @@ _response_cache_lock = asyncio.Lock()
 
 @register_module("waveplus_bridge")
 class WavePlusBridgeDevice(Device):
-    """One Airthings Wave Plus sensor unit, read via a WavePlus_Bridge HTTP
-    server (https://github.com/Drolla/WavePlus_Bridge). Native-async, same
-    shape as MeteoSwissDevice: receive_async() awaits the shared bridge
-    payload over aiohttp, picks out this device's sensor_id sub-dict, and
-    additionally treats that sub-dict as unavailable if its own update_time
-    is stale relative to the bridge's reported current_time -- even a
-    reachable, healthy bridge can be carrying a stale reading for one
-    specific unit (dead battery, out of BLE range) while its other units
-    keep working. Read-only: transmit() is not overridden.
+    """One Airthings Wave Plus sensor unit via a WavePlus_Bridge HTTP server.
+    Fetches shared bridge payload, selects this device's sensor by sensor_id,
+    and marks it unavailable if its reading (per update_time vs current_time)
+    is stale, even if the bridge itself is healthy. Read-only.
     """
 
     def setup(self):
@@ -43,27 +38,21 @@ class WavePlusBridgeDevice(Device):
         self._data_validity_time = parse_duration(self.params.get("data_validity_time", "5m"))
 
     async def receive_async(self) -> dict:
-        """Async counterpart of the base receive(): await the shared bridge
-        payload, select+validate this device's sensor, and return
-        {endpoint_key: raw_value}."""
+        """Fetch shared bridge payload, select+validate this device's sensor,
+        return {endpoint_key: value}."""
         try:
             payload = await self._get_payload()
         except (aiohttp.ClientError, asyncio.TimeoutError):
-            # Network/HTTP failure or the request's own 10s timeout: report
-            # every endpoint as unavailable, mirroring meteoswiss/open_meteo.
             payload = None
         sensor = self._select_sensor(payload)
         return {key: self._extract(sensor, ep.params.get("field"))
                 for key, ep in self.endpoints.items()}
 
     def _select_sensor(self, payload: dict | None) -> dict | None:
-        """Return this device's sensor sub-dict from `payload`, or None if
-        the bridge is unreachable, this sensor_id isn't present, or this
-        sensor's own reading is stale (bridge current_time minus this
-        sensor's update_time exceeds data_validity_time) -- reproducing the
-        old THC module's per-sensor staleness check, distinct from a plain
-        fetch failure. If either timestamp is missing, the staleness check
-        is skipped (fails open) rather than treated as stale."""
+        """Return this device's sensor sub-dict, or None if bridge is
+        unreachable, sensor_id missing, or sensor reading is stale
+        (current_time - update_time > data_validity_time). If either
+        timestamp is missing, staleness check is skipped (fails open)."""
         if payload is None:
             return None
         sensor = (payload.get("devices") or {}).get(self._sensor_id)
@@ -77,9 +66,8 @@ class WavePlusBridgeDevice(Device):
         return sensor
 
     async def _get_payload(self) -> dict:
-        """Return the shared bridge payload, reusing a cached copy if it is
-        still within this device's own cache_time -- same double-checked
-        locking as meteoswiss's _get_csv_text/open_meteo's _get_current."""
+        """Return shared bridge payload, reusing cached copy if fresh.
+        Uses double-checked locking to avoid cache stampedes."""
         now = time.monotonic()
         cached = _response_cache.get(self._base_url)
         if cached is not None and (now - cached[0]) < self._cache_time:
@@ -103,8 +91,7 @@ class WavePlusBridgeDevice(Device):
 
     @staticmethod
     def _extract(sensor: dict | None, field: str | None):
-        """Pull one value out of `sensor` by JSON field name, or None if the
-        sensor or field is unavailable."""
+        """Return one field from sensor dict, or None if unavailable."""
         if sensor is None or field is None:
             return None
         return sensor.get(field)

@@ -1,8 +1,7 @@
 description: >
-  Local solar ephemeris: today's sunrise, sunset, dawn, dusk and solar noon,
-  plus the current solar elevation/azimuth. Computed purely from
-  latitude/longitude and the system clock (via astral) -- no network access
-  and no hardware, real or virtual. One device per location.
+  Solar ephemeris for a location: today's sunrise/sunset/dawn/dusk/solar-noon
+  and current solar elevation/azimuth. Pure computation via astral, no network.
+  One device per location.
 
 update: "1h"
 

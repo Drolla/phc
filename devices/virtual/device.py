@@ -6,9 +6,8 @@ from core.registry import register_module
 
 @register_module("virtual")
 class VirtualDevice(Device):
-    """In-memory device with no real hardware. transmit() and receive() are
-    two ends of the same buffer: a write staged by transmit() is handed back
-    on the next fetch()'s receive() call, then committed by update_state()."""
+    """In-memory device with no hardware. transmit() buffers writes;
+    receive() returns and clears the buffer on the next fetch."""
 
     def setup(self):
         """Initialize the empty write buffer."""

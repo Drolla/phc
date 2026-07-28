@@ -1,38 +1,23 @@
 description: >
-  One physical Z-Wave node's values, on a Razberry/zWay Z-Wave controller,
-  read/written through the thc_zWay.js helper script
-  (https://github.com/Drolla/thc/tree/master/modules/thc_zWay) installed on
-  the zWay server itself -- install it there yourself, PHC does not push it.
-  Define whatever endpoints one node needs (e.g. a switch's `state`, a
-  sensor's `battery`); every endpoint must set its own `command_group` (one
-  of SwitchBinary, SwitchMultilevel, SwitchMultiBinary, SensorBinary,
-  SensorMultilevel, Battery, TagReader) and `address` (an opaque zWay
-  "node.instance[.datarecord]" identifier string, e.g. "20.1" or "11.0.1" --
-  passed through verbatim, never parsed by PHC). Devices sharing one
-  `base_url` share one cached batched status request per `cache_time` --
-  see `cache_time` below.
+  One physical Z-Wave node's values on a Razberry/zWay controller,
+  read/written via zWay.js (installed on the zWay server, not pushed by PHC).
+  Define endpoints with `command_group` (SwitchBinary, SwitchMultilevel,
+  SwitchMultiBinary, SensorBinary, SensorMultilevel, Battery, TagReader) and
+  `address` (opaque "node.instance[.datarecord]" string, e.g. "20.1").
+  Devices sharing `base_url` batch their reads into one HTTP request per
+  `cache_time`.
 
-  endpoint_profiles/device_profiles below are the recommended shortcut,
-  split along two independent axes: an endpoint_profile (named after its
-  command group -- e.g. `switch_binary`, `sensor_multilevel_temperature`;
-  no module-name prefix needed, since a profile is only ever resolved
-  against the module of the device referencing it) captures the *access
-  pattern* -- type, units, writability -- shared by every product using
-  that command group, while a device_profile names one *product* --
-  brand/type/product/description metadata plus a keyed `endpoints:` list
-  supplying that product's addresses (which an endpoint_profile never
-  hardcodes, since the same command group wires up differently on
-  different hardware -- an FGS222's two relays are "{node}.1"/"{node}.2",
-  a siren's channel is "{node}.0", a PIR's is the bare "{node}"). Set
-  `node:` in the device's `params` and `device_profile:` on the device (or
-  `endpoint_profile:` on one endpoint) instead of writing each
-  `command_group`/`address` out by hand. `{param}` templates like `{node}`
-  are resolved on any endpoint's
-  fields, whether or not a profile is used, so writing endpoints fully
-  explicitly, without `device_profile:`/`endpoint_profile:` anywhere, keeps
-  working exactly as before; the two styles can also mix on one device
-  (e.g. a device profile for temp/humidity/battery, plus one fully-explicit
-  endpoint for something the library doesn't cover).
+  Use endpoint_profiles and device_profiles as a shortcut instead of
+  hand-writing every endpoint. An endpoint_profile (e.g. `switch_binary`,
+  `sensor_multilevel_temperature`) defines the access pattern (type, units,
+  writability) shared across all products using that command group. A
+  device_profile names one product (brand/type/product metadata) and lists
+  that product's endpoints with their addresses (since the same command
+  group wires differently on different hardware: an FGS222's relays are
+  "{node}.1"/"{node}.2", a siren's channel is "{node}.0"). Set `node:` in
+  device params and `device_profile:` on the device; `{node}` templates are
+  resolved automatically. Fully-explicit endpoint specs and profiles can mix
+  on one device.
 
 update: "1m"
 
@@ -62,11 +47,9 @@ parameters:
     description: >
       How long a fetched batched status response may be reused before
       re-fetching (e.g. "30s", "1m" -- any value parse_duration accepts).
-      All devices sharing the same base_url share one cached fetch covering
-      every registered device's values in one HTTP request, so this is the
-      old THC zWay module's per-poll batching equivalent. Set the same
-      value (and the same `update` interval) on every device behind one
-      controller to get full sharing.
+      All devices sharing base_url share one cached fetch per poll. Set the
+      same value and `update` interval on every device behind one controller
+      to maximize batching into a single HTTP request.
   - name: request_timeout
     override: allowed
     default: "10s"
@@ -94,11 +77,9 @@ endpoint_parameters:
 
 endpoints: []
 
-# A profile entry is a full endpoint spec, the same shape written by hand
-# (see the description above), with `{node}` templates filled in from the
-# device's own `node` param. No endpoint_profile below sets `address` --
-# that's a product's wiring, not the command group's, and belongs in a
-# device_profiles entry instead (see below).
+# An endpoint_profile is a full endpoint spec with `{node}` templates
+# resolved from the device's `node` param. Profiles never set `address`
+# (that's product-specific wiring, belonging in device_profiles instead).
 endpoint_profiles:
   switch_binary:
     type: int
@@ -156,14 +137,11 @@ endpoint_profiles:
     type: float
     command_group: SensorMultilevel
 
-# A device_profiles entry names one product: optional brand/type/product/
-# description metadata (documentation only, never used at runtime) plus a
-# keyed `endpoints:` list, each referencing an endpoint_profile above and
-# supplying that product's own address. Set `device_profile: <name>` on a
-# device (alongside `params: { node: ... }`) to get all of them at once;
-# the device's own `endpoints:` can still tweak or add to what the profile
-# provides (overlaid by key -- see core.config._expand_endpoint_specs),
-# e.g. to give an endpoint a human-readable `name:`.
+# A device_profile is one product: optional brand/type/product/description
+# metadata plus a keyed `endpoints:` list. Each endpoint references an
+# endpoint_profile and supplies that product's address(es). Set
+# `device_profile: <name>` on a device (with `params: { node: ... }`) to
+# apply all endpoints at once; device-level `endpoints:` overlay by key.
 device_profiles:
   fibaro-fgs222:
     brand: Fibaro
@@ -174,10 +152,8 @@ device_profiles:
       - { key: sw1, endpoint_profile: switch_binary, address: "{node}.1" }
       - { key: sw2, endpoint_profile: switch_binary, address: "{node}.2" }
 
-  # Same FGS222 hardware as fibaro-fgs222, but wired to aggregate both
-  # relays into one 2-bit level via SwitchMultiBinary (node.lowInstance.
-  # highInstance) instead of driving each relay as its own switch -- used
-  # for the radon fan speed controls.
+  # FGS222 aggregated to a single 2-bit level (SwitchMultiBinary) instead
+  # of two separate relays.
   fibaro-fgs222-level:
     brand: Fibaro
     type: Binary Power Switch (2-bit level)
@@ -214,9 +190,7 @@ device_profiles:
       - { key: hum, endpoint_profile: sensor_multilevel_humidity, address: "{node}.0.5" }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
-  # POPP Z-Weather outdoor sensor (product 005206,
-  # https://popp.eu/products/z-weather) -- six SensorMultilevel readings
-  # plus battery, all on the same node.
+  # POPP Z-Weather outdoor sensor: six SensorMultilevel readings plus battery.
   popp-z-weather:
     brand: POPP/Stagetronics
     type: Routing Multilevel Sensor
@@ -236,8 +210,7 @@ device_profiles:
     product: Z-Wave Indoor Siren (US) 300 Series
     description: Indoor Siren (US) - 300 series
     endpoints:
-      # This product's battery lives at "{node}.0", not the bare "{node}"
-      # every other battery in this file uses.
+      # Battery at "{node}.0" (not bare "{node}" like others).
       - { key: state, endpoint_profile: switch_binary, address: "{node}.0" }
       - { key: battery, endpoint_profile: battery, address: "{node}.0" }
 
@@ -247,9 +220,8 @@ device_profiles:
     description: Tag Reader
     endpoints:
       - { key: state, endpoint_profile: tag_reader, address: "{node}" }
-      # The reader's own SwitchBinary write path (drives its ack LED/lock
-      # feedback) -- a separate endpoint since one PHC endpoint carries one
-      # command group, and TagReader (read) / SwitchBinary (write) differ.
+      # SwitchBinary write endpoint for ack LED/lock feedback (separate
+      # since TagReader/SwitchBinary are different command groups).
       - { key: ack, endpoint_profile: switch_binary, address: "{node}" }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
@@ -259,15 +231,12 @@ device_profiles:
     product: Z-Wave PIR Sensor(US)-300 Series
     description: Motion Detector with Light Detection
     endpoints:
-      # The original hardware reports inverted and needs latching
-      # (-inverse 1 -sticky 1 in the old THC config) -- neither is modeled
-      # here yet; verify the raw values against a live read.
+      # Hardware reports inverted motion signal (not yet modeled here).
       - { key: state, endpoint_profile: sensor_binary, address: "{node}",
           values: { 0: "clear", 1: "motion" } }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
-  # Not in the original product list -- added because it has no brand/
-  # product identification in the source THC config, just this comment.
+  # No brand/product metadata available for this device.
   rm80-radiation_monitor:
     product: RM-80
     description: Radiation monitor

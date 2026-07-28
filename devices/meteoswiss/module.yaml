@@ -23,15 +23,10 @@ parameters:
     scope: module
     default: "10m"
     description: >
-      How long a downloaded copy of the shared CSV file may be reused before
-      re-fetching (e.g. "10m", "30s" -- any value parse_duration accepts).
-      All meteoswiss devices share one cached copy per data_url, so this is
-      configured once for the whole module (see the top-level `modules:`
-      section), not per device -- it controls how often that shared file is
-      actually re-downloaded, independent of each device's own `update`
-      polling interval. The default matches how often MeteoSwiss itself
-      refreshes the published file, so caching for up to this long costs no
-      real freshness. Set to "0s" to always re-fetch.
+      How long the shared CSV may be reused before re-fetching (e.g. "10m",
+      "30s" -- any value parse_duration accepts). Scope: module (set once for
+      all stations), controls how often the shared file is re-downloaded.
+      Set to "0s" to always re-fetch.
 
 endpoint_parameters:
   - name: column

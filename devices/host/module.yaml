@@ -1,7 +1,6 @@
 description: >
-  Generic grouping device with no endpoints of its own; groups child devices.
-  Used for organizational nodes in the device tree (e.g. rooms, zones) that
-  don't correspond to a real or virtual piece of hardware themselves.
+  Grouping device with no endpoints; organizes child devices in the tree
+  (e.g. rooms, zones). No real or virtual hardware.
 
 parameters: []
 

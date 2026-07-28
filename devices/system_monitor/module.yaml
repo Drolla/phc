@@ -1,9 +1,8 @@
 description: >
-  Local computer performance monitoring: CPU load, memory use, network and
-  disk throughput, disk usage, CPU temperature, and uptime for the machine
-  phc itself runs on. Works on Windows and Linux (including Raspberry Pi);
-  endpoints with no available data source on the current platform (e.g.
-  CPU temperature without OpenHardwareMonitor on Windows) report null.
+  Local system performance metrics: CPU load, memory, network/disk throughput,
+  disk usage, CPU temperature, uptime. Cross-platform (Windows/Linux).
+  Unavailable data reports null (e.g. CPU temperature without OpenHardwareMonitor
+  on Windows).
 
 update: "10s"
 
@@ -34,17 +33,13 @@ endpoints:
     writable: false
     type: float
     unit: "B/s"
-    description: >
-      Inbound network throughput averaged since the last poll,
-      bytes/second, summed across all interfaces.
+    description: Inbound network throughput since last poll, bytes/second.
   - key: network_tx_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
-    description: >
-      Outbound network throughput averaged since the last poll,
-      bytes/second, summed across all interfaces.
+    description: Outbound network throughput since last poll, bytes/second.
   - key: disk_usage_percent
     readable: true
     writable: false
@@ -56,29 +51,22 @@ endpoints:
     writable: false
     type: float
     unit: "B/s"
-    description: >
-      Disk read throughput averaged since the last poll, bytes/second
-      (null if the platform exposes no disk I/O counters).
+    description: Disk read throughput since last poll, bytes/second.
   - key: disk_write_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
-    description: >
-      Disk write throughput averaged since the last poll, bytes/second
-      (null if the platform exposes no disk I/O counters).
+    description: Disk write throughput since last poll, bytes/second.
   - key: cpu_temperature
     readable: true
     writable: false
     type: float
     unit: "°C"
     description: >
-      CPU temperature. On Linux, read via psutil.sensors_temperatures()
-      (works on Raspberry Pi's cpu_thermal sensor and x86 coretemp). On
-      Windows, read via OpenHardwareMonitor's WMI namespace
-      (root\OpenHardwareMonitor) -- requires OpenHardwareMonitor or
-      LibreHardwareMonitor running with administrator rights; null if
-      unavailable.
+      CPU temperature. On Linux via psutil.sensors_temperatures(); on Windows
+      via OpenHardwareMonitor WMI (requires OpenHardwareMonitor or
+      LibreHardwareMonitor running with admin rights).
   - key: uptime_seconds
     readable: true
     writable: false
