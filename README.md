@@ -250,11 +250,13 @@ for a one-time `Configure_TagReader` setup call the first time that device
 is polled, the same `node` used to fill in any `{node}` template below.
 
 `devices/zway/module.yaml` ships a two-axis profile library instead of
-writing every endpoint out fully explicitly: an `endpoint_profile`
-(prefixed `zway_`, named after its command group, e.g.
-`zway_switch_binary`, `zway_sensor_multilevel_temperature`) captures the
-*access pattern* — type, units, writability — shared by every product using
-that command group, while a `device_profile` names one *product* — e.g.
+writing every endpoint out fully explicitly: an `endpoint_profile` (named
+after its command group, e.g. `switch_binary`,
+`sensor_multilevel_temperature` — no module-name prefix needed, since a
+profile is only ever resolved against the module of the device referencing
+it) captures the *access pattern* — type, units, writability — shared by
+every product using that command group, while a `device_profile` names one
+*product* — e.g.
 `fibaro-fgs222`, `everspring-st814`, `popp-z-weather` (see
 `devices/zway/module.yaml` for the full list) — supplying that product's
 own addresses, which an `endpoint_profile` never hardcodes (the same
@@ -564,7 +566,10 @@ with optional `brand`/`type`/`product`/`description` metadata plus a keyed
 `endpoints:` list that completes each endpoint profile with what's specific
 to that product (typically an `address`, which an endpoint profile never
 hardcodes, since the same access pattern wires up differently on different
-hardware):
+hardware). A profile name never needs a module-name prefix — a device's
+`device_profile:`/`endpoint_profile:` only ever resolves against its own
+`module:`'s library, so e.g. a `zway` device can't accidentally reference a
+`meteoswiss` profile even if both declared one under the same name:
 
 ```yaml
 # devices/zway/module.yaml
@@ -573,8 +578,8 @@ endpoint_parameters:
   - name: address
 
 endpoint_profiles:
-  zway_sensor_multilevel_temperature: { type: float, unit: "°C", command_group: SensorMultilevel }
-  zway_battery: { type: int, unit: "%", command_group: Battery }
+  sensor_multilevel_temperature: { type: float, unit: "°C", command_group: SensorMultilevel }
+  battery: { type: int, unit: "%", command_group: Battery }
 
 device_profiles:
   everspring-st814:
@@ -582,8 +587,8 @@ device_profiles:
     product: ST814
     description: Temperature/Humidity Sensor
     endpoints:
-      - { key: temp, endpoint_profile: zway_sensor_multilevel_temperature, address: "{node}.0.1" }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
+      - { key: temp, endpoint_profile: sensor_multilevel_temperature, address: "{node}.0.1" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
 ```
 
 ```yaml
@@ -599,7 +604,7 @@ devices:
     module: zway
     endpoints:
       - key: f18_temp
-        endpoint_profile: zway_sensor_multilevel_temperature   # single endpoint, no device profile
+        endpoint_profile: sensor_multilevel_temperature   # single endpoint, no device profile
         address: "{node}.0.1"
     params: { node: 15 }
 ```

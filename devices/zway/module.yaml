@@ -13,18 +13,21 @@ description: >
   see `cache_time` below.
 
   endpoint_profiles/device_profiles below are the recommended shortcut,
-  split along two independent axes: an endpoint_profile (prefixed `zway_`,
-  named after its command group) captures the *access pattern* -- type,
-  units, writability -- shared by every product using that command group,
-  while a device_profile names one *product* -- brand/type/product/
-  description metadata plus a keyed `endpoints:` list supplying that
-  product's addresses (which an endpoint_profile never hardcodes, since the
-  same command group wires up differently on different hardware -- an
-  FGS222's two relays are "{node}.1"/"{node}.2", a siren's channel is
-  "{node}.0", a PIR's is the bare "{node}"). Set `node:` in the device's
-  `params` and `device_profile:` on the device (or `endpoint_profile:` on
-  one endpoint) instead of writing each `command_group`/`address` out by
-  hand. `{param}` templates like `{node}` are resolved on any endpoint's
+  split along two independent axes: an endpoint_profile (named after its
+  command group -- e.g. `switch_binary`, `sensor_multilevel_temperature`;
+  no module-name prefix needed, since a profile is only ever resolved
+  against the module of the device referencing it) captures the *access
+  pattern* -- type, units, writability -- shared by every product using
+  that command group, while a device_profile names one *product* --
+  brand/type/product/description metadata plus a keyed `endpoints:` list
+  supplying that product's addresses (which an endpoint_profile never
+  hardcodes, since the same command group wires up differently on
+  different hardware -- an FGS222's two relays are "{node}.1"/"{node}.2",
+  a siren's channel is "{node}.0", a PIR's is the bare "{node}"). Set
+  `node:` in the device's `params` and `device_profile:` on the device (or
+  `endpoint_profile:` on one endpoint) instead of writing each
+  `command_group`/`address` out by hand. `{param}` templates like `{node}`
+  are resolved on any endpoint's
   fields, whether or not a profile is used, so writing endpoints fully
   explicitly, without `device_profile:`/`endpoint_profile:` anywhere, keeps
   working exactly as before; the two styles can also mix on one device
@@ -97,59 +100,59 @@ endpoints: []
 # that's a product's wiring, not the command group's, and belongs in a
 # device_profiles entry instead (see below).
 endpoint_profiles:
-  zway_switch_binary:
+  switch_binary:
     type: int
     writable: true
     values: { 0: "off", 255: "on" }
     command_group: SwitchBinary
-  zway_switch_multilevel:
+  switch_multilevel:
     type: int
     writable: true
     min: 0
     max: 99
     command_group: SwitchMultilevel
-  zway_switch_multi_binary:
+  switch_multi_binary:
     type: int
     writable: true
     min: 0
     max: 3
     command_group: SwitchMultiBinary
-  zway_sensor_binary:
+  sensor_binary:
     type: int
     values: { 0: "clear", 1: "triggered" }
     command_group: SensorBinary
-  zway_battery:
+  battery:
     type: int
     unit: "%"
     command_group: Battery
-  zway_tag_reader:
+  tag_reader:
     type: str
     command_group: TagReader
-  zway_sensor_multilevel_temperature:
+  sensor_multilevel_temperature:
     type: float
     unit: "°C"
     command_group: SensorMultilevel
-  zway_sensor_multilevel_humidity:
+  sensor_multilevel_humidity:
     type: float
     unit: "%"
     command_group: SensorMultilevel
-  zway_sensor_multilevel_luminance:
+  sensor_multilevel_luminance:
     type: float
     unit: "%"
     command_group: SensorMultilevel
-  zway_sensor_multilevel_pressure:
+  sensor_multilevel_pressure:
     type: float
     unit: kPa
     command_group: SensorMultilevel
-  zway_sensor_multilevel_dew_point:
+  sensor_multilevel_dew_point:
     type: float
     unit: "°C"
     command_group: SensorMultilevel
-  zway_sensor_multilevel_wind_velocity:
+  sensor_multilevel_wind_velocity:
     type: float
     unit: m/s
     command_group: SensorMultilevel
-  zway_sensor_multilevel_radiation:
+  sensor_multilevel_radiation:
     type: float
     command_group: SensorMultilevel
 
@@ -168,8 +171,8 @@ device_profiles:
     product: FGS222
     description: Double Relay Switch FGS-222
     endpoints:
-      - { key: sw1, endpoint_profile: zway_switch_binary, address: "{node}.1" }
-      - { key: sw2, endpoint_profile: zway_switch_binary, address: "{node}.2" }
+      - { key: sw1, endpoint_profile: switch_binary, address: "{node}.1" }
+      - { key: sw2, endpoint_profile: switch_binary, address: "{node}.2" }
 
   # Same FGS222 hardware as fibaro-fgs222, but wired to aggregate both
   # relays into one 2-bit level via SwitchMultiBinary (node.lowInstance.
@@ -181,7 +184,7 @@ device_profiles:
     product: FGS222
     description: Double Relay Switch FGS-222, aggregated into one 0-3 level
     endpoints:
-      - { key: level, endpoint_profile: zway_switch_multi_binary, address: "{node}.1.2" }
+      - { key: level, endpoint_profile: switch_multi_binary, address: "{node}.1.2" }
 
   hsm02-hsm02:
     brand: HSM02
@@ -189,9 +192,9 @@ device_profiles:
     product: HSM02
     description: Door Window Sensor
     endpoints:
-      - { key: state, endpoint_profile: zway_sensor_binary, address: "{node}.1",
+      - { key: state, endpoint_profile: sensor_binary, address: "{node}.1",
           values: { 0: "closed", 1: "open" } }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   duwi:
     brand: duwi
@@ -199,7 +202,7 @@ device_profiles:
     product: Insert switch
     description: One paddle wall switch
     endpoints:
-      - { key: sw, endpoint_profile: zway_switch_binary, address: "{node}.1" }
+      - { key: sw, endpoint_profile: switch_binary, address: "{node}.1" }
 
   everspring-st814:
     brand: Everspring
@@ -207,9 +210,9 @@ device_profiles:
     product: ST814
     description: Temperature/Humidity Sensor
     endpoints:
-      - { key: temp, endpoint_profile: zway_sensor_multilevel_temperature, address: "{node}.0.1" }
-      - { key: hum, endpoint_profile: zway_sensor_multilevel_humidity, address: "{node}.0.5" }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
+      - { key: temp, endpoint_profile: sensor_multilevel_temperature, address: "{node}.0.1" }
+      - { key: hum, endpoint_profile: sensor_multilevel_humidity, address: "{node}.0.5" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   # POPP Z-Weather outdoor sensor (product 005206,
   # https://popp.eu/products/z-weather) -- six SensorMultilevel readings
@@ -220,13 +223,13 @@ device_profiles:
     product: Z-Weather
     description: Weather station
     endpoints:
-      - { key: temp, endpoint_profile: zway_sensor_multilevel_temperature, address: "{node}.0.1" }
-      - { key: hum, endpoint_profile: zway_sensor_multilevel_humidity, address: "{node}.0.5" }
-      - { key: lum, endpoint_profile: zway_sensor_multilevel_luminance, address: "{node}.0.3" }
-      - { key: pres, endpoint_profile: zway_sensor_multilevel_pressure, address: "{node}.0.9" }
-      - { key: dew, endpoint_profile: zway_sensor_multilevel_dew_point, address: "{node}.0.11" }
-      - { key: vel, endpoint_profile: zway_sensor_multilevel_wind_velocity, address: "{node}.0.6" }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
+      - { key: temp, endpoint_profile: sensor_multilevel_temperature, address: "{node}.0.1" }
+      - { key: hum, endpoint_profile: sensor_multilevel_humidity, address: "{node}.0.5" }
+      - { key: lum, endpoint_profile: sensor_multilevel_luminance, address: "{node}.0.3" }
+      - { key: pres, endpoint_profile: sensor_multilevel_pressure, address: "{node}.0.9" }
+      - { key: dew, endpoint_profile: sensor_multilevel_dew_point, address: "{node}.0.11" }
+      - { key: vel, endpoint_profile: sensor_multilevel_wind_velocity, address: "{node}.0.6" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   everspring-siren_300_series:
     brand: Everspring
@@ -235,20 +238,20 @@ device_profiles:
     endpoints:
       # This product's battery lives at "{node}.0", not the bare "{node}"
       # every other battery in this file uses.
-      - { key: state, endpoint_profile: zway_switch_binary, address: "{node}.0" }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}.0" }
+      - { key: state, endpoint_profile: switch_binary, address: "{node}.0" }
+      - { key: battery, endpoint_profile: battery, address: "{node}.0" }
 
   benext-tag_reader:
     brand: BeNeXt
     type: Tag Reader
     description: Tag Reader
     endpoints:
-      - { key: state, endpoint_profile: zway_tag_reader, address: "{node}" }
+      - { key: state, endpoint_profile: tag_reader, address: "{node}" }
       # The reader's own SwitchBinary write path (drives its ack LED/lock
       # feedback) -- a separate endpoint since one PHC endpoint carries one
       # command group, and TagReader (read) / SwitchBinary (write) differ.
-      - { key: ack, endpoint_profile: zway_switch_binary, address: "{node}" }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
+      - { key: ack, endpoint_profile: switch_binary, address: "{node}" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   everspring-pir_sensor:
     brand: Everspring
@@ -259,9 +262,9 @@ device_profiles:
       # The original hardware reports inverted and needs latching
       # (-inverse 1 -sticky 1 in the old THC config) -- neither is modeled
       # here yet; verify the raw values against a live read.
-      - { key: state, endpoint_profile: zway_sensor_binary, address: "{node}",
+      - { key: state, endpoint_profile: sensor_binary, address: "{node}",
           values: { 0: "clear", 1: "motion" } }
-      - { key: battery, endpoint_profile: zway_battery, address: "{node}" }
+      - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   # Not in the original product list -- added because it has no brand/
   # product identification in the source THC config, just this comment.
@@ -269,4 +272,4 @@ device_profiles:
     product: RM-80
     description: Radiation monitor
     endpoints:
-      - { key: radiation, endpoint_profile: zway_sensor_multilevel_radiation, address: "{node}.2.2" }
+      - { key: radiation, endpoint_profile: sensor_multilevel_radiation, address: "{node}.2.2" }
