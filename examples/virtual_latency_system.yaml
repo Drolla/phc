@@ -29,11 +29,10 @@ devices:
     module: virtual_latency
     name: Slow Sensor (0.5s read delay, +/-20% natural jitter)
     update: 2s
-    params:
-      read_latency: 0.5
-      read_jitter: 0.2
-      write_latency: 0.2
-      write_jitter: 0.2
+    read_latency: 0.5
+    read_jitter: 0.2
+    write_latency: 0.2
+    write_jitter: 0.2
     endpoints:
       - key: value
         writable: true
@@ -48,17 +47,16 @@ devices:
     module: virtual_latency
     name: Flaky Sensor (fast + jittery, but spikes to ~2-4s ~20% of the time)
     update: 2s
-    params:
-      read_latency: 0.1
-      read_jitter: 0.3
-      read_spike_probability: 0.2
-      read_spike_latency: 3.0
-      read_spike_jitter: 0.3
-      write_latency: 0.1
-      write_jitter: 0.3
-      write_spike_probability: 0.2
-      write_spike_latency: 3.0
-      write_spike_jitter: 0.3
+    read_latency: 0.1
+    read_jitter: 0.3
+    read_spike_probability: 0.2
+    read_spike_latency: 3.0
+    read_spike_jitter: 0.3
+    write_latency: 0.1
+    write_jitter: 0.3
+    write_spike_probability: 0.2
+    write_spike_latency: 3.0
+    write_spike_jitter: 0.3
     endpoints:
       - key: value
         writable: true

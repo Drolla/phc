@@ -39,14 +39,13 @@ intervals:
 
 modules:
   meteoswiss:
-    params:
-      cache_time: 5m
+    cache_time: 5m
   # Every zway device below shares one controller, so its connection
   # params and update interval are set once here rather than repeated on
   # each device -- see examples/zway_system.yaml for the same pattern.
   zway:
     update: zwave
-    params: !include common/zway_controller_params.yaml
+    <<: !include common/zway_controller_params.yaml
 
 devices:
   - id: house
@@ -85,7 +84,7 @@ devices:
       - id: front_door_tag
         module: zway
         name: Front Door Tag Reader
-        params: { node: 22 }
+        node: 22
         endpoints:
           - key: state
             command_group: TagReader
@@ -95,11 +94,10 @@ devices:
         module: waveplus_bridge
         name: Cellar Air Quality
         update: radon
-        params:
-          base_url: http://192.168.1.26:80/data
-          sensor_id: cellar
-          cache_time: 60s
-          data_validity_time: 5m
+        base_url: http://192.168.1.26:80/data
+        sensor_id: cellar
+        cache_time: 60s
+        data_validity_time: 5m
 
       # Virtual stand-ins for the surveillance job set -- see
       # examples/surveillance_system.yaml for the full arm/disarm/alarm
@@ -158,17 +156,15 @@ devices:
         module: meteoswiss
         name: Bern Weather
         update: weather
-        params:
-          station: BER
+        station: BER
 
   - id: sun
     module: sun
     name: Sun
     update: 1h
-    params:
-      latitude: 47.3769
-      longitude: 8.5417
-      timezone: Europe/Zurich
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
 
 extensions:
   mail_alert:

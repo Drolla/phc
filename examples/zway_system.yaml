@@ -30,7 +30,7 @@ intervals:
 modules:
   zway:
     update: zwave
-    params: !include common/zway_controller_params.yaml
+    <<: !include common/zway_controller_params.yaml
 
 devices:
   # A whole device built from zway's fibaro-fgs222 device_profile (see
@@ -42,7 +42,7 @@ devices:
     module: zway
     name: Corridor Light Switch
     device_profile: fibaro-fgs222
-    params: { node: 7 }
+    node: 7
     endpoints:
       - { key: sw1, name: "Corridor Light" }
       - { key: sw2, name: "Closet Light" }
@@ -53,7 +53,7 @@ devices:
     module: zway
     name: Garage Motion Sensor
     device_profile: everspring-pir_sensor
-    params: { node: 12 }
+    node: 12
 
   # everspring-st814 (temperature/humidity), whose `hum` endpoint is then
   # tweaked by one field: this unit's humidity sensor is wired to a
@@ -66,7 +66,7 @@ devices:
     module: zway
     name: Workshop Multisensor
     device_profile: everspring-st814
-    params: { node: 15 }
+    node: 15
     endpoints:
       - key: hum
         address: "15.1.5"
@@ -80,7 +80,7 @@ devices:
     module: zway
     name: Front Door Tag Reader
     device_profile: benext-tag_reader
-    params: { node: 22 }
+    node: 22
 
   # A whole POPP Z-Weather outdoor sensor (product 005206) built entirely
   # from zway's popp-z-weather device_profile: node: 30 fills in all seven
@@ -92,7 +92,7 @@ devices:
     name: Outdoor Weather Station
     update: zwave_meteo
     device_profile: popp-z-weather
-    params: { node: 30 }
+    node: 30
 
 tasks:
   - tag: garage_motion_light

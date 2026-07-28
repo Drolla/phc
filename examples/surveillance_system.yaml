@@ -91,7 +91,7 @@ devices:
     module: sun
     name: Sun
     update: 1h
-    params: !include common/sun_zurich_params.yaml
+    <<: !include common/sun_zurich_params.yaml
 
 # Randomizes the hallway/porch lights while armed (enable_ref) and not
 # alarmed (pause_ref) -- see extensions/random_light. Sends an alert mail
