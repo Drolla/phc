@@ -254,16 +254,53 @@ def test_merge_endpoints_dynamic_module_instance_adds_new_keys():
     assert len(seeds) == 2
 
 
-def test_merge_endpoints_instance_params_merge_per_key():
+def test_merge_endpoints_instance_overlay_replaces_only_the_given_key():
+    # A declared endpoint parameter is an ordinary top-level field, so
+    # overlaying one instance-level field (scale) leaves a sibling
+    # (column) untouched -- see _overlay_endpoint_spec.
     module = ModuleDescriptor("m", {
+        "endpoint_parameters": [{"name": "column"}, {"name": "scale"}],
         "endpoints": [
-            {"key": "temperature", "params": {"column": "tre200s0", "unit": "C"}},
+            {"key": "temperature", "column": "tre200s0", "scale": "C"},
         ]
     })
     endpoints, _ = _merge_endpoints(
-        module, [{"key": "temperature", "params": {"unit": "F"}}], "dev", {},
+        module, [{"key": "temperature", "scale": "F"}], "dev", {},
     )
-    assert endpoints[0].params == {"column": "tre200s0", "unit": "F"}
+    assert endpoints[0].params == {"column": "tre200s0", "scale": "F"}
+
+
+def test_merge_endpoints_declared_endpoint_param_lands_in_params():
+    module = ModuleDescriptor("m", {
+        "endpoint_parameters": [{"name": "command_group"}, {"name": "address"}],
+        "endpoints": [],
+    })
+    endpoints, _ = _merge_endpoints(
+        module, [{"key": "state", "command_group": "SwitchBinary", "address": "7.1"}], "dev", {},
+    )
+    assert endpoints[0].params == {"command_group": "SwitchBinary", "address": "7.1"}
+
+
+def test_merge_endpoints_rejects_params_key_on_endpoint():
+    # params: nesting was replaced by declared top-level endpoint
+    # parameters -- params: itself is no longer a recognized endpoint key.
+    module = ModuleDescriptor("m", {
+        "endpoint_parameters": [{"name": "command_group"}],
+        "endpoints": [],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [{"key": "state", "params": {"command_group": "SwitchBinary"}}],
+                          "dev", {})
+
+
+def test_module_descriptor_rejects_endpoint_parameters_colliding_with_core_field():
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {"endpoint_parameters": [{"name": "format"}]})
+
+
+def test_module_descriptor_rejects_endpoint_parameters_named_params():
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {"endpoint_parameters": [{"name": "params"}]})
 
 
 def test_merge_endpoints_parses_type_unit_values():
@@ -379,9 +416,9 @@ def test_merge_endpoints_substitutes_templates_on_hand_written_endpoint():
     # Templating is not tied to device_profile:/endpoint_profile: usage -- a
     # fully hand-written endpoint (no profile anywhere) still gets its
     # {param} templates resolved from the device's own params.
-    module = ModuleDescriptor("m", {"endpoints": []})
+    module = ModuleDescriptor("m", {"endpoint_parameters": [{"name": "column"}], "endpoints": []})
     endpoints, _ = _merge_endpoints(
-        module, [{"key": "temperature", "params": {"column": "col_{station}"}}], "dev",
+        module, [{"key": "temperature", "column": "col_{station}"}], "dev",
         {"station": "BER"},
     )
     assert endpoints[0].params["column"] == "col_BER"
@@ -391,7 +428,8 @@ def test_merge_endpoints_substitutes_templates_on_any_modules_own_endpoints():
     # No special-casing for zway -- any module's unconditional endpoints:
     # get the same treatment.
     module = ModuleDescriptor("meteoswisslike", {
-        "endpoints": [{"key": "temperature", "params": {"column": "{station}_temp"}}],
+        "endpoint_parameters": [{"name": "column"}],
+        "endpoints": [{"key": "temperature", "column": "{station}_temp"}],
     })
     endpoints, _ = _merge_endpoints(module, [], "dev", {"station": "ZRH"})
     assert endpoints[0].params["column"] == "ZRH_temp"
@@ -407,7 +445,8 @@ def test_merge_endpoints_substitutes_description_field():
 
 def test_merge_endpoints_rejects_unset_template_param():
     module = ModuleDescriptor("m", {
-        "endpoints": [{"key": "temp", "params": {"address": "{node}.0.1"}}],
+        "endpoint_parameters": [{"name": "address"}],
+        "endpoints": [{"key": "temp", "address": "{node}.0.1"}],
     })
     with pytest.raises(ConfigError):
         _merge_endpoints(module, [], "dev", {"node": None})
@@ -418,22 +457,31 @@ def test_merge_endpoints_rejects_unset_template_param():
 # _expand_endpoint_specs only resolves *which* endpoints exist and how they
 # overlay (by key) -- {param} templates are substituted later, by
 # _merge_endpoints/_substitute_endpoint_spec (see the tests above), so specs
-# returned here still carry their raw, unsubstituted templates.
+# returned here still carry their raw, unsubstituted templates. An
+# endpoint_profile never carries `address` (that's a product's wiring, not
+# the command group's) -- only a device_profiles entry's own `endpoints:`
+# does, which is why _profile_module's "temperature"/"battery" profiles
+# below have no address at all.
 
 def _profile_module():
     return ModuleDescriptor("zwaylike", {
+        "endpoint_parameters": [
+            {"name": "command_group"},
+            {"name": "address"},
+        ],
         "endpoints": [],
         "endpoint_profiles": {
-            "temperature": {"type": "float", "unit": "°C",
-                            "params": {"command_group": "SensorMultilevel", "address": "{node}.0.1"}},
-            "battery": {"type": "int", "unit": "%",
-                       "params": {"command_group": "Battery", "address": "{node}"}},
+            "temperature": {"type": "float", "unit": "°C", "command_group": "SensorMultilevel"},
+            "battery": {"type": "int", "unit": "%", "command_group": "Battery"},
         },
         "device_profiles": {
-            "multisensor_t": [
-                {"key": "temp", "endpoint_profile": "temperature"},
-                {"key": "battery", "endpoint_profile": "battery"},
-            ],
+            "multisensor_t": {
+                "brand": "Everspring",
+                "endpoints": [
+                    {"key": "temp", "endpoint_profile": "temperature", "address": "{node}.0.1"},
+                    {"key": "battery", "endpoint_profile": "battery", "address": "{node}"},
+                ],
+            },
         },
     })
 
@@ -442,14 +490,33 @@ def test_module_descriptor_rejects_device_profiles_with_nonempty_endpoints():
     with pytest.raises(ConfigError):
         ModuleDescriptor("m", {
             "endpoints": [{"key": "state"}],
-            "device_profiles": {"x": [{"key": "state", "endpoint_profile": "y"}]},
+            "device_profiles": {"x": {"endpoints": [{"key": "state", "endpoint_profile": "y"}]}},
         })
+
+
+def test_module_descriptor_rejects_device_profile_missing_endpoints_key():
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {"device_profiles": {"x": {"brand": "Acme"}}})
+
+
+def test_module_descriptor_rejects_device_profile_unknown_metadata_key():
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {
+            "device_profiles": {"x": {"endpoints": [], "bogus": "y"}},
+        })
+
+
+def test_module_descriptor_rejects_device_profile_old_list_shape():
+    # device_profiles used to be a bare list of endpoint specs -- that shape
+    # is no longer accepted, with a message pointing at the new one.
+    with pytest.raises(ConfigError):
+        ModuleDescriptor("m", {"device_profiles": {"x": [{"key": "state"}]}})
 
 
 def test_expand_endpoint_specs_is_identity_when_no_profile_anywhere():
     module = _profile_module()
     entry = {"id": "dev", "module": "zwaylike",
-             "endpoints": [{"key": "state", "params": {"command_group": "SwitchBinary", "address": "7.1"}}]}
+             "endpoints": [{"key": "state", "command_group": "SwitchBinary", "address": "7.1"}]}
     specs = _expand_endpoint_specs(module, entry, "dev")
     assert specs is entry["endpoints"]
 
@@ -459,28 +526,34 @@ def test_expand_endpoint_specs_device_profile_expands_by_key():
     entry = {"id": "multi_liv", "module": "zwaylike", "device_profile": "multisensor_t"}
     specs = _expand_endpoint_specs(module, entry, "multi_liv")
     by_key = {s["key"]: s for s in specs}
-    assert by_key["temp"]["params"] == {"command_group": "SensorMultilevel", "address": "{node}.0.1"}
-    assert by_key["battery"]["params"] == {"command_group": "Battery", "address": "{node}"}
+    assert by_key["temp"]["command_group"] == "SensorMultilevel"
+    assert by_key["temp"]["address"] == "{node}.0.1"
+    assert by_key["battery"]["command_group"] == "Battery"
+    assert by_key["battery"]["address"] == "{node}"
 
 
 def test_expand_endpoint_specs_device_endpoints_overlay_by_key_preserves_command_group():
-    # A device's own endpoints: tweaking one profile-derived param must not
-    # clobber the profile's other params (e.g. command_group) -- see
-    # _overlay_endpoint_spec.
+    # A device's own endpoints: tweaking one profile-derived field must not
+    # clobber a sibling like command_group -- see _overlay_endpoint_spec.
     module = _profile_module()
     entry = {"id": "sirene", "module": "zwaylike", "device_profile": "multisensor_t",
-             "endpoints": [{"key": "battery", "params": {"address": "16.0"}}]}
+             "endpoints": [{"key": "battery", "address": "16.0"}]}
     specs = _expand_endpoint_specs(module, entry, "sirene")
     battery = next(s for s in specs if s["key"] == "battery")
-    assert battery["params"] == {"command_group": "Battery", "address": "16.0"}
+    assert battery["command_group"] == "Battery"
+    assert battery["address"] == "16.0"
 
 
 def test_expand_endpoint_specs_single_endpoint_profile_without_device_profile():
+    # An endpoint_profile never carries an address, so a single-endpoint
+    # use (no device_profile:) must still supply its own.
     module = _profile_module()
     entry = {"id": "fus18_meteo", "module": "zwaylike",
-             "endpoints": [{"key": "f18_temp", "endpoint_profile": "temperature"}]}
+             "endpoints": [{"key": "f18_temp", "endpoint_profile": "temperature",
+                            "address": "{node}.0.1"}]}
     specs = _expand_endpoint_specs(module, entry, "fus18_meteo")
-    assert specs[0]["params"]["address"] == "{node}.0.1"
+    assert specs[0]["command_group"] == "SensorMultilevel"
+    assert specs[0]["address"] == "{node}.0.1"
 
 
 def test_expand_endpoint_specs_rejects_unknown_device_profile():
@@ -506,11 +579,11 @@ def test_expand_endpoint_specs_does_not_mutate_cached_module_profiles():
     entry = {"id": "a", "module": "zwaylike", "device_profile": "multisensor_t"}
     specs = _expand_endpoint_specs(module, entry, "a")
     by_key = {s["key"]: s for s in specs}
-    by_key["temp"]["params"]["address"] = "MUTATED"
-    assert module.endpoint_profiles["temperature"]["params"]["address"] == "{node}.0.1"
+    by_key["temp"]["address"] = "MUTATED"
+    assert module.device_profiles["multisensor_t"]["endpoints"][0]["address"] == "{node}.0.1"
     specs2 = _expand_endpoint_specs(module, entry, "b")
     by_key2 = {s["key"]: s for s in specs2}
-    assert by_key2["temp"]["params"]["address"] == "{node}.0.1"
+    assert by_key2["temp"]["address"] == "{node}.0.1"
 
 
 def test_expand_and_substitute_device_profile_end_to_end():
@@ -522,8 +595,10 @@ def test_expand_and_substitute_device_profile_end_to_end():
     specs = _expand_endpoint_specs(module, entry, "multi_liv")
     substituted = [_substitute_endpoint_spec(s, {"node": 11}, "multi_liv") for s in specs]
     by_key = {s["key"]: s for s in substituted}
-    assert by_key["temp"]["params"] == {"command_group": "SensorMultilevel", "address": "11.0.1"}
-    assert by_key["battery"]["params"] == {"command_group": "Battery", "address": "11"}
+    assert by_key["temp"]["command_group"] == "SensorMultilevel"
+    assert by_key["temp"]["address"] == "11.0.1"
+    assert by_key["battery"]["command_group"] == "Battery"
+    assert by_key["battery"]["address"] == "11"
 
 
 def test_resolve_interval_module_default_when_no_instance_override():
@@ -845,6 +920,23 @@ devices:
     endpoints:
       - key: state
         parameters: { foo: bar }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_rejects_params_key_on_endpoint(tmp_path):
+    # params: nesting on an endpoint was itself replaced by declared,
+    # top-level endpoint_parameters -- params: is no longer accepted either.
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: virtual
+    endpoints:
+      - key: state
+        params: { foo: bar }
 """)
     with pytest.raises(ConfigError):
         load_system(system_yaml)
