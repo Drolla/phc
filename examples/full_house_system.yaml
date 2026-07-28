@@ -61,7 +61,8 @@ devices:
             writable: true
             type: int
             values: { 0: "off", 255: "on" }
-            params: { command_group: SwitchBinary, address: "7.1" }
+            command_group: SwitchBinary
+            address: "7.1"
 
       - id: hallway_motion
         module: zway
@@ -70,18 +71,25 @@ devices:
           - key: state
             type: int
             values: { 0: "clear", 1: "motion" }
-            params: { command_group: SensorBinary, address: "12" }
+            command_group: SensorBinary
+            address: "12"
           - key: battery
             type: int
             unit: "%"
-            params: { command_group: Battery, address: "12.0" }
+            command_group: Battery
+            address: "12.0"
 
+      # node: is needed even though every endpoint's address: is written out
+      # fully explicitly -- a TagReader device still needs its own node
+      # number for the one-time Configure_TagReader(node) call.
       - id: front_door_tag
         module: zway
         name: Front Door Tag Reader
+        params: { node: 22 }
         endpoints:
           - key: state
-            params: { command_group: TagReader, address: "22", node_id: "22" }
+            command_group: TagReader
+            address: "22"
 
       - id: cellar_air
         module: waveplus_bridge
