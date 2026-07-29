@@ -26,29 +26,9 @@ class Endpoint:
     becomes the active state (visible via get()) once update_state() runs,
     which the PHC scheduler calls once per device cycle after fetch().
 
-    Unless otherwise specified (via `type:` in the endpoint's YAML
-    definition), an endpoint's value is untyped: no coercion or validation
-    is applied, and it flows through get()/set() exactly as written -- this
-    is the default so existing raw-value endpoints (e.g. those using literal
-    "on"/"off" strings) keep working unchanged. Declaring `value_type`
-    ("int", "float", "bool", or "str") opts an endpoint into the standard
-    to_text()/from_text() formatting mechanism below, optionally combined
-    with `unit` (a display unit, e.g. "°C"), `values` (a raw value -> text
-    label mapping, e.g. {0: "off", 1: "on"}), `min`/`max` (a generic numeric
-    range hint, e.g. for a UI to render a bounded slider) -- like
-    `unit`/`values`, `min`/`max` are stored only, never enforced against
-    set()/from_text() -- and/or `format` (a Python format-spec string, e.g.
-    ".2f", applied by to_text()). `format` defaults to ".1f" for a `float`
-    endpoint (str() on a raw float otherwise shows however many digits
-    happen to round-trip, e.g. 3.140000000000001) -- pass format="" to opt
-    back into full, unrounded precision; other value_types default to no
-    formatting (str(value)).
-
-    `name` is an optional per-instance display label (e.g. "Corridor Light
-    1st Floor" for a device-profile endpoint whose module-level description
-    is generic) -- distinct from `description`, which is free-form
-    documentation text. A UI should prefer `name` over `description` over
-    `key` when picking a label (see extensions/web_ui)."""
+    See docs/configuration.md for the endpoint field reference (`type`,
+    `unit`, `values`, `min`/`max`, `format`, and the `name` vs `description`
+    convention)."""
 
     kind: str = "generic"
 

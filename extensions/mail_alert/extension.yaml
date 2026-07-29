@@ -2,10 +2,9 @@ description: >
   Mail alert delivery: an extensions.mail_alert.<instance> entry holds one
   SMTP server's connection details plus a default sender/recipient list; a
   `kind: mail_alert` task action sends one message through it. Sends run on
-  a small background thread pool (see extension.py) so a slow/unreachable
-  mail server never stalls the scheduler tick -- delivery success/failure
-  is logged, not surfaced back to the firing task (same as any other
-  Action failure -- see core.scheduler's per-task exception handling).
+  a small background thread pool so a slow/unreachable mail server never
+  stalls the scheduler tick -- delivery success/failure is logged, not
+  surfaced back to the firing task.
 
 parameters:
   - name: smtp_host

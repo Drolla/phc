@@ -84,17 +84,10 @@ def _parse_hhmmss(spec: str) -> tuple[int, int, int] | None:
 
 
 def parse_time(spec: str, repeat=None) -> float:
-    """Parse an absolute or relative time into a Unix timestamp.
-
-    spec forms:
-      - a plain integer string: a literal Unix timestamp
-      - "+<compact>" (e.g. "+1Y2M3D4h"): now, shifted by the given
-        calendar (Y, M) and/or fixed (W, D, h, m, s, ms) offset
-      - "<compact h/m/s only>" (e.g. "11h59m59s"): today at that
-        time-of-day; rolled forward to tomorrow if already in the past
-      - "HH:MM[:SS]": today at that time-of-day, no automatic rollforward
-      - an ISO 8601 date/datetime string (via datetime.fromisoformat):
-        no automatic rollforward
+    """Parse an absolute or relative time into a Unix timestamp -- see
+    docs/configuration.md for the accepted spec syntax (plain timestamp,
+    "+<compact>" offset, "<compact h/m/s>"/"HH:MM[:SS]" time-of-day, ISO
+    8601).
 
     If `repeat` is given (anything parse_duration accepts) and the
     resulting timestamp is already in the past, it is advanced by whole

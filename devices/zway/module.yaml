@@ -77,9 +77,6 @@ endpoint_parameters:
 
 endpoints: []
 
-# An endpoint_profile is a full endpoint spec with `{node}` templates
-# resolved from the device's `node` param. Profiles never set `address`
-# (that's product-specific wiring, belonging in device_profiles instead).
 endpoint_profiles:
   switch_binary:
     type: int
@@ -137,11 +134,6 @@ endpoint_profiles:
     type: float
     command_group: SensorMultilevel
 
-# A device_profile is one product: optional brand/type/product/description
-# metadata plus a keyed `endpoints:` list. Each endpoint references an
-# endpoint_profile and supplies that product's address(es). Set
-# `device_profile: <name>` on a device (with `params: { node: ... }`) to
-# apply all endpoints at once; device-level `endpoints:` overlay by key.
 device_profiles:
   fibaro-fgs222:
     brand: Fibaro
@@ -152,8 +144,6 @@ device_profiles:
       - { key: sw1, endpoint_profile: switch_binary, address: "{node}.1" }
       - { key: sw2, endpoint_profile: switch_binary, address: "{node}.2" }
 
-  # FGS222 aggregated to a single 2-bit level (SwitchMultiBinary) instead
-  # of two separate relays.
   fibaro-fgs222-level:
     brand: Fibaro
     type: Binary Power Switch (2-bit level)
@@ -190,7 +180,6 @@ device_profiles:
       - { key: hum, endpoint_profile: sensor_multilevel_humidity, address: "{node}.0.5" }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
-  # POPP Z-Weather outdoor sensor: six SensorMultilevel readings plus battery.
   popp-z-weather:
     brand: POPP/Stagetronics
     type: Routing Multilevel Sensor
@@ -210,7 +199,6 @@ device_profiles:
     product: Z-Wave Indoor Siren (US) 300 Series
     description: Indoor Siren (US) - 300 series
     endpoints:
-      # Battery at "{node}.0" (not bare "{node}" like others).
       - { key: state, endpoint_profile: switch_binary, address: "{node}.0" }
       - { key: battery, endpoint_profile: battery, address: "{node}.0" }
 
@@ -220,8 +208,6 @@ device_profiles:
     description: Tag Reader
     endpoints:
       - { key: state, endpoint_profile: tag_reader, address: "{node}" }
-      # SwitchBinary write endpoint for ack LED/lock feedback (separate
-      # since TagReader/SwitchBinary are different command groups).
       - { key: ack, endpoint_profile: switch_binary, address: "{node}" }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
@@ -231,12 +217,10 @@ device_profiles:
     product: Z-Wave PIR Sensor(US)-300 Series
     description: Motion Detector with Light Detection
     endpoints:
-      # Hardware reports inverted motion signal (not yet modeled here).
       - { key: state, endpoint_profile: sensor_binary, address: "{node}",
           values: { 0: "clear", 1: "motion" } }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
-  # No brand/product metadata available for this device.
   rm80-radiation_monitor:
     product: RM-80
     description: Radiation monitor

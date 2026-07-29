@@ -176,31 +176,10 @@ def _parse_profile_library(owner_label: str, raw_endpoint_profiles: dict | None,
 
 
 class ModuleDescriptor:
-    """Parsed module.yaml for one device module.
-
-    parameters declares this module's device-level params -- a list of
-    {name, description, default, override, scope} entries (see
-    _merge_params/_resolve_module_config). A declared name is an ordinary
-    top-level field on a device entry (and, for a scope: module param,
-    under modules.<name> too) -- there is no params: nesting -- verified
-    here to not collide with a device/modules entry key or with the literal
-    name "params" itself.
-
-    endpoint_profiles/device_profiles (see _expand_endpoint_specs) are an
-    optional reusable-endpoint library a module can ship: an endpoint
-    profile is a full endpoint spec (the same shape a user writes by hand)
-    with `{param}` templates in any of its string fields (typically a
-    declared endpoint parameter like address, but description/unit/values
-    work too), and a device profile names one product -- optional
-    brand/type/product/description metadata, plus a named `endpoints:` list
-    of {key, endpoint_profile, ...} entries (typically supplying the
-    product's addresses, which an endpoint profile never hardcodes). A
-    device opts in via `device_profile:` (whole device) or an endpoint's own
-    `endpoint_profile:` (single endpoint) -- writing endpoints out fully
-    explicitly, with neither key anywhere, is unaffected either way.
-    `{param}` templating itself (see _substitute_endpoint_spec) is not tied
-    to profiles at all -- it runs on every endpoint of every device, whether
-    or not a profile was used to produce it.
+    """Parsed module.yaml for one device module. See
+    docs/developer/writing-a-device-module.md for the full module.yaml
+    schema (parameters, endpoint_parameters, endpoint_profiles/
+    device_profiles, {param} templating).
 
     device_profiles is mutually exclusive with a non-empty `endpoints:` on
     the SAME module: `endpoints:` is unconditional (every device of the
@@ -212,18 +191,7 @@ class ModuleDescriptor:
     A system config can extend this library too, under modules.<name> in
     the system YAML, without touching this module's own module.yaml -- see
     _build_effective_module, which merges those onto a copy of this
-    descriptor (this cached instance itself is never mutated).
-
-    endpoint_parameters declares this module's own per-endpoint protocol
-    fields (e.g. zway's command_group/address) -- a list of {name,
-    description} entries, mirroring `parameters:`'s device-level param
-    schema but with no default/override/scope (an endpoint has no
-    equivalent of modules.<name> to resolve against). Declared names
-    become legal top-level keys on any endpoint spec of this module,
-    verified here to not collide with a core endpoint field, and folded
-    into Endpoint.params by _merge_endpoints once every spec is fully
-    resolved (after profile expansion, instance overlay, and {param}
-    templating) -- see _merge_endpoints for why the fold happens last."""
+    descriptor (this cached instance itself is never mutated)."""
 
     def __init__(self, name: str, raw: dict):
         self.name = name
