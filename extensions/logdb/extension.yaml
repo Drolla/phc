@@ -32,15 +32,15 @@ parameters:
     override: allowed
     default: 100000
     description: >
-      Maximum records kept in memory/considered for restore (oldest
+      Maximum records kept in memory or considered for restore (oldest
       trimmed first). null = unbounded by count.
 
   - name: max_age
     override: allowed
     default: null
     description: >
-      Maximum age of kept records (duration string, e.g. "30D"). null =
-      unbounded by age.
+      Maximum age of records kept in memory or considered for restore
+      (duration string, e.g. "30D"). null = unbounded by age.
 
   - name: header_reserve_bytes
     override: allowed
