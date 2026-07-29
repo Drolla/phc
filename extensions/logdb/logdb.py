@@ -18,16 +18,19 @@ Line 1 is a short fixed info line. Line 2 is the label header, padded with
 trailing spaces to a reserved width so it can be rewritten in place if new
 labels are added later (see _reconcile_header) -- labels only ever grow,
 never shrink. Its first two columns, "type" and "time", are fixed and not
-part of the label set. Each data row is explicitly marked full ("F",
-every cell populated) or delta ("D", a blank cell means "unchanged since
-the previous row", "nan" marks an explicit transition to no-data), and
-its time column is a whole-second Unix timestamp (sub-second precision is
-not logged). A value cell with no fractional part is written without a
-decimal point (e.g. "80" not "80.0") to save space -- float(cell) parses
-either form identically on reload, so this is a pure formatting choice.
-Marking rows explicitly (rather than inferring "full" from a row-count
-parity) is required because header growth can sacrifice leading rows (see
-below), which would otherwise desync any inferred parity.
+part of the label set.
+
+Each data row is explicitly marked full ("F", every cell populated) or
+delta ("D", a blank cell means "unchanged since the previous row", "nan"
+marks an explicit transition to no-data), and its time column is a
+whole-second Unix timestamp (sub-second precision is not logged). Marking
+rows explicitly (rather than inferring "full" from a row-count parity) is
+required because header growth can sacrifice leading rows (see below),
+which would otherwise desync any inferred parity.
+
+A value cell with no fractional part is written without a decimal point
+(e.g. "80" not "80.0") to save space -- float(cell) parses either form
+identically on reload, so this is a pure formatting choice.
 """
 
 import array
@@ -59,6 +62,10 @@ class LogDb:
     def __init__(self, csv_path, labels: list[str], *, full_vector_interval: int = 100,
                  max_records: int | None = None, max_age: float | None = None,
                  header_reserve_bytes: int | None = None):
+        """Open (or create) the CSV at `csv_path`.
+
+        Reconciles its header against `labels` and replays any existing
+        rows into memory."""
         if len(labels) != len(set(labels)):
             raise ValueError(f"duplicate labels: {labels}")
         for label in labels:
@@ -87,35 +94,40 @@ class LogDb:
         self._fh = open(self.csv_path, "a", encoding="utf-8", newline="")
 
     def close(self) -> None:
+        """Close the underlying file handle, if open."""
         if self._fh is not None:
             self._fh.close()
             self._fh = None
 
     def __del__(self):
+        """Best-effort close() on garbage collection, swallowing any errors."""
         try:
             self.close()
         except Exception:
             pass
 
     def __len__(self) -> int:
+        """Return the number of records currently held in memory."""
         return len(self._times)
 
     # ---------- public logging API ----------
 
     def log(self, timestamp: float, values: dict[str, float]) -> None:
-        """Append one sample row. `values` maps a subset (or all) of
-        self.labels to a numeric reading; any configured label not present
-        this call is stored as NaN ("no data this sample"). `timestamp` is
-        truncated to whole seconds -- sub-second precision isn't useful at
-        logdb's sample-interval scale and would otherwise bloat every row.
-        Trims per max_records/max_age (with slack), then writes exactly one
-        row to the CSV, flushed immediately -- at realistic sample
-        intervals (seconds to minutes, not a hot loop) the extra syscall
-        per row is negligible next to the crash-safety it buys."""
+        """Append one sample row, both in memory and to the CSV.
+
+        `values` maps a subset (or all) of self.labels to a numeric
+        reading; any configured label not present this call is stored as
+        NaN ("no data this sample"). `timestamp` is truncated to whole
+        seconds -- sub-second precision isn't useful at logdb's
+        sample-interval scale and would otherwise bloat every row.
+
+        Trims per max_records/max_age (with slack), then writes exactly
+        one row to the CSV, flushed immediately."""
         timestamp = int(timestamp)
         unknown = set(values) - set(self._columns)
         if unknown:
             logger.warning("logdb %s: ignoring unknown label(s) %s", self.csv_path, sorted(unknown))
+        logger.debug("logdb %s: new record time=%d values=%s", self.csv_path, timestamp, values)
         self._times.append(timestamp)
         for label, col in self._columns.items():
             if label in values and label not in unknown:
@@ -126,11 +138,13 @@ class LogDb:
         self._write_row(timestamp)
 
     def _maybe_trim(self) -> None:
-        """Drop oldest records once the buffer exceeds max_records/max_age
-        by more than trim_slack, amortizing array.array's O(n) shift
-        across many log() calls instead of paying it on every single
-        insert. Between trims the buffer may exceed the configured limit
-        by up to 10%; documented, not silent."""
+        """Drop the oldest in-memory records once retention limits are exceeded.
+
+        Trims once the buffer exceeds max_records/max_age by more than
+        trim_slack, amortizing array.array's O(n) shift across many
+        log() calls instead of paying it on every single insert. Between
+        trims the buffer may exceed the configured limit by up to 10%;
+        documented, not silent."""
         if self.max_records is None and self.max_age is None:
             return
         n = len(self._times)
@@ -150,6 +164,9 @@ class LogDb:
                 del col[:cutoff]
 
     def _write_row(self, timestamp: int) -> None:
+        """Write the in-memory record at the current tail to the CSV.
+
+        Written as an "F" or "D" row per full_vector_interval."""
         full = self._rows_since_full == 0
         cells = ["F" if full else "D", str(timestamp)]
         for label in self.labels:
@@ -168,6 +185,10 @@ class LogDb:
 
     @staticmethod
     def _fmt(value: float) -> str:
+        """Format a float for the CSV.
+
+        "nan" for NaN, no decimal point for integer-looking values,
+        otherwise repr()."""
         if math.isnan(value):
             return "nan"
         if value == int(value):
@@ -177,8 +198,10 @@ class LogDb:
     # ---------- query API ----------
 
     def get_at(self, timestamp: float, labels: list[str] | None = None) -> dict[str, float] | None:
-        """The record nearest to `timestamp` (either side), or None if
-        empty. O(log n) via bisect on the always time-ascending _times."""
+        """Return the record nearest to `timestamp` (either side), or None
+        if empty.
+
+        O(log n) via bisect on the always time-ascending _times."""
         if not self._times:
             return None
         idx = bisect.bisect_left(self._times, timestamp)
@@ -192,12 +215,17 @@ class LogDb:
         return self._row_at(pos, labels)
 
     def get_range(self, start: float, end: float, labels: list[str] | None = None) -> list[dict[str, float]]:
-        """Every record with start <= time <= end, ascending. O(log n + k)."""
+        """Return every record with start <= time <= end, ascending.
+
+        O(log n + k)."""
         lo = bisect.bisect_left(self._times, start)
         hi = bisect.bisect_right(self._times, end)
         return [self._row_at(pos, labels) for pos in range(lo, hi)]
 
     def _row_at(self, pos: int, labels: list[str] | None) -> dict[str, float]:
+        """Build one record dict at in-memory index `pos`.
+
+        Uses the given labels, or self.labels if None."""
         keys = labels if labels is not None else self.labels
         row = {"time": self._times[pos]}
         for label in keys:
@@ -208,29 +236,33 @@ class LogDb:
                        decimation: list[tuple[float, int]] | None = None,
                        now: float | None = None) -> list[dict[str, float]]:
         """Like get_range() over the full retained window, but coarsens
-        older data by averaging consecutive samples within each decimation
-        tier -- trading resolution for a bounded response size on a UI's
-        full-history request (see extensions.web_ui.panels.GraphPanel).
+        older data.
+
+        Older samples are averaged within each decimation tier, trading
+        resolution for a bounded response size on a UI's full-history
+        request (see extensions.web_ui.panels.GraphPanel).
 
         `decimation` is a list of (age_seconds, factor) tuples: a sample's
         age (`now` minus its timestamp) is compared against each tier's
-        age_seconds, and the tier with the *largest* age_seconds strictly
+        age_seconds, and the tier with the largest age_seconds strictly
         less than that age supplies its factor -- age at or under every
         tier's threshold means factor 1 (undecimated). None or empty is
-        equivalent to get_range() over the whole window. `now` defaults to
-        time.time(); overridable for tests.
+        equivalent to get_range() over the whole window. `now` defaults
+        to time.time(); overridable for tests.
 
-        Groups are formed oldest-to-newest and always restart cleanly at a
-        tier boundary (never straddling two factors), each emitting one row
-        using the group's last (most recent) timestamp and, per label, the
-        average of its non-NaN values in the group (all-NaN emits NaN,
-        matching get_range()'s own "no data" convention). `labels` (default:
-        self.labels) is filtered down to labels this instance actually has,
-        so a caller-supplied label this instance never logs (e.g. a graph
-        panel selector matching more than one logdb instance covers) is
-        silently dropped rather than raising KeyError -- unlike get_at()/
-        get_range(), this is the first query method called with an
-        externally-derived label list that could mismatch."""
+        Groups are formed oldest-to-newest and always restart cleanly at
+        a tier boundary (never straddling two factors), each emitting one
+        row using the group's last (most recent) timestamp and, per
+        label, the average of its non-NaN values in the group (all-NaN
+        emits NaN, matching get_range()'s own "no data" convention).
+
+        `labels` (default: self.labels) is filtered down to labels this
+        instance actually has, so a caller-supplied label this instance
+        never logs (e.g. a graph panel selector matching more than one
+        logdb instance covers) is silently dropped rather than raising
+        KeyError -- unlike get_at()/get_range(), this is the first query
+        method called with an externally-derived label list that could
+        mismatch."""
         keys = [label for label in (labels if labels is not None else self.labels)
                 if label in self._columns]
         n = len(self._times)
@@ -270,6 +302,9 @@ class LogDb:
         return rows
 
     def _averaged_row(self, start: int, end: int, keys: list[str]) -> dict[str, float]:
+        """Build one decimated record averaging in-memory rows [start, end).
+
+        Averages the given labels; uses the last row's timestamp."""
         row = {"time": self._times[end - 1]}
         for label in keys:
             col = self._columns[label]
@@ -285,11 +320,18 @@ class LogDb:
     # ---------- header reconciliation ----------
 
     def _desired_header_width(self, needed: int) -> int:
+        """Compute the reserved header width in bytes.
+
+        Uses header_reserve_bytes if configured, otherwise double the
+        content currently needed (at least _MIN_HEADER_RESERVE)."""
         if self._header_reserve_bytes is not None:
             return max(int(self._header_reserve_bytes), needed)
         return max(_MIN_HEADER_RESERVE, needed * 2)
 
     def _pad_header(self, content: str, width: int) -> bytes:
+        """Encode `content` as a header line.
+
+        Padded with trailing spaces to `width` bytes."""
         content_bytes = content.encode("utf-8")
         pad = width - len(content_bytes) - 1  # -1 for the trailing "\n"
         if pad < 0:
@@ -297,6 +339,9 @@ class LogDb:
         return content_bytes + b" " * pad + b"\n"
 
     def _write_fresh_header(self, labels: list[str]) -> None:
+        """Write a brand-new info + label header to csv_path.
+
+        Replaces any existing content."""
         info = f"{_INFO_LINE_PREFIX}{_VERSION}\n".encode("utf-8")
         content = "type,time," + ",".join(labels)
         width = self._desired_header_width(len(content.encode("utf-8")) + 1)
@@ -305,12 +350,17 @@ class LogDb:
             f.write(self._pad_header(content, width))
 
     def _rotate_existing_file(self) -> None:
+        """Rename an existing, unrecognized csv_path aside.
+
+        Renamed to a timestamped .bak file."""
         backup = self.csv_path.with_name(self.csv_path.name + f".{int(time.time())}.bak")
         self.csv_path.rename(backup)
 
     def _consume_leading_lines(self, data_start: int, extra_needed: int) -> tuple[int, int]:
         """Read forward from `data_start`, accumulating whole lines' byte
-        lengths until at least `extra_needed` bytes have been consumed (or
+        lengths.
+
+        Reads until at least `extra_needed` bytes have been consumed (or
         the file runs out). Returns (bytes_consumed, records_consumed)."""
         consumed = 0
         count = 0
@@ -325,11 +375,12 @@ class LogDb:
         return consumed, count
 
     def _reconcile_header(self, configured_labels: list[str]) -> list[str]:
-        """Read/create the CSV header, growing it in place to cover any
-        newly configured labels not already persisted. Sets self._data_start
-        to the byte offset where data rows begin. Returns the final,
-        combined label list (persisted labels, in their original order,
-        followed by any newly configured ones)."""
+        """Read or create the CSV header, growing it in place for any
+        newly configured labels.
+
+        Sets self._data_start to the byte offset where data rows begin.
+        Returns the final, combined label list (persisted labels, in
+        their original order, followed by any newly configured ones)."""
         if not self.csv_path.exists() or self.csv_path.stat().st_size == 0:
             self.csv_path.parent.mkdir(parents=True, exist_ok=True)
             self._write_fresh_header(configured_labels)
@@ -361,6 +412,7 @@ class LogDb:
             self._data_start = data_start
             return combined_labels
 
+        logger.info("logdb %s: extending columns with new label(s) %s", self.csv_path, new_labels)
         new_content = "type,time," + ",".join(combined_labels)
         needed = len(new_content.encode("utf-8")) + 1
         old_header_width = len(header_line)
@@ -392,9 +444,11 @@ class LogDb:
 
     def _window_covered(self, lines: list[str], anchor_index: int, reference_time: float) -> bool:
         """Whether replaying from `lines[anchor_index]` onward already
-        covers the full desired retention window, so the backward scan can
-        stop growing its chunk. Unbounded (no max_records/max_age) never
-        stops early -- the scan reads back to the start of the data."""
+        covers the full retention window.
+
+        Used by _replay so its backward scan can stop growing its chunk.
+        Unbounded (no max_records/max_age) never stops early -- the scan
+        reads back to the start of the data."""
         if self.max_records is None and self.max_age is None:
             return False
         covered = True
@@ -406,13 +460,16 @@ class LogDb:
         return covered
 
     def _parse_row(self, line: str, current: dict[str, float]) -> float:
-        """Parse one data row, updating `current` (label -> value) in place:
-        a blank cell means "unchanged" (keep current[label]); a missing
-        trailing cell (row shorter than self.labels, i.e. that label didn't
-        exist yet when this row was written) means NaN; anything else is
-        parsed as a float ("nan" -> NaN). Returns the row's timestamp.
-        Caller must snapshot `current` (dict(current)) before the next call,
-        since it's mutated in place."""
+        """Parse one CSV data row, updating `current` (label -> value) in place.
+
+        A blank cell means "unchanged" (keep current[label]); a missing
+        trailing cell (row shorter than self.labels, i.e. that label
+        didn't exist yet when this row was written) means NaN; anything
+        else is parsed as a float ("nan" -> NaN). Returns the row's
+        timestamp.
+
+        Caller must snapshot `current` (dict(current)) before the next
+        call, since it's mutated in place."""
         fields = line.split(",")
         timestamp = float(fields[1])
         cells = fields[2:]
@@ -427,6 +484,8 @@ class LogDb:
         return timestamp
 
     def _retention_cutoff(self, times: list[float], reference_time: float) -> int:
+        """Compute the index below which replayed records fall outside
+        max_records/max_age."""
         n = len(times)
         cutoff = 0
         if self.max_records is not None:
@@ -436,14 +495,17 @@ class LogDb:
         return cutoff
 
     def _replay(self) -> None:
-        """Rebuild self._times/self._columns from the CSV's surviving data
-        rows: a backward, growing-chunk scan finds the earliest "F" row
-        that already covers the desired retention window (bounded by
+        """Rebuild self._times/self._columns from the CSV's surviving data rows.
+
+        A backward, growing-chunk scan finds the earliest "F" row that
+        already covers the desired retention window (bounded by
         full_vector_interval, unlike an unbounded backward search), then
-        replays forward from there and trims to the exact window. Uses
-        wall-clock time.time() (not the file's own last timestamp) as the
-        max_age reference, so a long process downtime doesn't resurrect
-        data that would immediately be re-trimmed once ticking resumes."""
+        replays forward from there and trims to the exact window.
+
+        Uses wall-clock time.time() (not the file's own last timestamp)
+        as the max_age reference, so a long process downtime doesn't
+        resurrect data that would immediately be re-trimmed once ticking
+        resumes."""
         file_size = self.csv_path.stat().st_size
         if file_size <= self._data_start:
             return
@@ -491,3 +553,4 @@ class LogDb:
                 self._columns[label].append(row[label])
         if rows:
             self._last_written = dict(rows[-1])
+        logger.info("logdb %s: loaded %d record(s) from existing file", self.csv_path, len(self._times))
