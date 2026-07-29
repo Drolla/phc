@@ -264,13 +264,13 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
     action's `code:` can call -- both ExprCondition.evaluate() and
     ScriptAction.perform() build their namespace here, the former with
     `writable=False`, so the two surfaces can never drift apart in what they
-    expose and a new function only needs to be added once.
+    expose and a new function only needs to be added once. See
+    docs/scripting.md for the full expr:/code: API reference.
 
     Always available (read-only): state/changed/text/event/sticky (each
     takes a "device.endpoint" ref string) and devices(pattern) (a selector,
     see core.selectors). Only when `writable` (scripted actions): set_state,
-    create_task/kill_task (spawn/remove tagged tasks -- see register_task/
-    kill_tasks above), reset_sticky, and log. `sticky`/`reset_sticky` are
+    create_task/kill_task, reset_sticky, and log. `sticky`/`reset_sticky` are
     keyed by `task_tag` as the Endpoint.subscribe_log() subscriber id (see
     core.endpoint) -- core.config subscribes every referenced endpoint under
     that same id at config-build time."""

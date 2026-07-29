@@ -112,13 +112,8 @@ class _LevelMapFilter(logging.Filter):
 def configure_logging(log_config: list | None, log_levels_override: dict | None = None,
                        config_dir: Path | None = None) -> None:
     """Configure the "phc" logger tree from `log_config`, a list of
-    independently levelled destinations:
-
-        log:
-          - dest: stdout
-            levels: { default: INFO, scheduler: DEBUG }
-          - dest: warn_err.log
-            levels: { default: WARNING }
+    independently levelled destinations -- see docs/configuration.md for
+    the `log:` YAML schema.
 
     `dest` is "stdout"/"stderr" for a stream, or any other string for a
     file path -- resolved relative to `config_dir` (the system YAML's own
@@ -127,14 +122,11 @@ def configure_logging(log_config: list | None, log_levels_override: dict | None 
     provenance -- see core.config._include_constructor), opened in append
     mode, lazily (no file is created until the first record for it).
 
-    Each destination's `levels` is a name -> LEVEL map (see
-    _LevelMapFilter); "default" applies to any logger with no more
-    specific entry. `log_levels_override` (CLI --log-level/
-    --log-level-module) is merged into every STREAM destination's levels
-    only, never a file destination's -- the CLI flags mean "make my
-    console louder/quieter", and applying them to a file dest would
-    permanently pollute the sparse log a user configured for exactly the
-    opposite reason.
+    `log_levels_override` (CLI --log-level/--log-level-module) is merged
+    into every STREAM destination's levels only, never a file
+    destination's -- the CLI flags mean "make my console louder/quieter",
+    and applying them to a file dest would permanently pollute the sparse
+    log a user configured for exactly the opposite reason.
 
     The "phc" root logger itself is set to the minimum level requested by
     any destination, so nothing is dropped before a handler's own
