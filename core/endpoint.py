@@ -12,6 +12,9 @@ VALUE_TYPES = ("int", "float", "bool", "str")
 
 _TRUTHY_TEXT = {"true", "1", "on", "yes"}
 
+# Default `format` for a float-typed endpoint when none is declared explicitly.
+_DEFAULT_FLOAT_FORMAT = ".1f"
+
 # Aggregation rules recognized by `log_aggregation:` -- see the sticky log
 # value methods below. "max" is the default: for the common case (alarms,
 # "on" states), the most-alarming value seen since the last log sample is
@@ -61,7 +64,8 @@ class Endpoint:
         self.log_aggregation = log_aggregation
         self.min = min
         self.max = max
-        self.format = format if format is not None else (".1f" if value_type == "float" else None)
+        self.format = format if format is not None else (
+            _DEFAULT_FLOAT_FORMAT if value_type == "float" else None)
 
         self._next_state = None
         self._state = None

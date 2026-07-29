@@ -151,6 +151,30 @@ def test_sample_converts_bool_to_zero_one(tmp_path):
     instance.store.close()
 
 
+def test_sample_rounds_float_per_endpoint_format(tmp_path):
+    flat = {"outside": VirtualDevice("outside", endpoints=[
+        Endpoint("temperature", writable=True, value_type="float"),
+    ])}
+    params = {
+        "selectors": ["outside/temperature"],
+        "csv_path": str(tmp_path / "log.csv"),
+        "full_vector_interval": 100,
+        "max_records": None,
+        "max_age": None,
+        "header_reserve_bytes": None,
+    }
+    instance = configure(params, flat, "logdb.house_log")
+    sensor = flat["outside"]
+
+    _commit(sensor, "temperature", 23.834982187699923)
+    instance.on_tick(flat)
+    instance.sample(flat)
+
+    row = instance.store.get_range(0, float("inf"))[0]
+    assert row["outside/temperature"] == 23.8  # rounded per the default ".1f" format
+    instance.store.close()
+
+
 def test_two_instances_sampling_same_endpoint_track_independent_sticky_values(tmp_path):
     flat = _house()
     lamp = flat["house.desk_lamp"]

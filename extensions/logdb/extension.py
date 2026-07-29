@@ -47,7 +47,11 @@ class LogDbInstance:
         log_aggregation) rather than only whatever the state happened to
         be exactly when the task fired. Only bool/int/float sticky values
         are stored (bool -> 0.0/1.0); other types are simply absent from
-        this row (LogDb.log() records them as "no data")."""
+        this row (LogDb.log() records them as "no data"). A float value
+        is rounded per the endpoint's declared `format` (e.g. ".1f") --
+        the same precision to_text() would display -- so raw sensor
+        noise (e.g. 23.834982187699923) doesn't bloat the CSV with
+        digits beyond what the endpoint considers meaningful."""
         now = time.time()
         values: dict[str, float] = {}
         for qualified_id, endpoint_key in self.pairs:
@@ -59,7 +63,10 @@ class LogDbInstance:
             if isinstance(raw, bool):
                 values[f"{qualified_id}/{endpoint_key}"] = 1.0 if raw else 0.0
             elif isinstance(raw, (int, float)):
-                values[f"{qualified_id}/{endpoint_key}"] = float(raw)
+                value = float(raw)
+                if endpoint.format:
+                    value = float(format(value, endpoint.format))
+                values[f"{qualified_id}/{endpoint_key}"] = value
             endpoint.invalidate_log_value(self.subscriber_id)
         self.store.log(now, values)
 
