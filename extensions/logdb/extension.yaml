@@ -3,8 +3,8 @@ description: >
   one CSV-backed, in-memory-buffered log of numeric device endpoint state,
   sampled whenever a task with `kind: log_db, instance: "logdb.<instance>"`
   fires. Only int/float values are stored (bool -> 0/1, str/other skipped).
-  Each sampled endpoint is subscribed for sticky min/max tracking (see
-  Endpoint.log_aggregation), so brief events between samples aren't lost.
+  Each sampled endpoint is subscribed for sticky min/max tracking, so
+  brief events between samples aren't lost.
 
 parameters:
   - name: selectors
@@ -26,7 +26,7 @@ parameters:
     description: >
       Write a full snapshot row every N samples; rows in between store only
       changed columns. Bounds both restore-scan cost and how much history a
-      header-growth event (see logdb.py) can ever need to sacrifice.
+      header-growth event can ever need to sacrifice.
 
   - name: max_records
     override: allowed
