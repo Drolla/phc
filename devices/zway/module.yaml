@@ -144,14 +144,6 @@ device_profiles:
       - { key: sw1, endpoint_profile: switch_binary, address: "{node}.1" }
       - { key: sw2, endpoint_profile: switch_binary, address: "{node}.2" }
 
-  fibaro-fgs222-level:
-    brand: Fibaro
-    type: Binary Power Switch (2-bit level)
-    product: FGS222
-    description: Double Relay Switch FGS-222, aggregated into one 0-3 level
-    endpoints:
-      - { key: level, endpoint_profile: switch_multi_binary, address: "{node}.1.2" }
-
   hsm02-hsm02:
     brand: HSM02
     type: Routing Binary Sensor
