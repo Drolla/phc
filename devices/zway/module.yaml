@@ -127,16 +127,32 @@ endpoint_profiles:
   sensor_multilevel_radiation:
     type: float
     command_group: SensorMultilevel
+# Endpoint_profiles that are not (yet) enabled by thc_zway.tcl:
+#  meter_power:
+#    type: float
+#    unit: W
+#    command_group: Meter
+#  meter_energy:
+#    type: float
+#    unit: kWh
+#    command_group: Meter
 
 device_profiles:
   fibaro-fgs222:
     brand: Fibaro
     type: Binary Power Switch
     product: FGS222
-    description: Double Relay Switch FGS-222
+    description: >
+      Double Relay Switch FGS-222 (2x1.5kW), with per-channel power (W) and
+      cumulative energy (kWh) metering.
     endpoints:
       - { key: sw1, endpoint_profile: switch_binary, address: "{node}.1" }
       - { key: sw2, endpoint_profile: switch_binary, address: "{node}.2" }
+# Endpoint_profiles that are not (yet) enabled by thc_zway.tcl:
+#      - { key: power1, endpoint_profile: meter_power, address: "{node}.1.2" }
+#      - { key: energy1, endpoint_profile: meter_energy, address: "{node}.1.0" }
+#      - { key: power2, endpoint_profile: meter_power, address: "{node}.2.2" }
+#      - { key: energy2, endpoint_profile: meter_energy, address: "{node}.2.0" }
 
   hsm02-hsm02:
     brand: HSM02
