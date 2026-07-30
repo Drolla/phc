@@ -89,12 +89,6 @@ endpoint_profiles:
     min: 0
     max: 99
     command_group: SwitchMultilevel
-  switch_multi_binary:
-    type: int
-    writable: true
-    min: 0
-    max: 3
-    command_group: SwitchMultiBinary
   sensor_binary:
     type: int
     values: { 0: "clear", 1: "triggered" }
