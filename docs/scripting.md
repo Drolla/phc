@@ -41,7 +41,10 @@ by accident:
   the `kill_task` action kind), `reset_sticky(ref)`, and `log(msg)`.
 - `ref` is a `"device.endpoint"` string, either inline (`state("a.b")`) or
   bound to a short name via an optional `refs: { name: "a.b" }` map for the
-  `name.state`/`name.changed`/... attribute form used above.
+  `name.state`/`name.changed`/... attribute form used above. `refs:` is
+  accepted as a sibling key at all three of these surfaces -- `condition`,
+  a `script` action's `code`, and a `set` action's `expr` -- not just on
+  the condition shown above.
 
 A `set` action's `expr` is a single expression (not a multi-line script)
 evaluated fresh each time the action fires, and its result is written the
