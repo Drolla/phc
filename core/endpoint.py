@@ -2,6 +2,8 @@
 
 import time
 
+from core import scripting
+
 # Sentinel default for to_text()'s `value` param, so to_text(None) (format an
 # explicit None) is distinguishable from "format the current value".
 _UNSET = object()
@@ -30,8 +32,8 @@ class Endpoint:
     which the PHC scheduler calls once per device cycle after fetch().
 
     See docs/configuration.md for the endpoint field reference (`type`,
-    `unit`, `values`, `min`/`max`, `format`, and the `name` vs `description`
-    convention)."""
+    `unit`, `values`, `min`/`max`, `format`, `read_transform`/
+    `write_transform`, and the `name` vs `description` convention)."""
 
     kind: str = "generic"
 
@@ -40,7 +42,8 @@ class Endpoint:
                  value_type: str | None = None, unit: str | None = None,
                  values: dict | None = None, log_aggregation: str = "max",
                  min: float | int | None = None, max: float | int | None = None,
-                 format: str | None = None):
+                 format: str | None = None, read_transform: str | None = None,
+                 write_transform: str | None = None):
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ValueError(f"endpoint {key!r}: invalid type {value_type!r}, "
                               f"expected one of {VALUE_TYPES}")
@@ -49,6 +52,8 @@ class Endpoint:
                               f"expected one of {LOG_AGGREGATIONS}")
         if min is not None and max is not None and min > max:
             raise ValueError(f"endpoint {key!r}: min ({min!r}) is greater than max ({max!r})")
+        self._read_transform = self._compile_transform(key, "read_transform", read_transform)
+        self._write_transform = self._compile_transform(key, "write_transform", write_transform)
         self.key = key
         self.readable = readable
         self.writable = writable
@@ -80,9 +85,46 @@ class Endpoint:
         # min/max window.
         self._log_subscriptions: dict[str, object] = {}
 
+    @staticmethod
+    def _compile_transform(key: str, field: str, source: str | None):
+        """Compile `source` (a read_transform/write_transform expression, see
+        set_raw()/to_raw()) via the restricted-Python sandbox in
+        core.scripting, or return None if `source` is unset. Raises
+        ValueError (not ScriptError) on an invalid expression, matching this
+        constructor's other validation -- so config.py's single
+        `except ValueError` around Endpoint construction also catches a bad
+        transform, without core.endpoint needing to know about ConfigError."""
+        if source is None:
+            return None
+        try:
+            return scripting.compile_expression(source)
+        except scripting.ScriptError as exc:
+            raise ValueError(f"endpoint {key!r}: invalid {field}: {exc}") from None
+
     def set(self, new_state):
         """Stage `new_state` as the next value; not visible via get() until update_state()."""
         self._next_state = new_state
+
+    def set_raw(self, raw_value):
+        """Stage a value freshly read from hardware (see Device.fetch()),
+        after applying `read_transform` -- if declared -- to correct/invert
+        it (e.g. a sensor calibration offset, or flipping an inverted
+        polarity) before it becomes this endpoint's stored value. The
+        raw-fetch counterpart to set(); a value of None (fetch failure) is
+        passed through untransformed."""
+        if self._read_transform is not None and raw_value is not None:
+            raw_value = scripting.evaluate_expression(self._read_transform, {"value": raw_value})
+        self.set(raw_value)
+
+    def to_raw(self, value):
+        """Apply `write_transform` -- if declared -- to `value` (the logical
+        value being written, e.g. via Device.set()/set_text()), returning
+        the value to actually send to hardware. Identity when no
+        write_transform is declared or `value` is None. The write-path
+        counterpart to set_raw()."""
+        if self._write_transform is not None and value is not None:
+            return scripting.evaluate_expression(self._write_transform, {"value": value})
+        return value
 
     def get(self):
         """Return the current (last-committed) value."""

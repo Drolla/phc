@@ -130,7 +130,7 @@ class Device:
         raw = await self.receive_async()
         for key, value in raw.items():
             if key in self.endpoints:
-                self.endpoints[key].set(value)
+                self.endpoints[key].set_raw(value)
         for child in self.children.values():
             await child.fetch()
 
@@ -181,13 +181,15 @@ class Device:
         children, else a dict routed per-key). With `name`: set that one
         endpoint/child only. Endpoint writes always go through transmit() --
         a value only becomes observable via get() after the next
-        fetch()/receive()/update_state() cycle."""
+        fetch()/receive()/update_state() cycle. Each endpoint value passes
+        through its own to_raw() (its declared write_transform, if any) on
+        the way to transmit()."""
         if name is not None:
             kind, target = self._resolve(name)
             if kind == "endpoint":
                 if not target.writable:
                     raise AttributeError(f"{self.qualified_id}: endpoint {name!r} is read-only")
-                self._emit({name: value})
+                self._emit({name: target.to_raw(value)})
             else:
                 target.set(value)
             return
@@ -195,7 +197,7 @@ class Device:
             ep = next(iter(self.endpoints.values()))
             if not ep.writable:
                 raise AttributeError(f"{self.qualified_id}: endpoint {ep.key!r} is read-only")
-            self._emit({ep.key: value})
+            self._emit({ep.key: ep.to_raw(value)})
             return
         if not isinstance(value, dict):
             raise TypeError(f"{self.qualified_id}: multi-endpoint/child device requires dict state")
@@ -205,7 +207,7 @@ class Device:
             if kind == "endpoint":
                 if not target.writable:
                     raise AttributeError(f"{self.qualified_id}: endpoint {key!r} is read-only")
-                writes[key] = val
+                writes[key] = target.to_raw(val)
             else:
                 target.set(val)
         if writes:
@@ -225,13 +227,14 @@ class Device:
 
     def set_text(self, text, name: str | None = None):
         """Like set(), but `text` is formatted display text (see
-        Endpoint.from_text) rather than a raw value."""
+        Endpoint.from_text), translated to a raw value (from_text(), then
+        to_raw()) rather than a raw value."""
         if name is not None:
             kind, target = self._resolve(name)
             if kind == "endpoint":
                 if not target.writable:
                     raise AttributeError(f"{self.qualified_id}: endpoint {name!r} is read-only")
-                self._emit({name: target.from_text(text)})
+                self._emit({name: target.to_raw(target.from_text(text))})
             else:
                 target.set_text(text)
             return
@@ -239,7 +242,7 @@ class Device:
             ep = next(iter(self.endpoints.values()))
             if not ep.writable:
                 raise AttributeError(f"{self.qualified_id}: endpoint {ep.key!r} is read-only")
-            self._emit({ep.key: ep.from_text(text)})
+            self._emit({ep.key: ep.to_raw(ep.from_text(text))})
             return
         if not isinstance(text, dict):
             raise TypeError(f"{self.qualified_id}: multi-endpoint/child device requires dict text")
@@ -249,7 +252,7 @@ class Device:
             if kind == "endpoint":
                 if not target.writable:
                     raise AttributeError(f"{self.qualified_id}: endpoint {key!r} is read-only")
-                writes[key] = target.from_text(val)
+                writes[key] = target.to_raw(target.from_text(val))
             else:
                 target.set_text(val)
         if writes:

@@ -104,7 +104,8 @@ _IncludeLoader.add_constructor("!include", _include_constructor)
 # rule for params.
 _ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "name", "description",
                         "type", "unit", "values", "log_aggregation", "min", "max",
-                        "default", "format", "endpoint_profile"}
+                        "default", "format", "endpoint_profile", "read_transform",
+                        "write_transform"}
 
 # Metadata keys allowed on a device_profiles entry alongside its required
 # `endpoints:` list -- brand/type/product/description are documentation only,
@@ -773,6 +774,8 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 min=spec.get("min"),
                 max=spec.get("max"),
                 format=spec.get("format"),
+                read_transform=spec.get("read_transform"),
+                write_transform=spec.get("write_transform"),
             )
         except ValueError as exc:
             raise ConfigError(f"device {device_id!r}: {exc}") from None
