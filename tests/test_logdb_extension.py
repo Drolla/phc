@@ -236,10 +236,6 @@ def test_log_db_action_unknown_instance_raises_config_error():
         LogDbAction(instance="logdb.nonexistent", extensions={})
 
 
-def test_log_db_action_requires_device_is_false():
-    assert LogDbAction.requires_device is False
-
-
 # ---------- end-to-end via load_system() ----------
 
 EXAMPLE_DIR = Path(__file__).resolve().parent.parent / "examples"

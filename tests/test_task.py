@@ -72,14 +72,14 @@ def test_resolve_endpoint_ref_allow_bare_still_splits_dotted_ref():
     assert resolve_endpoint_ref("living_light.state", allow_bare=True) == ("living_light", "state")
 
 
-# ---------- Action.requires_device ----------
+# ---------- Action device_id/endpoint_key defaults ----------
 
-def test_action_requires_device_defaults_true():
-    assert SetAction(device_id="living_light", endpoint_key="state", value="on").requires_device is True
+def test_action_device_id_defaults_to_none():
+    assert SetAction(value="on").device_id is None
 
 
-def test_create_task_action_requires_device_is_false():
-    assert CreateTaskAction(specs={}, flat={}, tasks=[]).requires_device is False
+def test_create_task_action_builds_without_a_device():
+    assert CreateTaskAction(specs={}, flat={}, tasks=[]).device_id is None
 
 
 # ---------- default actions ----------
@@ -174,6 +174,12 @@ def test_log_action_with_no_endpoint_reports_every_endpoint(task_log):
     action.perform(devices)
     assert "'power': 'on'" in task_log.text
     assert "'brightness': 80" in task_log.text
+
+
+def test_log_action_with_no_device_logs_message_verbatim(task_log):
+    action = LogAction(message="all lights off")
+    action.perform({})
+    assert "all lights off" in task_log.text
 
 
 # ---------- Condition ----------

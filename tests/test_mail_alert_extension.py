@@ -143,10 +143,6 @@ def test_deliver_logs_traceback_when_debug(monkeypatch, mail_log):
 
 # ---------- MailAlertAction ----------
 
-def test_mail_alert_action_requires_device_is_false():
-    assert MailAlertAction.requires_device is False
-
-
 def test_mail_alert_action_unknown_instance_raises():
     with pytest.raises(ConfigError):
         MailAlertAction(instance="mail_alert.nonexistent", extensions={}, title="t", message="m")
