@@ -22,10 +22,10 @@ from core.registry import register_module
 # exist, not a fixed URL.
 #
 # Each identifier maps to an optional poll_interval (seconds): None means the
-# identifier rides along on every combined fetch, same as before this map
-# existed. A set poll_interval (e.g. Battery endpoints, which change far more
-# slowly than their sibling sensor and don't need re-polling on the sensor's
-# cadence) excludes that identifier from the combined Get() request until
+# identifier rides along on every combined fetch. A set poll_interval (e.g.
+# Battery endpoints, which change far more slowly than their sibling sensor
+# and don't need re-polling on the sensor's cadence) excludes that identifier
+# from the combined Get() request until
 # poll_interval has elapsed since it was last actually fetched -- see
 # _select_fetch_idents/_merge_throttled in _get_values(). This only throttles
 # how often PHC asks the zWay controller for that value; it says nothing
