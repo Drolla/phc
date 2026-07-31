@@ -39,12 +39,14 @@ def _clear_module_state():
     zway_device._identifiers.clear()
     zway_device._response_cache.clear()
     zway_device._response_cache_lock = asyncio.Lock()
+    zway_device._throttled_values.clear()
     zway_device._session_cookies.clear()
     zway_device._session_lock = asyncio.Lock()
     zway_device._configured_tag_readers.clear()
     yield
     zway_device._identifiers.clear()
     zway_device._response_cache.clear()
+    zway_device._throttled_values.clear()
     zway_device._session_cookies.clear()
     zway_device._configured_tag_readers.clear()
 
@@ -133,11 +135,19 @@ def _switch_endpoints():
                      params={"command_group": "SwitchBinary", "address": "20.1"})]
 
 
-def _sensor_endpoints():
+def _sensor_endpoints(battery_poll_interval=None):
+    battery_params = {"command_group": "Battery", "address": "26.0"}
+    if battery_poll_interval is not None:
+        battery_params["poll_interval"] = battery_poll_interval
     return [
         Endpoint("state", params={"command_group": "SensorBinary", "address": "26"}),
-        Endpoint("battery", params={"command_group": "Battery", "address": "26.0"}),
+        Endpoint("battery", params=battery_params),
     ]
+
+
+def _battery_only_endpoints(poll_interval="1h"):
+    return [Endpoint("battery", params={"command_group": "Battery", "address": "26",
+                                         "poll_interval": poll_interval})]
 
 
 def _tagreader_endpoints():
@@ -265,6 +275,70 @@ def test_zway_cache_expires_after_cache_time():
         scheduler.tick(now=1.0)
         scheduler.close()
         assert server.get_hits == 2
+    finally:
+        server.shutdown()
+
+
+def test_zway_throttled_endpoint_not_refetched_before_poll_interval_elapses():
+    requests = []
+
+    def responder(idents):
+        requests.append(idents)
+        return [len(requests)] * len(idents)   # a distinct value per Get() call
+
+    server, base_url = _serve(get_response=responder)
+    try:
+        sensor = _device(base_url, "sensor", endpoints=_sensor_endpoints(battery_poll_interval="1h"),
+                          cache_time="50ms")
+        scheduler = Scheduler({"sensor": sensor})
+        scheduler.tick(now=0.0)
+        time.sleep(0.1)   # past cache_time, nowhere near battery's poll_interval
+        scheduler.tick(now=1.0)
+        scheduler.close()
+        assert len(requests) == 2
+        assert ["Battery", "26.0"] in requests[0]      # never fetched yet -- due on the first Get()
+        assert ["Battery", "26.0"] not in requests[1]  # not due yet -- excluded from the second
+        assert sensor.get("state") == 2       # sibling endpoint still re-fetched every cache_time
+        assert sensor.get("battery") == 1     # battery served from its throttled cache, unchanged
+    finally:
+        server.shutdown()
+
+
+def test_zway_throttled_endpoint_refetched_after_poll_interval_elapses():
+    requests = []
+
+    def responder(idents):
+        requests.append(idents)
+        return [0] * len(idents)
+
+    server, base_url = _serve(get_response=responder)
+    try:
+        sensor = _device(base_url, "sensor", endpoints=_sensor_endpoints(battery_poll_interval="50ms"),
+                          cache_time="50ms")
+        scheduler = Scheduler({"sensor": sensor})
+        scheduler.tick(now=0.0)
+        time.sleep(0.1)   # past both cache_time and battery's poll_interval
+        scheduler.tick(now=1.0)
+        scheduler.close()
+        assert len(requests) == 2
+        assert ["Battery", "26.0"] in requests[1]
+    finally:
+        server.shutdown()
+
+
+def test_zway_skips_get_when_nothing_is_due():
+    server, base_url = _serve(get_response=[42])
+    try:
+        dev = _device(base_url, "batt", endpoints=_battery_only_endpoints(), cache_time="50ms")
+        scheduler = Scheduler({"batt": dev})
+        scheduler.tick(now=0.0)
+        assert server.get_hits == 1
+        assert dev.get("battery") == 42
+        time.sleep(0.1)   # past cache_time, but battery's 1h poll_interval hasn't elapsed
+        scheduler.tick(now=1.0)
+        scheduler.close()
+        assert server.get_hits == 1   # nothing due -- no Get() issued at all
+        assert dev.get("battery") == 42   # still served from the throttled cache
     finally:
         server.shutdown()
 

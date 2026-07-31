@@ -82,6 +82,14 @@ behind one controller to keep them polling together and get full sharing —
 typically by setting both `update` and the shared params once under
 `modules.zway`, as above, rather than repeating them on every device.
 
+An endpoint that changes far more slowly than its siblings can set its own
+`poll_interval` to opt out of that shared cadence, e.g. the `battery`
+endpoint_profile defaults to `poll_interval: "1h"` so a node's battery level
+isn't re-fetched on every 30s poll of its paired sensor value — it's simply
+left out of the combined request until an hour has passed, and the last
+known value is served in the meantime. Set `poll_interval` on an
+endpoint directly (or override it on a profile) to change or clear this.
+
 See [zway internals](developer/zway.md) for the batching/caching/auth
 architecture behind this, and per-product wiring notes in the profile
 library.

@@ -7,14 +7,27 @@ auth state, keyed by `base_url`:
 - **Identifier registry** (`_identifiers`) — every device registers its
   readable endpoints' `(command_group, address)` identifiers into a
   shared, module-level dict during `setup()`, before the Scheduler starts
-  (so the registry is guaranteed complete by the first fetch). Whichever
-  device is due first each poll window issues one combined `Get()` request
-  covering every currently-registered identifier for that controller.
+  (so the registry is guaranteed complete by the first fetch). Each
+  identifier maps to an optional `poll_interval` (seconds), parsed from the
+  endpoint's `poll_interval` param. Whichever device is due first each poll
+  window issues one combined `Get()` request covering every
+  currently-registered identifier for that controller that's actually due
+  (see below).
 - **Response cache** (`_response_cache`, `_response_cache_lock`) — the
   combined fetch is cached for `cache_time` and reused by every sibling
   device polling within that window, using double-checked locking to avoid
   a cache stampede when several devices become due at once. A failed fetch
   is never cached, so callers retry on the next poll.
+- **Throttled-identifier cache** (`_throttled_values`) — identifiers with a
+  `poll_interval` override (e.g. `Battery` endpoints, which default to
+  `"1h"`) are excluded from a combined `Get()` request until that interval
+  has elapsed since they were last actually fetched (`_select_fetch_idents`);
+  in the meantime `_merge_throttled` fills them back in from this cache
+  instead. If every registered identifier behind a `base_url` is throttled
+  and none are due, `_get_values` skips the request entirely rather than
+  issuing an empty `Get()`. This only reduces how often PHC asks the zWay
+  controller for a value — it has no bearing on whether zWay itself polls
+  the physical node over the Z-Wave mesh to answer that `Get()`.
 - **Session/auth** (`_session_cookies`, `_session_lock`) — only the
   extracted session cookie string is cached, not a long-lived
   `aiohttp.ClientSession`; a fresh session is opened per request to avoid

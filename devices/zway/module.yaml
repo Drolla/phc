@@ -5,7 +5,9 @@ description: >
   SwitchMultiBinary, SensorBinary, SensorMultilevel, Battery, TagReader) and
   `address` (opaque "node.instance[.datarecord]" string, e.g. "20.1").
   Devices sharing `base_url` batch their reads into one HTTP request per
-  `cache_time`.
+  `cache_time`. An endpoint can also set its own `poll_interval` (e.g. the
+  `battery` profile defaults to "1h") to be re-fetched on a slower cadence
+  than its siblings, instead of on every combined request.
 
   Use endpoint_profiles and device_profiles as a shortcut instead of
   hand-writing every endpoint. An endpoint_profile (e.g. `switch_binary`,
@@ -74,6 +76,15 @@ endpoint_parameters:
     description: >
       Opaque zWay "node.instance[.datarecord]" identifier, passed through
       verbatim.
+  - name: poll_interval
+    description: >
+      Optional minimum time between re-fetches of this endpoint (e.g.
+      "1h" -- any value parse_duration accepts). Unset (the default) means
+      it's fetched on every combined request alongside its sibling
+      endpoints, at the device's own `update`/`cache_time` cadence. Useful
+      for values that change slowly, such as battery levels, so they don't
+      ride along on a fast-changing sibling's poll cadence and generate
+      needless traffic to the zWay controller.
 
 endpoints: []
 
@@ -97,6 +108,7 @@ endpoint_profiles:
     type: int
     unit: "%"
     command_group: Battery
+    poll_interval: "1h"
   tag_reader:
     type: str
     command_group: TagReader
