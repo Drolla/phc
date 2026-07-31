@@ -54,6 +54,18 @@ through unchanged. An endpoint definition may opt into:
   don't know what a specific installation will call the thing) and set at
   the system-config level instead — see [Endpoint and device
   profiles](profiles.md).
+- `read_transform`/`write_transform` — restricted-Python expressions (the
+  same sandbox as a task's `expr:`, see [Conditions, scripted actions &
+  sticky values](scripting.md)) that correct a raw value on the way in or
+  out, e.g. a sensor's calibration offset or an inverted polarity.
+  `read_transform` runs on a value just read from hardware, before it
+  becomes the endpoint's stored state (`value` is the raw reading, e.g.
+  `read_transform: "value - 1.5"`); `write_transform` runs on a value about
+  to be written to hardware, after `set_text()`'s `from_text()` conversion
+  (`value` is the logical value being written, e.g.
+  `write_transform: "value + 1.5"`). Both default to unset (pass through
+  unchanged); a round-trip endpoint (read and written) needs both declared
+  consistently — they aren't derived from one another.
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw
