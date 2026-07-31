@@ -59,4 +59,6 @@ Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw
 value as display text and to parse text (or a raw value/label, e.g. `1` or
 `"on"`) back into the endpoint's raw value — used by the `log` action's
-`{text}` placeholder and the `set` action's `value:` parameter.
+`{text}` placeholder and the `set` action's `value:` parameter (or its
+`expr:` alternative — see [Conditions, scripted actions & sticky
+values](scripting.md)).
