@@ -45,6 +45,9 @@ by accident:
   accepted as a sibling key at all three of these surfaces -- `condition`,
   a `script` action's `code`, and a `set` action's `expr` -- not just on
   the condition shown above.
+- Indexing (`ref[i]`, `event[2]`) and dict-key access (`d['key']`) work on
+  any value a function/attribute returns, e.g. to pull one element out of
+  a multi-item `event` list; slicing (`x[1:3]`) is not supported.
 
 A `set` action's `expr` is a single expression (not a multi-line script)
 evaluated fresh each time the action fires, and its result is written the

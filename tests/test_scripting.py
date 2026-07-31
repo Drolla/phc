@@ -49,7 +49,9 @@ def test_compile_expression_rejects(source):
     "for a, b in devices('*/*'):\n    pass",
     "log(*args)",
     "log(msg='hi')",
-    "x[0]",
+    "x[0] = 1",
+    "for x[0] in y:\n    pass",
+    "x[1:3]",
     "(y := 1)",
 ])
 def test_compile_script_rejects(source):
@@ -87,6 +89,30 @@ def test_run_script_calls_namespace_function():
     compiled = compile_script("log('hello')\nif changed('a.b'):\n    log('changed')")
     run_script(compiled, {"log": calls.append, "changed": lambda ref: True})
     assert calls == ["hello", "changed"]
+
+
+# ---------- subscript ----------
+
+@pytest.mark.parametrize("source, expected", [
+    ("[1, 2, 3][1]", 2),
+    ("[1, 2, 3][-1]", 3),
+    ("{'a': 1}['a']", 1),
+    ("[[1, 2], [3, 4]][0][1]", 2),
+])
+def test_compile_expression_accepts_subscript(source, expected):
+    compiled = compile_expression(source)
+    assert evaluate_expression(compiled, {}) == expected
+
+
+def test_compile_expression_accepts_variable_index():
+    compiled = compile_expression("event[2]")
+    assert evaluate_expression(compiled, {"event": [1, "wrongcode", "1111"]}) == "1111"
+
+
+def test_evaluate_expression_index_error_propagates_uncaught():
+    compiled = compile_expression("event[5]")
+    with pytest.raises(IndexError):
+        evaluate_expression(compiled, {"event": [1, 2]})
 
 
 # ---------- referenced_paths extraction ----------

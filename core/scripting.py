@@ -54,14 +54,22 @@ _SAFE_BUILTINS = {name: getattr(builtins, name) for name in
 
 # Structurally allowed AST node types. Absence is enough to reject a
 # construct (import, def/class/lambda, while, try/raise, with, comprehensions,
-# subscript, walrus, augmented assignment, ...); the additional checks in
+# slicing, walrus, augmented assignment, ...); the additional checks in
 # _validate() below narrow a few of these further (Attribute, Call, Assign,
 # For) since the node *type* alone doesn't capture those constraints.
+#
+# ast.Subscript is allowed (indexing only, e.g. event[2] or d['key']) --
+# it compiles to the same implicit-dunder category as the already-allowed
+# BinOp/Compare operators, so it doesn't add a new kind of capability.
+# Explicit `.__getitem__`/getattr access stays blocked (_ALLOWED_ATTRIBUTES,
+# _SAFE_BUILTINS), and a Subscript can't appear as an assignment/for-loop
+# target since Assign/For below require a bare Name there. Slicing
+# (ast.Slice, e.g. x[1:3]) is intentionally not included.
 _ALLOWED_NODE_TYPES = (
     ast.Module, ast.Expression, ast.Expr, ast.Load, ast.Store,
     ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set,
     ast.JoinedStr, ast.FormattedValue,
-    ast.Name, ast.Attribute,
+    ast.Name, ast.Attribute, ast.Subscript,
     ast.BoolOp, ast.And, ast.Or,
     ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
     ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
