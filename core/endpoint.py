@@ -87,13 +87,10 @@ class Endpoint:
 
     @staticmethod
     def _compile_transform(key: str, field: str, source: str | None):
-        """Compile `source` (a read_transform/write_transform expression, see
-        set_raw()/to_raw()) via the restricted-Python sandbox in
-        core.scripting, or return None if `source` is unset. Raises
-        ValueError (not ScriptError) on an invalid expression, matching this
-        constructor's other validation -- so config.py's single
-        `except ValueError` around Endpoint construction also catches a bad
-        transform, without core.endpoint needing to know about ConfigError."""
+        """Compile a read_transform/write_transform expression via
+        core.scripting, or return None if unset. Raises ValueError (not
+        ScriptError) so config.py's single `except ValueError` around
+        Endpoint construction also catches a bad transform."""
         if source is None:
             return None
         try:
@@ -106,22 +103,19 @@ class Endpoint:
         self._next_state = new_state
 
     def set_raw(self, raw_value):
-        """Stage a value freshly read from hardware (see Device.fetch()),
-        after applying `read_transform` -- if declared -- to correct/invert
-        it (e.g. a sensor calibration offset, or flipping an inverted
-        polarity) before it becomes this endpoint's stored value. The
-        raw-fetch counterpart to set(); a value of None (fetch failure) is
-        passed through untransformed."""
+        """Like set(), but for a value freshly read from hardware (see
+        Device.fetch()): applies `read_transform` first, if declared, to
+        correct/invert it (e.g. a calibration offset). None (fetch failure)
+        passes through untransformed."""
         if self._read_transform is not None and raw_value is not None:
             raw_value = scripting.evaluate_expression(self._read_transform, {"value": raw_value})
         self.set(raw_value)
 
     def to_raw(self, value):
-        """Apply `write_transform` -- if declared -- to `value` (the logical
-        value being written, e.g. via Device.set()/set_text()), returning
-        the value to actually send to hardware. Identity when no
-        write_transform is declared or `value` is None. The write-path
-        counterpart to set_raw()."""
+        """Apply `write_transform` to `value` (a logical value about to be
+        written, e.g. via Device.set()/set_text()), returning what should
+        actually be sent to hardware. Identity if unset or `value` is None.
+        The write-path counterpart to set_raw()."""
         if self._write_transform is not None and value is not None:
             return scripting.evaluate_expression(self._write_transform, {"value": value})
         return value
