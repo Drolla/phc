@@ -354,3 +354,64 @@ def test_name_is_distinct_from_description():
     ep = Endpoint("state", name="Corridor Light", description="A relay-driven switch")
     assert ep.name == "Corridor Light"
     assert ep.description == "A relay-driven switch"
+
+
+# ---------- read_transform / write_transform ----------
+
+def test_read_write_transform_default_to_none_and_are_identity():
+    ep = Endpoint("state", value_type="float")
+    ep.set_raw(23.4)
+    ep.update_state()
+    assert ep.get() == 23.4
+    assert ep.to_raw(23.4) == 23.4
+
+
+def test_read_transform_applies_calibration_offset_on_set_raw():
+    ep = Endpoint("temp", value_type="float", read_transform="value - 1.5")
+    ep.set_raw(20.0)
+    ep.update_state()
+    assert ep.get() == 18.5
+
+
+def test_read_transform_skipped_for_none_raw_value():
+    ep = Endpoint("temp", value_type="float", read_transform="value - 1.5")
+    ep.set_raw(None)
+    ep.update_state()
+    assert ep.get() is None
+
+
+def test_read_transform_inverts_binary_polarity():
+    ep = Endpoint("motion", value_type="int", read_transform="1 - value")
+    ep.set_raw(0)
+    ep.update_state()
+    assert ep.get() == 1
+    ep.set_raw(1)
+    ep.update_state()
+    assert ep.get() == 0
+
+
+def test_write_transform_applies_to_raw_value():
+    ep = Endpoint("temp", value_type="float", writable=True, write_transform="value + 1.5")
+    assert ep.to_raw(18.5) == 20.0
+
+
+def test_write_transform_skipped_for_none_value():
+    ep = Endpoint("temp", value_type="float", writable=True, write_transform="value + 1.5")
+    assert ep.to_raw(None) is None
+
+
+def test_plain_set_does_not_apply_read_transform():
+    ep = Endpoint("temp", value_type="float", read_transform="value - 1.5")
+    ep.set(20.0)
+    ep.update_state()
+    assert ep.get() == 20.0
+
+
+def test_invalid_read_transform_raises_value_error():
+    with pytest.raises(ValueError):
+        Endpoint("state", read_transform="__import__('os')")
+
+
+def test_invalid_write_transform_raises_value_error():
+    with pytest.raises(ValueError):
+        Endpoint("state", write_transform="value +")

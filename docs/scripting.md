@@ -72,3 +72,10 @@ comparisons, `and`/`or`/`not`, and arithmetic are all allowed).
 See [`examples/surveillance_system.yaml`](../examples/surveillance_system.yaml)
 for a fuller worked example (arm/disarm, retriggered intrusion detection,
 timed follow-ups, mass-cancel on disarm).
+
+An endpoint's `read_transform`/`write_transform` (see [Endpoint types,
+units & text](concepts.md#endpoint-types-units--text)) reuse the same
+underlying expression compiler but *not* the same namespace: they only see
+`value` (the raw or logical value being corrected) plus the sandbox's safe
+builtins — no `state()`/`changed()`/refs, since a transform runs on one
+endpoint's own value in isolation, not against the wider device tree.

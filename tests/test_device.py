@@ -208,3 +208,50 @@ def test_get_text_recurses_into_children():
     child.update_state()
 
     assert parent.get_text()["a_dev"] == "on"
+
+
+# ---------- read_transform / write_transform ----------
+
+def test_fetch_applies_read_transform_to_raw_value():
+    ep = Endpoint("temp", value_type="float", read_transform="value - 1.5")
+    device = EchoDevice("multi_2nd", endpoints=[ep])
+    device._pending = {"temp": 20.0}   # simulates a raw hardware reading
+
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get() == 18.5
+
+
+def test_set_applies_write_transform_before_transmit():
+    ep = Endpoint("temp", writable=True, value_type="float", write_transform="value + 1.5")
+    device = EchoDevice("d", endpoints=[ep])
+
+    device.set(18.5)
+    fetch_sync(device)   # EchoDevice.receive() hands back what transmit() staged
+    device.update_state()
+
+    assert device.get() == 20.0   # transmit() saw the write-transformed (raw) value
+
+
+def test_set_text_applies_write_transform_after_from_text():
+    ep = Endpoint("temp", writable=True, value_type="float", write_transform="value + 1.5")
+    device = EchoDevice("d", endpoints=[ep])
+
+    device.set_text("18.5")
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get() == 20.0
+
+
+def test_read_and_write_transform_round_trip_through_fetch_and_set():
+    ep = Endpoint("temp", writable=True, value_type="float",
+                  read_transform="value - 1.5", write_transform="value + 1.5")
+    device = EchoDevice("multi_2nd", endpoints=[ep])
+
+    device.set(18.5)      # logical value written by a task/user
+    fetch_sync(device)    # echoed back through transmit()/receive() as raw hardware state
+    device.update_state()
+
+    assert device.get() == 18.5   # write_transform then read_transform cancel out
