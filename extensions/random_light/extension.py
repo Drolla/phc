@@ -203,13 +203,12 @@ class RandomLightInstance:
 class RandomLightAction(Action):
     """Runs one random_light instance's periodic randomize pass (`force`
     omitted) or forces every configured light to a fixed value (`force: 0`
-    or `force: 1`) when this task fires. Has no single target device, so
-    it opts out of _build_action's device resolution."""
-
-    requires_device = False
+    or `force: 1`) when this task fires. Has no single target device --
+    its YAML spec never has a `device:` key, so device_id/endpoint_key
+    stay None (see Action)."""
 
     def __init__(self, *, instance: str, extensions: dict, force: int | None = None, **params):
-        super().__init__(device_id="", endpoint_key=None, **params)
+        super().__init__(**params)
         if force not in (None, 0, 1):
             raise ConfigError(f"random_light action: force must be 0, 1, or omitted, got {force!r}")
         try:

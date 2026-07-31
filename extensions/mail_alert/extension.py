@@ -106,10 +106,8 @@ class MailAlertInstance:
 @register_task_kind("mail_alert")
 class MailAlertAction(Action):
     """Sends one message through the named mail_alert instance when this
-    task fires. Has no single target device, so it opts out of
-    _build_action's device resolution."""
-
-    requires_device = False
+    task fires. Has no single target device -- its YAML spec never has a
+    `device:` key, so device_id/endpoint_key stay None (see Action)."""
 
     def __init__(self, *, instance: str, extensions: dict, title: str, message: str,
                  to: list[str] | None = None, **params):
@@ -117,7 +115,7 @@ class MailAlertAction(Action):
         # popped out of the catch-all **params instead (still an ordinary
         # YAML action key, e.g. `from: "alerts@example.com"`).
         from_addr = params.pop("from", None)
-        super().__init__(device_id="", endpoint_key=None, **params)
+        super().__init__(**params)
         try:
             self._instance: MailAlertInstance = extensions[instance]
         except KeyError:

@@ -97,12 +97,11 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
 @register_task_kind("log_db")
 class LogDbAction(Action):
     """Samples the named logdb instance when this task fires. Has no single
-    target device, so it opts out of _build_action's device resolution."""
-
-    requires_device = False
+    target device -- its YAML spec never has a `device:` key, so
+    device_id/endpoint_key stay None (see Action)."""
 
     def __init__(self, *, instance: str, extensions: dict, **params):
-        super().__init__(device_id="", endpoint_key=None, **params)
+        super().__init__(**params)
         try:
             self._instance = extensions[instance]
         except KeyError:

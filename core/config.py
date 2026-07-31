@@ -912,17 +912,25 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
 def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task],
                    extensions: dict[str, object], sticky_endpoints: set):
     """Build one `action:`/`actions[]` YAML entry into an Action instance,
-    dispatching on `kind` (via the task-kind registry). An action kind with
-    `requires_device = False` (e.g. create_task, script, log_db) has no
-    single target device/endpoint -- it's built from
-    `flat`/`tasks`/`extensions`/`task_tag`/`sticky_endpoints` instead, so it
-    can act on the task list itself, look up a named extension instance
-    (see core.config._load_extensions), or (kind: script) run against the
-    shared rule namespace (see core.task._build_rule_namespace). Raises
-    ConfigError on a missing/unregistered kind, an action device that
-    doesn't exist, a spec missing one of that kind's own required
-    constructor arguments (e.g. create_task's `specs`), or -- for kind:
-    script -- a `code:` block that violates the sandbox whitelist."""
+    dispatching on `kind` (via the task-kind registry). Every kind is built
+    the same way: device_id/endpoint_key are resolved from `device:` when
+    given (allow_bare=True -- an action's device may omit the endpoint,
+    e.g. "meteo-bern" rather than "meteo-bern.temperature", the Action
+    subclass then falling back to whole-device get()/set() semantics;
+    Conditions, above, intentionally do NOT allow this), None otherwise --
+    and flat/tasks/extensions/task_tag/sticky_endpoints are passed to every
+    kind unconditionally, so a kind with no single device target (create_task,
+    kill_task, script, and every extension action) can act on the task list
+    itself, look up a named extension instance (see
+    core.config._load_extensions), or (kind: script) run against the shared
+    rule namespace (see core.task._build_rule_namespace), while an ordinary
+    device-oriented kind simply never touches them. Raises ConfigError on a
+    missing/unregistered kind, a given device that doesn't exist, a spec
+    missing one of that kind's own required constructor arguments (e.g.
+    create_task's `specs`), or -- for kind: script -- a `code:` block that
+    violates the sandbox whitelist. A device-oriented kind (e.g. set,
+    toggle) whose `device:` is missing builds without error here -- it
+    fails at that action's own perform() instead, the first time it fires."""
     kind = spec.get("kind")
     if kind is None:
         raise ConfigError(f"task {task_tag!r}: action requires a 'kind'")
@@ -933,33 +941,31 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
 
     extra = {k: v for k, v in spec.items() if k not in ("kind", "device")}
 
-    if not getattr(action_cls, "requires_device", True):
-        try:
-            action = action_cls(flat=flat, tasks=tasks, extensions=extensions, task_tag=task_tag,
-                                 sticky_endpoints=sticky_endpoints, **extra)
-        except (TypeError, scripting.ScriptError) as exc:
-            raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
-        if kind == "script":
-            # See _build_condition's expr handling, above -- same
-            # referenced-path validation/sticky-subscription, for a script
-            # action's code instead of a condition's expr.
-            for ref in set(action.refs.values()) | action.compiled.referenced_paths:
-                device_id, endpoint_key = resolve_endpoint_ref(ref)
-                if device_id not in flat:
-                    raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
-                endpoint = flat[device_id].endpoint(endpoint_key)
-                endpoint.subscribe_log(task_tag)
-                sticky_endpoints.add(endpoint)
-        return action
+    device_id = endpoint_key = None
+    if "device" in spec:
+        device_id, endpoint_key = resolve_endpoint_ref(spec["device"], allow_bare=True)
+        if device_id not in flat:
+            raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
 
-    # allow_bare=True: an action's device may omit the endpoint (e.g.
-    # "meteo-bern" rather than "meteo-bern.temperature") -- the Action
-    # subclass then falls back to whole-device get()/set() semantics.
-    # Conditions (_build_condition, above) intentionally do NOT allow this.
-    device_id, endpoint_key = resolve_endpoint_ref(spec["device"], allow_bare=True)
-    if device_id not in flat:
-        raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
-    return action_cls(device_id=device_id, endpoint_key=endpoint_key, **extra)
+    try:
+        action = action_cls(device_id=device_id, endpoint_key=endpoint_key, flat=flat,
+                             tasks=tasks, extensions=extensions, task_tag=task_tag,
+                             sticky_endpoints=sticky_endpoints, **extra)
+    except (TypeError, scripting.ScriptError) as exc:
+        raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
+
+    if kind == "script":
+        # See _build_condition's expr handling, above -- same
+        # referenced-path validation/sticky-subscription, for a script
+        # action's code instead of a condition's expr.
+        for ref in set(action.refs.values()) | action.compiled.referenced_paths:
+            device_id, endpoint_key = resolve_endpoint_ref(ref)
+            if device_id not in flat:
+                raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
+            endpoint = flat[device_id].endpoint(endpoint_key)
+            endpoint.subscribe_log(task_tag)
+            sticky_endpoints.add(endpoint)
+    return action
 
 
 def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],

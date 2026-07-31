@@ -275,10 +275,6 @@ def test_apply_force_bypasses_gating():
 
 # ---------- RandomLightAction ----------
 
-def test_random_light_action_requires_device_is_false():
-    assert RandomLightAction.requires_device is False
-
-
 def test_random_light_action_unknown_instance_raises():
     with pytest.raises(ConfigError):
         RandomLightAction(instance="random_light.nonexistent", extensions={})

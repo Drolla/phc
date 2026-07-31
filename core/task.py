@@ -94,20 +94,37 @@ class Action:
     registered via @register_task_kind, analogous to Endpoint subclasses
     registered via @register_endpoint_kind.
 
-    requires_device: True for the common case of an action that targets one
-    device/endpoint (resolved by core.config._build_action from the YAML
-    `device:` key before construction). An action with no single target
-    (e.g. CreateTaskAction, which acts on the task list itself) sets this
-    False, opting out of that device resolution -- _build_action then
-    passes it `flat`/`tasks`/`extensions`/`task_tag`/`sticky_endpoints`
-    instead of `device_id`/`endpoint_key`."""
+    device_id/endpoint_key are the single device/endpoint this action
+    targets, resolved by core.config._build_action from the YAML `device:`
+    key -- None if that key was omitted, whether because this kind never
+    targets a device (CreateTaskAction/KillTaskAction/ScriptAction and every
+    extension action, which act on the task list or a named extension
+    instance instead) or because a device-oriented kind's device was left
+    out (e.g. LogAction's device-less, unformatted message form). A kind
+    that always needs a real device (e.g. SetAction/ToggleAction) simply
+    isn't built to tolerate None here -- omitting `device:` for one of
+    those surfaces as a runtime error from perform(), not a config-load
+    one, since _build_action no longer knows ahead of time which kinds
+    require it.
+
+    flat/tasks/extensions/task_tag/sticky_endpoints are the live config-
+    build context, passed to every action unconditionally regardless of
+    kind -- CreateTaskAction/KillTaskAction/ScriptAction and the extension
+    actions use them; the ordinary device-oriented actions ignore them."""
 
     kind: str = "generic"
-    requires_device: bool = True
 
-    def __init__(self, *, device_id: str, endpoint_key: str | None, **params):
+    def __init__(self, *, device_id: str | None = None, endpoint_key: str | None = None,
+                 flat: dict[str, Device] | None = None, tasks: list["Task"] | None = None,
+                 extensions: dict[str, object] | None = None, task_tag: str | None = None,
+                 sticky_endpoints: set | None = None, **params):
         self.device_id = device_id
         self.endpoint_key = endpoint_key
+        self.flat = flat
+        self.tasks = tasks
+        self.extensions = extensions
+        self.task_tag = task_tag
+        self.sticky_endpoints = sticky_endpoints
         self.params = params
 
     def perform(self, devices: dict[str, Device]) -> None:
@@ -152,7 +169,10 @@ class LogAction(Action):
     formatted against the target endpoint's/device's current value."""
 
     def perform(self, devices: dict[str, Device]) -> None:
-        """If endpoint_key is None (device given without an endpoint, e.g.
+        """If device_id is None (no `device:` given), log `message` as-is --
+        no state/text to format in, so a template placeholder would raise.
+
+        If endpoint_key is None (device given without an endpoint, e.g.
         `device: "meteo-bern"`), device.get(None)/get_text(None) already
         report every endpoint (and child) as a dict -- so `state`/`text`
         print the whole device's state rather than a single value.
@@ -160,10 +180,12 @@ class LogAction(Action):
         `state` is the raw value (as before); `text` is the endpoint's
         formatted display text (see Endpoint.to_text), e.g. "on" for a
         `values`-mapped endpoint whose raw state is 1."""
-        device = devices[self.device_id]
-        state = device.get(self.endpoint_key)
-        text = device.get_text(self.endpoint_key)
-        message = self.params.get("message", "").format(state=state, text=text)
+        message = self.params.get("message", "")
+        if self.device_id is not None:
+            device = devices[self.device_id]
+            state = device.get(self.endpoint_key)
+            text = device.get_text(self.endpoint_key)
+            message = message.format(state=state, text=text)
         logger.info(message)
 
 
@@ -215,11 +237,9 @@ class CreateTaskAction(Action):
     hold many times over the process's lifetime) re-arms the same spawned
     task instead of accumulating one per firing."""
 
-    requires_device = False
-
     def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"],
                  extensions: dict | None = None, sticky_endpoints: set | None = None, **params):
-        super().__init__(device_id="", endpoint_key="", **params)
+        super().__init__(**params)
         self._specs = specs
         self._flat = flat
         self._tasks = tasks
@@ -236,11 +256,9 @@ class KillTaskAction(Action):
     the live task list -- the declarative counterpart to create_task, and
     the structural equivalent of the previous Tcl system's `KillJob`."""
 
-    requires_device = False
-
     def __init__(self, *, tags: list[str], flat: dict[str, Device] | None = None,
                  tasks: list["Task"], extensions: dict | None = None, **params):
-        super().__init__(device_id="", endpoint_key="", **params)
+        super().__init__(**params)
         self._tags = tags
         self._tasks = tasks
 
@@ -323,13 +341,11 @@ class ScriptAction(Action):
     script references -- the same way _build_condition does for
     ExprCondition (see core.scripting's referenced_paths)."""
 
-    requires_device = False
-
     def __init__(self, *, code: str, task_tag: str, flat: dict[str, Device],
                  tasks: list["Task"], extensions: dict[str, object] | None = None,
                  sticky_endpoints: set | None = None, refs: dict[str, str] | None = None,
                  **params):
-        super().__init__(device_id="", endpoint_key="", **params)
+        super().__init__(**params)
         self.compiled = scripting.compile_script(code)
         self.refs = refs or {}
         self._task_tag = task_tag
