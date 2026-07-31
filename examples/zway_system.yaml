@@ -48,20 +48,30 @@ devices:
       - { key: sw2, name: "Closet Light" }
 
   # everspring-pir_sensor: node: 12 fills in both endpoints' {node}
-  # templates (state -> "12", battery -> "12").
+  # templates (state -> "12", battery -> "12"). This particular unit's
+  # wiring reports inverted polarity (0 while triggered, 1 while clear) --
+  # read_transform corrects the raw reading before it's stored, so `state`
+  # still comes out 0/"clear" or 1/"motion" per the profile's `values:`
+  # mapping (devices/zway/module.yaml), rather than needing every consumer
+  # to know this one sensor is backwards. See core.endpoint's
+  # read_transform/write_transform (docs/concepts.md).
   - id: sensor_garage
     module: zway
     name: Garage Motion Sensor
     device_profile: everspring-pir_sensor
     node: 12
+    endpoints:
+      - { key: state, read_transform: "1 - value" }
 
-  # everspring-st814 (temperature/humidity), whose `hum` endpoint is then
-  # tweaked by one field: this unit's humidity sensor is wired to a
-  # non-standard sub-instance, so its `address` is overridden while
-  # `command_group` (from the profile) is kept -- demonstrating the
-  # overlay-by-key merge (see core.config._overlay_endpoint_spec) rather
-  # than a wholesale replace. `temp`/`battery` are left exactly as the
-  # profile provides them.
+  # everspring-st814 (temperature/humidity), whose `hum` and `temp`
+  # endpoints are then each tweaked by one field: this unit's humidity
+  # sensor is wired to a non-standard sub-instance, so its `address` is
+  # overridden while `command_group` (from the profile) is kept --
+  # demonstrating the overlay-by-key merge (see
+  # core.config._overlay_endpoint_spec) rather than a wholesale replace.
+  # `temp` keeps its profile-derived address but adds a read_transform to
+  # apply this unit's known -1.5C calibration offset. `battery` is left
+  # exactly as the profile provides it.
   - id: sensor_workshop
     module: zway
     name: Workshop Multisensor
@@ -70,6 +80,8 @@ devices:
     endpoints:
       - key: hum
         address: "15.1.5"
+      - key: temp
+        read_transform: "value - 1.5"
 
   # benext-tag_reader: a device with a TagReader endpoint needs its own
   # `node` param set (for the one-time Configure_TagReader call -- see
