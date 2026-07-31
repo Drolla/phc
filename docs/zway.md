@@ -93,3 +93,32 @@ endpoint directly (or override it on a profile) to change or clear this.
 See [zway internals](developer/zway.md) for the batching/caching/auth
 architecture behind this, and per-product wiring notes in the profile
 library.
+
+## Adding a new device profile
+
+Adding a Z-Wave device this module doesn't have a profile for yet --
+either to `devices/zway/module.yaml` for a real shared product, or to your
+own system config's `modules.zway.device_profiles` (see [Extending a
+module's profile library from a system
+config](profiles.md#extending-a-modules-profile-library-from-a-system-config))
+-- usually only needs a description of the device. Point an AI assistant
+at [`docs/developer/generating-zway-device-profiles.md`](developer/generating-zway-device-profiles.md)
+together with the device's brand and product, and let it draft the
+`endpoint_profiles:`/`device_profiles:` YAML: it reuses an existing
+endpoint_profile whenever the command group and access pattern already
+match, looks up unknown command classes and addresses in the Z-Wave
+Alliance Certified Product Catalog, the Z-Wave JS device configuration
+database, or the OpenZWave XML device database when the description alone
+doesn't pin them down, and flags every guessed value with a review
+comment. It only prints the snippet to chat -- review it, then paste it
+into `module.yaml` or your system config yourself.
+
+For example, prompting an AI assistant in this repo with:
+
+```text
+Using the instructions in docs/developer/generating-zway-device-profiles.md,
+create the device profile for:
+Siren Box
+Brand: EVA LOGIK
+Product: ZW15
+```
