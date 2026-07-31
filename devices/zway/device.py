@@ -20,9 +20,24 @@ from core.registry import register_module
 # single HTTP request per poll. Same cache-by-connection pattern as
 # devices/waveplus_bridge's _response_cache, but parameterized by which devices
 # exist, not a fixed URL.
-_identifiers: dict[str, dict[tuple[str, str], None]] = {}   # base_url -> ordered set of (group, address)
+#
+# Each identifier maps to an optional poll_interval (seconds): None means the
+# identifier rides along on every combined fetch, same as before this map
+# existed. A set poll_interval (e.g. Battery endpoints, which change far more
+# slowly than their sibling sensor and don't need re-polling on the sensor's
+# cadence) excludes that identifier from the combined Get() request until
+# poll_interval has elapsed since it was last actually fetched -- see
+# _select_fetch_idents/_merge_throttled in _get_values(). This only throttles
+# how often PHC asks the zWay controller for that value; it says nothing
+# about whether zWay itself polls the physical node over the Z-Wave mesh to
+# answer that Get().
+_identifiers: dict[str, dict[tuple[str, str], float | None]] = {}   # base_url -> {(group, address): poll_interval|None}
 _response_cache: dict[str, tuple[float, dict, int]] = {}    # base_url -> (fetched_at, {ident: value}, n_idents)
 _response_cache_lock = asyncio.Lock()
+_throttled_values: dict[str, dict[tuple[str, str], tuple[float, object]]] = {}
+# base_url -> {ident: (last_fetched_monotonic, value)}, for identifiers with a
+# poll_interval override only -- holds the last actually-fetched value so it
+# can still be returned on fetches where that identifier isn't due yet.
 # Session cookie only, not a long-lived aiohttp.ClientSession -- see
 # _js_run()'s docstring for why a fresh session is still opened per request.
 _session_cookies: dict[str, str] = {}   # base_url -> Cookie header value
@@ -42,6 +57,9 @@ class ZWayDevice(Device):
     TagReader endpoint must also set its own `node` param for the one-time
     Configure_TagReader call. Devices sharing `base_url` batch their reads
     into a single HTTP request per poll (see _identifiers/_response_cache).
+    An endpoint's `poll_interval` lets it opt out of that per-poll cadence
+    and only be re-fetched on its own, slower schedule (see
+    _select_fetch_idents/_merge_throttled).
     """
 
     def setup(self):
@@ -69,7 +87,8 @@ class ZWayDevice(Device):
             ident = (command_group, str(address))
             self._idents[key] = ident
             if ep.readable:
-                registry[ident] = None
+                poll_interval = ep.params.get("poll_interval")
+                registry[ident] = parse_duration(poll_interval) if poll_interval is not None else None
             if command_group == "TagReader":
                 has_tag_reader = True
         node = self.params.get("node")
@@ -108,22 +127,68 @@ class ZWayDevice(Device):
     async def _get_values(self) -> dict:
         """Return {identifier: value} for this base_url, reusing cached
         results if still fresh and covering all registered identifiers.
-        Uses double-checked locking to avoid cache stampedes (see
+        Identifiers with a poll_interval override are left out of the
+        combined Get() request -- and served from their own last-fetched
+        value instead -- until that interval has elapsed, so a slow-changing
+        value doesn't ride along on every fast sibling's poll. Uses
+        double-checked locking to avoid cache stampedes (see
         waveplus_bridge). Failed fetches are never cached; callers retry."""
         now = time.monotonic()
         registry = _identifiers[self._base_url]
         cached = _response_cache.get(self._base_url)
         if cached is not None and (now - cached[0]) < self._cache_time and cached[2] == len(registry):
-            return cached[1]
+            return self._merge_throttled(cached[1], registry)
         async with _response_cache_lock:
             now = time.monotonic()
             cached = _response_cache.get(self._base_url)
             if cached is not None and (now - cached[0]) < self._cache_time and cached[2] == len(registry):
-                return cached[1]
-            idents = list(registry)   # frozen, insertion-ordered -- matches the request order below
-            values = await self._download(idents)
-            _response_cache[self._base_url] = (time.monotonic(), values, len(idents))
-            return values
+                return self._merge_throttled(cached[1], registry)
+            idents = self._select_fetch_idents(registry, now)
+            # Nothing due (e.g. a controller with only throttled identifiers,
+            # none of them elapsed yet) -- skip the request rather than
+            # issuing an empty Get().
+            values = await self._download(idents) if idents else {}
+            _response_cache[self._base_url] = (time.monotonic(), values, len(registry))
+            self._record_throttled(values, registry)
+            return self._merge_throttled(values, registry)
+
+    def _select_fetch_idents(self, registry: dict, now: float) -> list[tuple[str, str]]:
+        """Return the identifiers to actually request this fetch: every
+        identifier without a poll_interval override, plus any overridden one
+        whose poll_interval has elapsed since it was last fetched (or was
+        never fetched yet -- always due on the first fetch)."""
+        throttled = _throttled_values.get(self._base_url, {})
+        idents = []
+        for ident, poll_interval in registry.items():
+            if poll_interval is None:
+                idents.append(ident)
+                continue
+            last = throttled.get(ident)
+            if last is None or (now - last[0]) >= poll_interval:
+                idents.append(ident)
+        return idents
+
+    def _record_throttled(self, values: dict, registry: dict) -> None:
+        """Remember the just-fetched value of every throttled identifier
+        that was actually included in this fetch, so later fetches where
+        it's not due can still serve it (see _merge_throttled)."""
+        throttled = _throttled_values.setdefault(self._base_url, {})
+        now = time.monotonic()
+        for ident, poll_interval in registry.items():
+            if poll_interval is not None and ident in values:
+                throttled[ident] = (now, values[ident])
+
+    def _merge_throttled(self, values: dict, registry: dict) -> dict:
+        """Fill in identifiers missing from `values` (throttled, not due
+        this fetch) from their last actually-fetched value, if any."""
+        throttled = _throttled_values.get(self._base_url, {})
+        merged = dict(values)
+        for ident, poll_interval in registry.items():
+            if poll_interval is not None and ident not in merged:
+                last = throttled.get(ident)
+                if last is not None:
+                    merged[ident] = last[1]
+        return merged
 
     async def _download(self, idents: list[tuple[str, str]]) -> dict:
         """Issue one combined Get() for all identifiers, return
