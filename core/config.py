@@ -867,6 +867,22 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     return device
 
 
+def _subscribe_referenced_endpoints(paths: set[str], flat: dict[str, Device], task_tag: str,
+                                     sticky_endpoints: set, context: str) -> None:
+    """Validate and sticky-subscribe every "device.endpoint" path an expr or
+    script references -- shared by `condition: {expr}`, a `script` action's
+    `code`, and a `set` action's `expr`, so the three surfaces can't drift
+    in how they validate/subscribe referenced endpoints. `context` (e.g.
+    "condition"/"action") only changes the ConfigError wording below."""
+    for ref in paths:
+        device_id, endpoint_key = resolve_endpoint_ref(ref)
+        if device_id not in flat:
+            raise ConfigError(f"task {task_tag!r}: {context} device {device_id!r} not found")
+        endpoint = flat[device_id].endpoint(endpoint_key)
+        endpoint.subscribe_log(task_tag)
+        sticky_endpoints.add(endpoint)
+
+
 def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
                       sticky_endpoints: set) -> Condition | ExprCondition | None:
     """Build a task's `condition:` YAML entry into a Condition or
@@ -894,13 +910,8 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
         except scripting.ScriptError as exc:
             raise ConfigError(f"task {task_tag!r}: {exc}") from None
         refs = spec.get("refs", {})
-        for ref in set(refs.values()) | compiled.referenced_paths:
-            device_id, endpoint_key = resolve_endpoint_ref(ref)
-            if device_id not in flat:
-                raise ConfigError(f"task {task_tag!r}: condition device {device_id!r} not found")
-            endpoint = flat[device_id].endpoint(endpoint_key)
-            endpoint.subscribe_log(task_tag)
-            sticky_endpoints.add(endpoint)
+        _subscribe_referenced_endpoints(set(refs.values()) | compiled.referenced_paths,
+                                         flat, task_tag, sticky_endpoints, context="condition")
         return ExprCondition(compiled=compiled, refs=refs, task_tag=task_tag, flat=flat)
 
     device_id, endpoint_key = resolve_endpoint_ref(spec["device"])
@@ -922,7 +933,8 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     ConfigError on a missing/unregistered kind, an action device that
     doesn't exist, a spec missing one of that kind's own required
     constructor arguments (e.g. create_task's `specs`), or -- for kind:
-    script -- a `code:` block that violates the sandbox whitelist."""
+    script, or kind: set with an `expr:` -- a code/expr block that
+    violates the sandbox whitelist."""
     kind = spec.get("kind")
     if kind is None:
         raise ConfigError(f"task {task_tag!r}: action requires a 'kind'")
@@ -943,13 +955,9 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
             # See _build_condition's expr handling, above -- same
             # referenced-path validation/sticky-subscription, for a script
             # action's code instead of a condition's expr.
-            for ref in set(action.refs.values()) | action.compiled.referenced_paths:
-                device_id, endpoint_key = resolve_endpoint_ref(ref)
-                if device_id not in flat:
-                    raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
-                endpoint = flat[device_id].endpoint(endpoint_key)
-                endpoint.subscribe_log(task_tag)
-                sticky_endpoints.add(endpoint)
+            _subscribe_referenced_endpoints(
+                set(action.refs.values()) | action.compiled.referenced_paths,
+                flat, task_tag, sticky_endpoints, context="action")
         return action
 
     # allow_bare=True: an action's device may omit the endpoint (e.g.
@@ -959,7 +967,19 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     device_id, endpoint_key = resolve_endpoint_ref(spec["device"], allow_bare=True)
     if device_id not in flat:
         raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
-    return action_cls(device_id=device_id, endpoint_key=endpoint_key, **extra)
+    # kind == "set" additionally gets flat/task_tag, so its optional `expr:`
+    # (the dynamic alternative to a literal `value:`) can build the shared
+    # rule namespace -- see core.task.SetAction/_build_rule_namespace.
+    context = {"flat": flat, "task_tag": task_tag} if kind == "set" else {}
+    try:
+        action = action_cls(device_id=device_id, endpoint_key=endpoint_key, **context, **extra)
+    except (TypeError, ValueError, scripting.ScriptError) as exc:
+        raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
+    if kind == "set" and action.compiled is not None:
+        _subscribe_referenced_endpoints(
+            set(action.refs.values()) | action.compiled.referenced_paths,
+            flat, task_tag, sticky_endpoints, context="action")
+    return action
 
 
 def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],

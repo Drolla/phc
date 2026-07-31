@@ -122,10 +122,45 @@ class SetAction(Action):
     endpoint's raw value via Endpoint.from_text() (see core/endpoint.py),
     so a `values`-mapped endpoint accepts either its raw keys or their text
     labels. An endpoint with no declared type/values passes `value` through
-    unchanged, same as writing it directly via device.set()."""
+    unchanged, same as writing it directly via device.set().
+
+    `expr` is the dynamic alternative to a literal `value` -- a restricted-
+    Python expression (see core.scripting), re-evaluated fresh every time
+    this action fires, e.g. to derive one endpoint's value from another's
+    current state instead of writing a fixed constant. Exactly one of
+    `value`/`expr` must be given. `refs` (optional, expr-only) binds short
+    names to endpoints for the attribute-access form, same as
+    ExprCondition/ScriptAction. The expr's result is passed to set_text()
+    exactly like a literal `value` would be -- so a `values`-mapped
+    endpoint whose labels aren't on/off needs the expr itself to produce
+    the right raw value/label (e.g. via a ternary), same as a literal
+    `value: true` would need today."""
+
+    def __init__(self, *, value=None, expr: str | None = None,
+                 refs: dict[str, str] | None = None,
+                 flat: dict[str, Device] | None = None,
+                 task_tag: str | None = None, **kwargs):
+        super().__init__(**kwargs)
+        if (value is None) == (expr is None):
+            raise ValueError("requires exactly one of 'value' or 'expr'")
+        self.compiled = scripting.compile_expression(expr) if expr is not None else None
+        self.refs = refs or {}
+        self._flat = flat
+        self._task_tag = task_tag
+        self.params["value"] = value
 
     def perform(self, devices: dict[str, Device]) -> None:
-        devices[self.device_id].set_text(self.params["value"], name=self.endpoint_key)
+        if self.compiled is not None:
+            namespace = _build_rule_namespace(devices=devices, flat=self._flat, tasks=None,
+                                               extensions=None, sticky_endpoints=None,
+                                               task_tag=self._task_tag, writable=False)
+            for name, ref in self.refs.items():
+                device_id, endpoint_key = resolve_endpoint_ref(ref)
+                namespace[name] = scripting.EndpointRef(device_id, endpoint_key, devices, self._task_tag)
+            value = scripting.evaluate_expression(self.compiled, namespace)
+        else:
+            value = self.params["value"]
+        devices[self.device_id].set_text(value, name=self.endpoint_key)
 
 
 @register_task_kind("toggle")
