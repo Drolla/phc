@@ -367,6 +367,49 @@ def test_merge_endpoints_rejects_min_greater_than_max():
         _merge_endpoints(module, [], "dev", {})
 
 
+# ---------- read_transform / write_transform ----------
+
+def test_merge_endpoints_parses_read_and_write_transform():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float", "read_transform": "value - 1.5",
+                       "write_transform": "value + 1.5"}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {})
+    ep = endpoints[0]
+    ep.set_raw(20.0)
+    ep.update_state()
+    assert ep.get() == 18.5
+    assert ep.to_raw(18.5) == 20.0
+
+
+def test_merge_endpoints_rejects_invalid_read_transform():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float", "read_transform": "value +"}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev", {})
+
+
+def test_merge_endpoints_rejects_invalid_write_transform():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float", "write_transform": "__import__('os')"}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev", {})
+
+
+def test_merge_endpoints_instance_overrides_module_read_transform():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float", "read_transform": "value - 1.5"}],
+    })
+    endpoints, _ = _merge_endpoints(
+        module, [{"key": "temp", "read_transform": "value - 2.0"}], "dev", {},
+    )
+    endpoints[0].set_raw(20.0)
+    endpoints[0].update_state()
+    assert endpoints[0].get() == 18.0
+
+
 # ---------- {param} template substitution (_substitute_endpoint_spec) ----------
 
 def test_substitute_endpoint_spec_fills_params_template():
