@@ -32,6 +32,17 @@ def _typed_light(default=0):
     return light
 
 
+def _named_light(device_id, default="off"):
+    """Like _light(), but with a caller-chosen device id -- for tests that
+    need two distinct devices in the same `devices` dict (e.g. a set
+    action's `expr` reading one device's state to write another's)."""
+    light = VirtualDevice(device_id, endpoints=[Endpoint("state", writable=True)])
+    light.set(default)
+    fetch_sync(light)
+    light.update_state()
+    return light
+
+
 @pytest.fixture
 def task_log(caplog):
     """caplog, but attached directly to the "phc.tasks" logger.
@@ -109,6 +120,56 @@ def test_set_action_accepts_raw_value_via_values_mapping():
     fetch_sync(light)
     light.update_state()
     assert light.get() == 1
+
+
+def test_set_action_requires_exactly_one_of_value_or_expr():
+    with pytest.raises(ValueError):
+        SetAction(device_id="living_light", endpoint_key="state")
+    with pytest.raises(ValueError):
+        SetAction(device_id="living_light", endpoint_key="state", value="on", expr="'on'")
+
+
+def test_set_action_expr_inline_state_call_without_refs():
+    source = _named_light("source", "on")
+    target = _named_light("target", "off")
+    devices = {"source": source, "target": target}
+    SetAction(device_id="target", endpoint_key="state", expr="state('source.state')",
+              flat=devices, task_tag="mirror").perform(devices)
+    fetch_sync(target)
+    target.update_state()
+    assert target.get() == "on"
+
+
+def test_set_action_expr_refs_attribute_form():
+    source = _named_light("source", "on")
+    target = _named_light("target", "off")
+    devices = {"source": source, "target": target}
+    SetAction(device_id="target", endpoint_key="state", expr="src.state",
+              refs={"src": "source.state"}, flat=devices, task_tag="mirror").perform(devices)
+    fetch_sync(target)
+    target.update_state()
+    assert target.get() == "on"
+
+
+def test_set_action_expr_reevaluates_on_each_perform():
+    source = _named_light("source", "on")
+    target = _named_light("target", "off")
+    devices = {"source": source, "target": target}
+    action = SetAction(device_id="target", endpoint_key="state", expr="state('source.state')",
+                        flat=devices, task_tag="mirror")
+
+    action.perform(devices)
+    fetch_sync(target)
+    target.update_state()
+    assert target.get() == "on"
+
+    source.set("off")
+    fetch_sync(source)
+    source.update_state()
+    action.perform(devices)
+    fetch_sync(target)
+    target.update_state()
+    assert target.get() == "off"
 
 
 def test_toggle_action_flips_off_to_on():

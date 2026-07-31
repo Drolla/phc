@@ -1762,6 +1762,119 @@ tasks:
         load_system(system_yaml)
 
 
+def test_load_system_set_action_expr_builds(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: source
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "on" }]
+  - id: target
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: mirror
+    condition: { device: "source.state", changed: true }
+    action: { kind: set, device: "target.state", expr: "state('source.state')" }
+""")
+    system = load_system(system_yaml)
+    from core.task import SetAction
+    task = next(t for t in system.tasks if t.tag == "mirror")
+    action = task.actions[0]
+    assert isinstance(action, SetAction)
+    assert action.compiled is not None
+
+
+def test_load_system_set_action_requires_exactly_one_of_value_or_expr(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    time: "+1s"
+    action: { kind: set, device: "living_light.state" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_set_action_rejects_both_value_and_expr(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    time: "+1s"
+    action: { kind: set, device: "living_light.state", value: "on", expr: "'on'" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_set_action_expr_bad_syntax_raises_config_error(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    time: "+1s"
+    action: { kind: set, device: "living_light.state", expr: "__import__('os')" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_set_action_expr_unknown_referenced_device_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: bad
+    time: "+1s"
+    action: { kind: set, device: "living_light.state", expr: "state('nonexistent.state')" }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_set_action_expr_registers_sticky_tick_hook(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: source
+    module: virtual
+    update: 1s
+    endpoints: [{ key: state, writable: true, default: "on" }]
+  - id: target
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: mirror
+    time: "+1s"
+    action: { kind: set, device: "target.state", expr: "state('source.state')" }
+""")
+    system = load_system(system_yaml)
+    assert len(system.tick_hooks) >= 1
+
+
 def test_load_system_kill_task_action_builds(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
