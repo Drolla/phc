@@ -28,6 +28,22 @@ class RecoveryInstance:
         self.store = store
         self.pairs = pairs
         self.instance_key = instance_key
+        # The last {pair_key: value} snapshot actually written -- on_tick's
+        # own change-detection, deliberately NOT based on
+        # Endpoint.get_event(): core.scheduler.Scheduler's commit pass calls
+        # device.update_state() once per flat-dict entry AND recursively via
+        # every ancestor also present in that same flat dict (core.device
+        # .Device.update_state() recurses into children, and every device --
+        # root or not -- is also its own flat-dict entry, see
+        # core.config._build_device). For any endpoint whose device has a
+        # parent, that means update_state() runs twice in one tick; the
+        # second call sees next_state == state already and resets
+        # get_event() to None, so a get_event()-based hook can silently miss
+        # a same-tick change for anything but a root-level device. Comparing
+        # this tick's full snapshot against the last one written sidesteps
+        # that entirely, and is idempotent regardless of how many times
+        # update_state() ran.
+        self._last_persisted: dict[str, object] = {}
 
     async def on_start(self, devices: dict[str, Device]) -> None:
         """Restore every persisted pair's value, once, before the
@@ -72,32 +88,30 @@ class RecoveryInstance:
                      self.instance_key, restored, skipped, len(values))
 
     def on_tick(self, devices: dict[str, Device]) -> None:
-        """Rewrite the whole file if any subscribed pair changed this tick
-        (see core.endpoint.Endpoint.get_event(), already deduped against a
-        same-value re-write by Endpoint.update_state()). Auto-registered by
-        core.config.load_system() as a Scheduler tick hook -- runs after
-        this tick's state is fully committed (core.scheduler._tick_async,
-        pass 4), so get_event() reflects it."""
-        for qualified_id, endpoint_key in self.pairs:
-            device = devices.get(qualified_id)
-            if device is None:
-                continue
-            if device.endpoint(endpoint_key).get_event() is not None:
-                self._persist(devices)
-                return
+        """Rewrite the whole file if this tick's snapshot differs from the
+        last one written (see __init__ for why this doesn't use
+        Endpoint.get_event()). Auto-registered by core.config.load_system()
+        as a Scheduler tick hook -- runs after this tick's state is fully
+        committed (core.scheduler._tick_async, pass 4)."""
+        values = self._snapshot(devices)
+        if values != self._last_persisted:
+            self.store.write(values)
+            self._last_persisted = values
 
     async def on_stop(self, devices: dict[str, Device]) -> None:
         """Do one final, unconditional persist on graceful shutdown (see
         Scheduler.stop_hooks) -- covers the very last tick's change even if
         on_tick's own write already handled it; cheap, since it's the same
         whole-file rewrite either way."""
-        self._persist(devices)
+        values = self._snapshot(devices)
+        self.store.write(values)
+        self._last_persisted = values
 
-    def _persist(self, devices: dict[str, Device]) -> None:
+    def _snapshot(self, devices: dict[str, Device]) -> dict[str, object]:
         """Build {pair_key: value} from each pair's current committed
-        value and write it. A pair whose device has disappeared, or whose
-        value is still None (never yet set -- nothing meaningful to
-        persist), is omitted from the written file."""
+        value. A pair whose device has disappeared, or whose value is
+        still None (never yet set -- nothing meaningful to persist), is
+        omitted."""
         values = {}
         for qualified_id, endpoint_key in self.pairs:
             device = devices.get(qualified_id)
@@ -107,7 +121,7 @@ class RecoveryInstance:
             if value is None:
                 continue
             values[f"{qualified_id}/{endpoint_key}"] = value
-        self.store.write(values)
+        return values
 
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
