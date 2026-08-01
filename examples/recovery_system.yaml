@@ -12,6 +12,7 @@ devices:
     children:
       - id: desk_lamp
         module: virtual
+        update: 1s
         endpoints:
           - key: power
             writable: true
@@ -21,6 +22,7 @@ devices:
 
       - id: thermostat
         module: virtual
+        update: 1s
         endpoints:
           - key: setpoint
             writable: true
