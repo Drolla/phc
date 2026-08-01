@@ -135,12 +135,16 @@ class Device:
             await child.fetch()
 
     def update_state(self):
-        """Commit every endpoint's staged value (see Endpoint.update_state),
-        recursing into children."""
+        """Commit every endpoint's staged value (see Endpoint.update_state).
+
+        Deliberately NOT recursive into children (unlike get()/get_text()/
+        set()/etc.) -- core.scheduler.Scheduler's commit pass already visits
+        every device directly via its flat device dict (parent and descendant
+        alike, see core.config._build_device), so recursing here too would
+        double-commit -- and reset the freshly-computed Endpoint.get_event()
+        of -- any device with children a second time in the same tick."""
         for ep in self.endpoints.values():
             ep.update_state()
-        for child in self.children.values():
-            child.update_state()
 
     def due(self, now: float) -> bool:
         """True if this device is unscheduled-eligible now: has an
