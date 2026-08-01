@@ -1,0 +1,55 @@
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+devices:
+  - id: house
+    module: host
+    name: Whole House
+    children:
+      - id: desk_lamp
+        module: virtual
+        endpoints:
+          - key: power
+            writable: true
+            type: int
+            values: { 0: "off", 1: "on" }
+            default: 0
+
+      - id: thermostat
+        module: virtual
+        endpoints:
+          - key: setpoint
+            writable: true
+            type: float
+            unit: "C"
+            default: 18.0
+
+# Persists desk_lamp/power and thermostat/setpoint to a small YAML file,
+# restoring them automatically the next time PHC starts (e.g. after a
+# crash) instead of falling back to their `default:` above.
+#
+# Try it: run this example, let the two "warm_up_*" tasks below turn the
+# lamp on and raise the setpoint, then stop PHC abruptly (e.g. `kill -9`,
+# to simulate a crash rather than a graceful shutdown) -- inspect
+# state/recovery.yaml, then start PHC again and watch the startup log:
+# both endpoints come back to what they were, not their `default:`.
+extensions:
+  recovery:
+    critical_state:
+      selectors: ["house.desk_lamp/power", "house.thermostat/setpoint"]
+      path: "state/recovery.yaml"
+
+tasks:
+  - tag: warm_up_lamp
+    description: "Turn the lamp on shortly after startup"
+    time: "+5s"
+    action: { kind: set, device: "house.desk_lamp.power", value: 1 }
+
+  - tag: warm_up_thermostat
+    description: "Raise the setpoint shortly after startup"
+    time: "+5s"
+    action: { kind: set, device: "house.thermostat.setpoint", value: 21.5 }
