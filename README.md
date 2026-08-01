@@ -19,7 +19,7 @@ state, all on a fixed-heartbeat scheduler.
   [conditions, scripted actions & sticky values](docs/scripting.md), and one
   page per extension/integration: [random light control](docs/random-light.md),
   [mail alerts](docs/mail-alert.md), [log database](docs/logdb.md),
-  [web UI](docs/web-ui.md), and the
+  [recovery](docs/recovery.md), [web UI](docs/web-ui.md), and the
   [Razberry/zWay Z-Wave integration](docs/zway.md).
 - **Developer guide** — [`docs/developer/`](docs/developer/):
   [writing a device module](docs/developer/writing-a-device-module.md), plus

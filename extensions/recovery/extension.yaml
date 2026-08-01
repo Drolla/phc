@@ -1,0 +1,33 @@
+description: >
+  Crash/restart recovery: an extensions.recovery.<instance> entry persists
+  a selected set of writable device endpoint values to a small YAML file,
+  rewritten whenever one of them changes, and restores them automatically
+  -- pushed back out to the device via a normal write -- once at startup,
+  before the scheduler's first tick. Lets critical device state (a light
+  left on, a setpoint) come back to its last-known-good value after PHC
+  restarts, instead of falling back to each endpoint's hardcoded default.
+  Every selector must resolve to at least one writable endpoint, and none
+  may resolve to a read-only one -- both are rejected as configuration
+  mistakes at startup, rather than silently doing less than configured.
+
+parameters:
+  - name: selectors
+    override: required
+    description: >
+      List of "<device-glob>/<endpoint-glob>" selector patterns (glob
+      wildcards, e.g. "house.desk_lamp/power", "house.*/setpoint"), or bare
+      "*" for everything writable. Device globs match a device's qualified
+      id (dot-joined, e.g. "house.desk_lamp"); "*" in a device glob matches
+      across "." boundaries too (i.e. matches at any depth). Every matched
+      endpoint must be writable; a selector matching a read-only endpoint,
+      or matching nothing at all, is a configuration error. A write-only
+      endpoint declared with readable: false is never matched by any
+      selector-based extension, recovery included -- an existing
+      limitation of selector resolution, not specific to recovery.
+
+  - name: path
+    override: required
+    description: >
+      YAML recovery file path, resolved relative to the current working
+      directory. Rewritten wholesale (not appended) whenever a selected
+      endpoint's value changes, and read once at startup to restore it.
