@@ -94,6 +94,38 @@ def test_end_to_end_nested_desk_lamp():
     assert desk_lamp.get_text("power") == "off"
 
 
+def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_presence():
+    """Regression test: self._devices is a flat dict holding every device,
+    both a "host" parent and each descendant under its own qualified id
+    (see core.config._build_device), so the commit pass's per-entry
+    Device.update_state() call must not also reach into a device's
+    children (see that method's docstring) -- otherwise a nested device's
+    endpoint gets committed twice in one tick, and its second, redundant
+    commit wipes out the change event the first one just computed. Uses
+    the full flat dict (both "house" and "house.desk_lamp"), not
+    system.scheduled_devices() (used by test_end_to_end_nested_desk_lamp,
+    above) -- that helper excludes any device with no update_interval,
+    which would exclude "house" entirely and hide the bug."""
+    from core.endpoint import Endpoint
+    from devices.host.device import HostDevice
+    from devices.virtual.device import VirtualDevice
+
+    lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True, value_type="int")],
+                          update_interval=1.0, parent_qualified_id="house")
+    house = HostDevice("house", children=[lamp])
+    # Insertion order matters: matches core.config._build_device, which
+    # always registers a child's flat entry before its parent's.
+    flat = {"house.desk_lamp": lamp, "house": house}
+
+    scheduler = Scheduler(flat, heartbeat=1.0)
+
+    lamp.set(1, name="power")
+    scheduler.tick(now=0.0)
+
+    assert lamp.get("power") == 1
+    assert lamp.get_event("power") == 1
+
+
 def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     """Round-trip the condition.expr/kind:script/min_interval/create_task/
     kind:kill_task example (examples/surveillance_system.yaml) through the
@@ -219,6 +251,48 @@ def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
     scheduler.tick(now=2.0)
     # Nothing new fetched/committed at tick 2 -- event stays cleared, no re-fire.
     assert "living_light changed to on" not in task_log.text
+
+
+def test_scheduler_runs_condition_task_for_nested_device(task_log):
+    """Nested-device counterpart to test_scheduler_runs_condition_task_only_
+    on_change_tick, above: Condition.evaluate() (core.task.Condition, which
+    backs every `condition: {device, changed: true}` task trigger, e.g.
+    examples/full_house_system.yaml's report_low_battery task) reads
+    device.get_event(endpoint_key). Regression test for the bug where a
+    nested device's event was always wiped before a task's condition ever
+    saw it -- see test_scheduler_commits_change_event_for_nested_device_
+    despite_ancestor_presence, above, for the underlying mechanism."""
+    from core.endpoint import Endpoint
+    from devices.host.device import HostDevice
+    from devices.virtual.device import VirtualDevice
+
+    lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True)],
+                          update_interval=1.0, parent_qualified_id="house")
+    house = HostDevice("house", children=[lamp])
+    flat = {"house.desk_lamp": lamp, "house": house}
+
+    condition = Condition(device_id="house.desk_lamp", endpoint_key="power", changed=True)
+    task = Task("report", due_time=float("-inf"), condition=condition,
+                actions=[LogAction(device_id="house.desk_lamp", endpoint_key="power",
+                                    message="desk_lamp power changed to {state}")])
+
+    scheduler = Scheduler(flat, tasks=[task])
+
+    lamp.set("on")
+    scheduler.tick(now=0.0)
+    # Task pass runs before this tick's own commit -- can't see it yet.
+    assert "desk_lamp power changed to" not in task_log.text
+
+    task_log.clear()
+    scheduler.tick(now=1.0)
+    # Task pass now sees tick 0's commit -- fires exactly one tick after
+    # the change, same as the non-nested case above.
+    assert "desk_lamp power changed to on" in task_log.text
+
+    task_log.clear()
+    scheduler.tick(now=2.0)
+    # Nothing new fetched/committed at tick 2 -- event stays cleared, no re-fire.
+    assert "desk_lamp power changed to" not in task_log.text
 
 
 def test_scheduler_create_task_action_spawns_task_that_later_fires():

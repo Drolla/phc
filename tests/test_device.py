@@ -107,6 +107,22 @@ def test_children_aggregate_via_dict():
     assert result["b_dev"] is None
 
 
+def test_update_state_does_not_recurse_into_children():
+    # core.scheduler.Scheduler's commit pass visits every device directly
+    # via its flat device dict, parent and child alike -- update_state()
+    # recursing here too would double-commit a child (see the method's
+    # docstring), so a parent's own call must leave its children untouched.
+    child = make_single_endpoint_device("a")
+    parent = Device("house", children=[child])
+
+    child.set("on")
+    fetch_sync(child)
+    parent.update_state()  # only the parent's own (zero) endpoints commit
+
+    assert child.get() is None
+    assert child.event is None
+
+
 def test_get_set_by_name_targets_one_child():
     child_a = make_single_endpoint_device("a")
     child_b = make_single_endpoint_device("b")
