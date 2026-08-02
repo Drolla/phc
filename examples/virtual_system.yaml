@@ -56,6 +56,10 @@ devices:
             type: int
             unit: "%"
             default: 0
+            # size: 5, no explicit interval -- samples once per poll (the
+            # device's own `update: fast` = 3s), see "Value history &
+            # fractiles" in docs/scripting.md.
+            history: 5
 
       - id: siren_hallway
         module: virtual
@@ -78,3 +82,21 @@ tasks:
     description: "Log whenever the light changes"
     condition: { device: "living_light.state", changed: true }
     action: { kind: log, device: "living_light.state", message: "living_light changed to {text}" }
+
+  - tag: vary_brightness
+    description: "Alternate the desk lamp's brightness, to give history: something to smooth"
+    time: +1s
+    repeat: 3s
+    action:
+      kind: set
+      device: "house.desk_lamp.brightness"
+      expr: "0 if state('house.desk_lamp.brightness') else 80"
+
+  - tag: report_brightness_trend
+    description: "Log the median of the last 5 brightness samples (see history:, above)"
+    time: +2s
+    repeat: 3s
+    action:
+      kind: script
+      code: |
+        log(f"desk_lamp brightness median: {median('house.desk_lamp.brightness')}")
