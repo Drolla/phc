@@ -46,3 +46,9 @@ tasks:
 
 A named `logdb` instance also backs [`extensions/web_ui/`](../extensions/web_ui/)'s
 `kind: graph` panel, which charts its logged history — see [Web UI](web-ui.md).
+
+Not to be confused with an endpoint's own `history:` field (see [Value
+history & fractiles](scripting.md#value-history--fractiles)): `logdb` is a
+long-term, disk-backed, graphable series sampled by its own `log_db` task;
+`history:` is a short, volatile, in-memory ring buffer read directly by a
+condition/script/`set expr:`, with no CSV file and no task of its own.
