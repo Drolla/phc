@@ -167,6 +167,18 @@ def test_host_like_device_with_no_endpoints_never_due():
     assert device.due(1_000_000.0) is False
 
 
+def test_next_due_is_infinite_without_update_interval():
+    device = Device("house")
+    assert device.next_due() == float("inf")
+
+
+def test_next_due_reflects_update_interval_and_mark_run():
+    device = Device("d", update_interval=10.0)
+    assert device.next_due() == float("-inf")
+    device.mark_run(100.0)
+    assert device.next_due() == 110.0
+
+
 def test_update_time_aggregates_max_across_endpoints_and_children():
     child = make_single_endpoint_device("a")
     parent = Device("house", children=[child])
