@@ -203,3 +203,70 @@ def test_expression_with_bound_endpoint_ref_names():
     compiled = compile_expression("living_light.state == 'off' and not living_light.changed")
     namespace = {"living_light": EndpointRef("living_light", "state", devices)}
     assert evaluate_expression(compiled, namespace) is True
+
+
+# ---------- EndpointRef.history ----------
+
+def _sensor(history=4):
+    sensor = VirtualDevice("temp_sensor", endpoints=[
+        Endpoint("temp", writable=True, value_type="float", history=history),
+    ])
+    return sensor
+
+
+def _record(sensor, *values):
+    for value in values:
+        sensor.set(value)
+        fetch_sync(sensor)
+        sensor.update_state()
+        sensor.endpoint("temp").record_history()
+
+
+def test_endpoint_ref_history_returns_samples_oldest_first():
+    sensor = _sensor()
+    _record(sensor, 1.0, 2.0, 3.0)
+    ref = EndpointRef("temp_sensor", "temp", {"temp_sensor": sensor})
+    assert ref.history == [1.0, 2.0, 3.0]
+
+
+def test_endpoint_ref_history_raises_without_declaration():
+    sensor = _sensor(history=0)
+    ref = EndpointRef("temp_sensor", "temp", {"temp_sensor": sensor})
+    with pytest.raises(ValueError):
+        ref.history
+
+
+# ---------- history()/fractile()/median()/average() sandbox wiring ----------
+
+def test_history_attribute_is_allowed():
+    compiled = compile_expression("t.history")
+    sensor = _sensor()
+    _record(sensor, 1.0)
+    namespace = {"t": EndpointRef("temp_sensor", "temp", {"temp_sensor": sensor})}
+    assert evaluate_expression(compiled, namespace) == [1.0]
+
+
+def test_bogus_endpoint_ref_attribute_still_rejected():
+    with pytest.raises(ScriptError):
+        compile_expression("t.bogus_attr")
+
+
+@pytest.mark.parametrize("func", ["history", "fractile", "median", "average"])
+def test_history_functions_are_path_taking(func):
+    source = f"{func}('a.b', 0.5)" if func == "fractile" else f"{func}('a.b')"
+    compiled = compile_expression(source)
+    assert compiled.referenced_paths == {"a.b"}
+
+
+# ---------- sandbox extensions: sum, is/is not ----------
+
+def test_sum_is_available_in_the_sandbox():
+    compiled = compile_expression("sum([1, 2, 3])")
+    assert evaluate_expression(compiled, {}) == 6
+
+
+def test_is_and_is_not_comparisons_are_allowed():
+    compiled = compile_expression("x is None")
+    assert evaluate_expression(compiled, {"x": None}) is True
+    compiled = compile_expression("x is not None")
+    assert evaluate_expression(compiled, {"x": 1}) is True

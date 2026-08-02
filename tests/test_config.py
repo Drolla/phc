@@ -6,9 +6,12 @@ from pathlib import Path
 import pytest
 
 from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _build_effective_module,
-                          _expand_endpoint_specs, _load_extensions, _merge_endpoints,
-                          _merge_extension_params, _merge_params, _resolve_interval,
+                          _collect_history_records, _expand_endpoint_specs, _load_extensions,
+                          _make_history_tick_hook, _merge_endpoints, _merge_extension_params,
+                          _merge_params, _parse_history_spec, _resolve_interval,
                           _resolve_module_config, _substitute_endpoint_spec, load_system)
+from core.device import Device
+from core.endpoint import Endpoint
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -737,6 +740,289 @@ def test_resolve_interval_host_default_null_stays_none():
     module = ModuleDescriptor("m", {"update": None})
     seconds = _resolve_interval(module, {}, {})
     assert seconds is None
+
+
+# ---------- history: _parse_history_spec ----------
+
+def test_parse_history_spec_shorthand_sets_size():
+    size, interval = _parse_history_spec(8, {}, "dev", "temp")
+    assert (size, interval) == (8, None)
+
+
+def test_parse_history_spec_mapping_parses_interval():
+    size, interval = _parse_history_spec({"size": 8, "interval": "5m"}, {}, "dev", "temp")
+    assert (size, interval) == (8, 300.0)
+
+
+def test_parse_history_spec_interval_accepts_named_interval():
+    size, interval = _parse_history_spec(
+        {"size": 4, "interval": "radon"}, {"radon": "1m"}, "dev", "temp")
+    assert (size, interval) == (4, 60.0)
+
+
+def test_parse_history_spec_rejects_unknown_mapping_key():
+    with pytest.raises(ConfigError):
+        _parse_history_spec({"size": 4, "bogus": 1}, {}, "dev", "temp")
+
+
+def test_parse_history_spec_rejects_missing_size():
+    with pytest.raises(ConfigError):
+        _parse_history_spec({"interval": "5m"}, {}, "dev", "temp")
+
+
+@pytest.mark.parametrize("bad_size", [8.5, "8", True])
+def test_parse_history_spec_rejects_non_integer_size(bad_size):
+    with pytest.raises(ConfigError):
+        _parse_history_spec(bad_size, {}, "dev", "temp")
+
+
+@pytest.mark.parametrize("bad_size", [0, -1])
+def test_parse_history_spec_rejects_zero_or_negative_size(bad_size):
+    with pytest.raises(ConfigError):
+        _parse_history_spec(bad_size, {}, "dev", "temp")
+
+
+def test_parse_history_spec_rejects_malformed_interval():
+    with pytest.raises(ConfigError):
+        _parse_history_spec({"size": 4, "interval": "not-a-duration"}, {}, "dev", "temp")
+
+
+# ---------- history: _merge_endpoints wiring ----------
+
+def test_merge_endpoints_history_shorthand_sets_size():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float", "history": 8}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {})
+    assert endpoints[0].history_size == 8
+    assert endpoints[0].history_interval is None
+
+
+def test_merge_endpoints_history_mapping_parses_interval():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float",
+                       "history": {"size": 8, "interval": "5m"}}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {})
+    assert endpoints[0].history_size == 8
+    assert endpoints[0].history_interval == 300.0
+
+
+def test_merge_endpoints_history_interval_uses_intervals_map():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float",
+                       "history": {"size": 4, "interval": "radon"}}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {}, {"radon": "1m"})
+    assert endpoints[0].history_interval == 60.0
+
+
+def test_merge_endpoints_history_rejects_string_typed_endpoint():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "label", "type": "str", "history": 4}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev", {})
+
+
+def test_merge_endpoints_history_allows_untyped_endpoint():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "history": 4}],
+    })
+    endpoints, _ = _merge_endpoints(module, [], "dev", {})
+    assert endpoints[0].history_size == 4
+
+
+def test_merge_endpoints_history_rejects_invalid_size():
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temp", "type": "float", "history": 0}],
+    })
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [], "dev", {})
+
+
+def test_endpoint_entry_keys_accepts_history():
+    # Complements test_merge_endpoints_rejects_unknown_endpoint_entry_key --
+    # 'history' must NOT be rejected as an unrecognized endpoint entry key.
+    module = ModuleDescriptor("m", {"endpoints": []})
+    endpoints, _ = _merge_endpoints(module, [{"key": "temp", "history": 4}], "dev", {})
+    assert endpoints[0].history_size == 4
+
+
+def test_instance_endpoint_overlay_adds_history_to_module_endpoint():
+    # The exact _overlay_endpoint_spec mechanism the fusion18 radon config
+    # relies on: an instance-level `history:` overlay must add history
+    # without disturbing the module-declared endpoint's other fields.
+    module = ModuleDescriptor("m", {
+        "endpoints": [{"key": "temperature", "type": "float", "column": "x"}],
+        "endpoint_parameters": [{"name": "column"}],
+    })
+    endpoints, _ = _merge_endpoints(
+        module, [{"key": "temperature", "history": 8}], "dev", {})
+    ep = endpoints[0]
+    assert ep.history_size == 8
+    assert ep.params == {"column": "x"}
+
+
+# ---------- history: _collect_history_records / _make_history_tick_hook ----------
+
+def test_collect_history_records_defaults_interval_to_device_update():
+    device = Device("d", endpoints=[Endpoint("temp", value_type="float", history=4)],
+                     update_interval=30.0)
+    records = _collect_history_records({"d": device})
+    assert len(records) == 1
+    assert records[0].interval == 30.0
+
+
+def test_collect_history_records_explicit_interval_overrides_device_update():
+    device = Device("d", endpoints=[
+        Endpoint("temp", value_type="float", history=4, history_interval=300.0)],
+        update_interval=30.0)
+    records = _collect_history_records({"d": device})
+    assert records[0].interval == 300.0
+
+
+def test_collect_history_records_raises_for_unpolled_device_without_interval():
+    device = Device("d", endpoints=[Endpoint("temp", value_type="float", history=4)],
+                     update_interval=None)
+    with pytest.raises(ConfigError):
+        _collect_history_records({"d": device})
+
+
+def test_collect_history_records_ignores_endpoints_without_history():
+    device = Device("d", endpoints=[Endpoint("temp", value_type="float")],
+                     update_interval=30.0)
+    assert _collect_history_records({"d": device}) == []
+
+
+def test_history_tick_hook_samples_only_once_per_interval(monkeypatch):
+    device = Device("d", endpoints=[
+        Endpoint("temp", value_type="float", history=4, history_interval=10.0)],
+        update_interval=30.0)
+    ep = device.endpoint("temp")
+    ep.set(1.0)
+    ep.update_state()
+    records = _collect_history_records({"d": device})
+    hook = _make_history_tick_hook(records)
+
+    now = [1000.0]
+    monkeypatch.setattr("core.config.time.time", lambda: now[0])
+
+    hook({"d": device})  # next_due starts at 0.0 -> immediately due
+    assert ep.get_history() == [1.0]
+
+    ep.set(2.0)
+    ep.update_state()
+    hook({"d": device})  # < 10s since last sample -> not due yet
+    assert ep.get_history() == [1.0]
+
+    now[0] += 10.0
+    hook({"d": device})
+    assert ep.get_history() == [1.0, 2.0]
+
+
+def test_history_tick_hook_retries_after_a_skipped_none_sample(monkeypatch):
+    device = Device("d", endpoints=[
+        Endpoint("temp", value_type="float", history=4, history_interval=10.0)],
+        update_interval=30.0)
+    ep = device.endpoint("temp")
+    records = _collect_history_records({"d": device})
+    hook = _make_history_tick_hook(records)
+
+    now = [1000.0]
+    monkeypatch.setattr("core.config.time.time", lambda: now[0])
+
+    hook({"d": device})  # ep.get() is still None -> record_history() is False
+    assert ep.get_history() == []
+
+    now[0] += 1.0
+    ep.set(5.0)
+    ep.update_state()
+    hook({"d": device})  # retried on the very next tick, not after a full interval
+    assert ep.get_history() == [5.0]
+
+    now[0] += 1.0
+    ep.set(6.0)
+    ep.update_state()
+    hook({"d": device})  # now waits a full interval from the successful sample
+    assert ep.get_history() == [5.0]
+
+
+# ---------- history: load_system integration ----------
+
+def test_load_system_registers_history_tick_hook(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: sensor
+    module: virtual
+    update: 5s
+    endpoints: [{ key: temp, type: float, history: 4 }]
+""")
+    system = load_system(system_yaml)
+    assert len(system.tick_hooks) >= 1
+
+
+def test_load_system_registers_no_history_hook_without_history(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: sensor
+    module: virtual
+    update: 5s
+    endpoints: [{ key: temp, type: float }]
+""")
+    system = load_system(system_yaml)
+    assert len(system.tick_hooks) == 0
+
+
+def test_load_system_history_raises_for_unpolled_device_without_interval(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: sensor
+    module: virtual
+    update: null
+    endpoints: [{ key: temp, type: float, history: 4 }]
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_history_with_explicit_interval_ignores_missing_device_update(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: sensor
+    module: virtual
+    update: null
+    endpoints:
+      - { key: temp, type: float, history: { size: 4, interval: 5m } }
+""")
+    system = load_system(system_yaml)
+    assert len(system.tick_hooks) >= 1
+
+
+def test_load_system_history_interval_accepts_top_level_named_interval(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+intervals:
+  radon: 1m
+devices:
+  - id: sensor
+    module: virtual
+    update: null
+    endpoints:
+      - { key: temp, type: float, history: { size: 4, interval: radon } }
+""")
+    system = load_system(system_yaml)
+    endpoint = system.devices["sensor"].endpoint("temp")
+    assert endpoint.history_interval == 60.0
 
 
 def test_load_system_builds_tree_with_dotted_ids(tmp_path):

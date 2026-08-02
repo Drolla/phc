@@ -8,7 +8,8 @@ from core.endpoint import Endpoint
 from core.scripting import compile_expression
 from core.task import (
     Condition, CreateTaskAction, ExprCondition, KillTaskAction, LogAction, ScriptAction,
-    SetAction, Task, ToggleAction, kill_tasks, register_task, resolve_endpoint_ref,
+    SetAction, Task, ToggleAction, _build_rule_namespace, kill_tasks, register_task,
+    resolve_endpoint_ref,
 )
 from devices.virtual.device import VirtualDevice
 from tests.conftest import fetch_sync
@@ -622,3 +623,143 @@ def test_min_interval_debounces_condition_task(task_log):
     fetch_sync(light)
     light.update_state()
     assert task.run(11.0, devices) is True  # cooldown elapsed
+
+
+# ---------- history()/fractile()/median()/average() ----------
+
+def _sensor(device_id="sensor", history=4):
+    return VirtualDevice(device_id, endpoints=[
+        Endpoint("temp", writable=True, value_type="float", history=history),
+    ])
+
+
+def _record(sensor, *values):
+    for value in values:
+        sensor.set(value)
+        fetch_sync(sensor)
+        sensor.update_state()
+        sensor.endpoint("temp").record_history()
+
+
+def _namespace(devices, task_tag="t"):
+    return _build_rule_namespace(devices=devices, flat=devices, tasks=[], extensions={},
+                                  sticky_endpoints=set(), task_tag=task_tag, writable=False)
+
+
+def test_fractile_matches_thc_index_formula():
+    sensor = _sensor(history=8)
+    _record(sensor, *range(1, 9))  # 1..8
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    # THC's radon control: VHistory_Get ... 0.625 / 0.375
+    assert namespace["fractile"]("sensor.temp", 0.625) == 5
+    assert namespace["fractile"]("sensor.temp", 0.375) == 4
+
+
+def test_fractile_lower_middle_for_even_pool():
+    sensor = _sensor(history=6)
+    _record(sensor, *range(1, 7))  # 1..6
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    # Tcl's round-half-away-from-zero: round((6-1)*0.5) == round(2.5) == 3
+    # -> the value at (0-based) index 3 once sorted.
+    assert namespace["fractile"]("sensor.temp", 0.5) == 4
+
+
+def test_fractile_pools_multiple_refs():
+    sensor_a = _sensor("sensor_a", history=4)
+    sensor_b = _sensor("sensor_b", history=4)
+    _record(sensor_a, 1.0, 2.0, 3.0, 4.0)
+    _record(sensor_b, 5.0, 6.0, 7.0, 8.0)
+    devices = {"sensor_a": sensor_a, "sensor_b": sensor_b}
+    namespace = _namespace(devices)
+    assert namespace["fractile"](["sensor_a.temp", "sensor_b.temp"], 0.625) == 5.0
+    assert namespace["fractile"](["sensor_a.temp", "sensor_b.temp"], 0.375) == 4.0
+
+
+def test_fractile_extremes_are_min_and_max():
+    sensor = _sensor(history=4)
+    _record(sensor, 3.0, 1.0, 4.0, 2.0)
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    assert namespace["fractile"]("sensor.temp", 0) == 1.0
+    assert namespace["fractile"]("sensor.temp", 1) == 4.0
+
+
+def test_fractile_returns_none_for_empty_history():
+    sensor = _sensor(history=4)
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    assert namespace["fractile"]("sensor.temp", 0.5) is None
+
+
+def test_fractile_single_sample_returns_that_sample():
+    sensor = _sensor(history=4)
+    _record(sensor, 7.0)
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    assert namespace["fractile"]("sensor.temp", 0.0) == 7.0
+    assert namespace["fractile"]("sensor.temp", 1.0) == 7.0
+
+
+@pytest.mark.parametrize("bad_f", [-0.1, 1.1])
+def test_fractile_rejects_f_outside_range(bad_f):
+    sensor = _sensor(history=4)
+    _record(sensor, 1.0, 2.0)
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    with pytest.raises(ValueError):
+        namespace["fractile"]("sensor.temp", bad_f)
+
+
+def test_fractile_raises_for_endpoint_without_history():
+    sensor = _sensor(history=0)
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    with pytest.raises(ValueError):
+        namespace["fractile"]("sensor.temp", 0.5)
+
+
+def test_median_equals_fractile_half():
+    sensor = _sensor(history=8)
+    _record(sensor, *range(1, 9))
+    devices = {"sensor": sensor}
+    namespace = _namespace(devices)
+    assert namespace["median"]("sensor.temp") == namespace["fractile"]("sensor.temp", 0.5)
+
+
+def test_average_pools_and_returns_none_when_empty():
+    sensor_a = _sensor("sensor_a", history=4)
+    sensor_b = _sensor("sensor_b", history=4)
+    devices = {"sensor_a": sensor_a, "sensor_b": sensor_b}
+    namespace = _namespace(devices)
+    assert namespace["average"](["sensor_a.temp", "sensor_b.temp"]) is None
+
+    _record(sensor_a, 1.0, 3.0)
+    _record(sensor_b, 5.0, 7.0)
+    assert namespace["average"](["sensor_a.temp", "sensor_b.temp"]) == 4.0
+
+
+def test_fractile_accepts_a_devices_selector_list(task_log):
+    sensor_a = _sensor("sensor_a", history=4)
+    sensor_b = _sensor("sensor_b", history=4)
+    _record(sensor_a, 1.0, 2.0, 3.0, 4.0)
+    _record(sensor_b, 5.0, 6.0, 7.0, 8.0)
+    devices = {"sensor_a": sensor_a, "sensor_b": sensor_b}
+    action = ScriptAction(
+        code="log(fractile(devices('sensor_*/temp'), 0.5))",
+        task_tag="t", flat=devices, tasks=[])
+    action.perform(devices)
+    assert "5.0" in task_log.text
+
+
+def test_history_functions_available_in_read_only_namespace():
+    devices = {}
+    namespace = _build_rule_namespace(devices=devices, flat=devices, tasks=None,
+                                       extensions=None, sticky_endpoints=None,
+                                       task_tag="t", writable=False)
+    for name in ("history", "fractile", "median", "average"):
+        assert name in namespace
+    # writable-only functions must NOT leak into the read-only namespace
+    for name in ("set_state", "create_task", "kill_task", "reset_sticky", "log"):
+        assert name not in namespace
