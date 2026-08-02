@@ -180,6 +180,38 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     assert system.devices["porch_light"].get() == 0
 
 
+def test_end_to_end_surveillance_example_all_lights_override(task_log):
+    """all_lights is independent of armed/alarm state: toggling it forces
+    every random_light-managed light and silences the siren, regardless of
+    whether surveillance is armed (see
+    examples/virtual_surveillance_system.yaml's surveillance_all_lights_on/
+    _off tasks)."""
+    system = load_system(SURVEILLANCE_EXAMPLE)
+    scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
+
+    t = 0.0
+    scheduler.tick(now=t)  # settle initial (unset) state
+
+    system.devices["siren"].set(1)
+    system.devices["all_lights"].set(1)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "all lights on" in task_log.text
+    assert system.devices["siren"].get() == 0
+    assert system.devices["hallway_light"].get() == 1
+    assert system.devices["porch_light"].get() == 1
+
+    system.devices["all_lights"].set(0)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "all lights off" in task_log.text
+    assert system.devices["siren"].get() == 0
+    assert system.devices["hallway_light"].get() == 0
+    assert system.devices["porch_light"].get() == 0
+
+
 def test_scheduler_runs_blink_task_and_reschedules():
     from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
