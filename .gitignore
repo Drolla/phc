@@ -29,6 +29,11 @@ env/
 logs/
 *.log
 
+# Generated recovery state (extensions.recovery's persisted endpoint
+# values -- e.g. examples/recovery_system.yaml's and
+# examples/full_house_system.yaml's own state/*.yaml)
+state/
+
 # Claude Code local settings
 .claude/settings.local.json
 CLAUDE.md

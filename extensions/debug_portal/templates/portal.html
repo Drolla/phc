@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PHC — Debug Portal</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛠️</text></svg>">
+  <link rel="stylesheet" href="/static/portal.css">
+  <script src="/static/portal.js" defer></script>
+</head>
+<body>
+  <header class="statusbar">
+    <h1>PHC Debug</h1>
+    <span id="tick">tick —</span>
+    <span id="heartbeat">hb —</span>
+    <span id="clock">—</span>
+    <span id="conn" class="conn-dot conn-off" title="connecting…">●</span>
+    <label class="filter">
+      filter <input id="filter" type="text" placeholder="device or endpoint" autocomplete="off">
+    </label>
+    <label class="events-only">
+      <input id="events-only" type="checkbox"> events only
+    </label>
+    <button id="pause" type="button">Pause</button>
+  </header>
+
+  <main>
+    <section class="queues">
+      <div class="queue">
+        <h2>Task queue (<span id="task-count">0</span>)</h2>
+        <table id="tasks">
+          <thead>
+            <tr><th>due</th><th>tag</th><th>mode</th><th>repeat</th><th>cooldown</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="queue">
+        <h2>Device poll queue (<span id="device-count">0</span>)</h2>
+        <table id="devices">
+          <thead>
+            <tr><th>due</th><th>device</th><th>interval</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="endpoints">
+      <h2>Endpoints</h2>
+      <table id="endpoints">
+        <thead>
+          <tr>
+            <th>device</th><th>endpoint</th><th>state</th><th>last_valid</th>
+            <th>event</th><th>age</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr data-key="{{ row.key }}" data-device="{{ row.device }}" data-endpoint="{{ row.endpoint }}">
+            <td class="c-device">{{ row.device }}</td>
+            <td class="c-endpoint">{{ row.endpoint }}</td>
+            <td class="c-state">…</td>
+            <td class="c-last-valid">…</td>
+            <td class="c-event">—</td>
+            <td class="c-age">—</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

@@ -144,6 +144,14 @@ class Endpoint:
         """Return the value that changed on the most recent update_state(), or None."""
         return self._event
 
+    def get_last_valid_state(self):
+        """Return the most recent non-None/non-empty committed value, i.e.
+        the value get_event() is gated against (see update_state()). Useful
+        for spotting a state change that fired no event: on a 5 -> None ->
+        5 sequence, get() moves twice but get_event() stays None both
+        times, since the second 5 never differs from this value."""
+        return self._last_valid_state
+
     def get_update_time(self):
         """Return the time.time() of the most recent update_state() that changed the value."""
         return self._update_time
@@ -282,3 +290,4 @@ class Endpoint:
     state = property(get, set)
     event = property(get_event)
     update_time = property(get_update_time)
+    last_valid_state = property(get_last_valid_state)

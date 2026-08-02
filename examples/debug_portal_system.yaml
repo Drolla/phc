@@ -1,0 +1,73 @@
+# Demonstrates extensions/debug_portal: run with
+#   python phc.py --config examples/debug_portal_system.yaml
+# then open http://127.0.0.1:8081/ in a browser -- the task queue, the
+# device poll queue, and every endpoint's state/event/last_valid_state
+# update once per heartbeat over Server-Sent Events, with any cell that
+# changed this tick flashing red.
+#
+# Three devices polled on different intervals, so the device poll queue
+# actually reorders as they come due. Three tasks exercising every "mode"
+# the portal shows: a repeating time-driven task (blink, watch its due
+# reset every 5s), a condition-driven task (report_motion, always shows
+# "cond"), and a one-shot task (say_hello, shows "never" once it has
+# fired).
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+      debug_portal: DEBUG
+
+intervals:
+  fast: 3s
+
+devices:
+  - !include common/living_light_device.yaml
+
+  - id: house
+    module: host
+    name: House
+    children:
+      - id: motion1
+        module: virtual
+        name: Hallway Motion
+        update: 1s
+        endpoints:
+          - key: state
+            writable: true
+            type: bool
+            default: false
+
+  - id: sun_zurich
+    module: sun
+    name: Sun (Zurich)
+    update: 30s
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
+
+extensions:
+  debug_portal:
+    debug:
+      port: 8081
+      # host: 127.0.0.1   -- already the default (loopback only)
+      # selectors: ["*"]  -- already the default (every endpoint)
+
+tasks:
+  - tag: blink
+    description: "Toggle the living room light every 5s"
+    time: "+1s"
+    repeat: 5s
+    action: { kind: toggle, device: "living_light.state" }
+
+  - tag: report_motion
+    description: "Log whenever hallway motion changes"
+    condition: { device: "house.motion1.state", changed: true }
+    action: { kind: log, device: "house.motion1", message: "motion changed to {state}" }
+
+  - tag: say_hello
+    description: "Fires once, shortly after startup"
+    time: "+2s"
+    action: { kind: log, device: "living_light", message: "hello from say_hello" }
