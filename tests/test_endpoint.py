@@ -415,3 +415,112 @@ def test_invalid_read_transform_raises_value_error():
 def test_invalid_write_transform_raises_value_error():
     with pytest.raises(ValueError):
         Endpoint("state", write_transform="value +")
+
+
+# ---------- value history ----------
+
+def test_history_disabled_by_default():
+    ep = Endpoint("temp", value_type="float")
+    assert ep.history_size == 0
+    assert ep.get_history() == []
+    _commit(ep, 5.0)
+    assert ep.record_history() is False
+    assert ep.get_history() == []
+
+
+def test_history_records_committed_state_oldest_first():
+    ep = Endpoint("temp", value_type="float", history=4)
+    for value in (1.0, 2.0, 3.0):
+        _commit(ep, value)
+        assert ep.record_history() is True
+    assert ep.get_history() == [1.0, 2.0, 3.0]
+
+
+def test_history_is_bounded_and_drops_oldest():
+    ep = Endpoint("temp", value_type="float", history=3)
+    for value in (1.0, 2.0, 3.0, 4.0, 5.0):
+        _commit(ep, value)
+        ep.record_history()
+    assert ep.get_history() == [3.0, 4.0, 5.0]
+
+
+def test_record_history_skips_none_and_reports_false():
+    ep = Endpoint("temp", value_type="float", history=4)
+    assert ep.get() is None
+    assert ep.record_history() is False
+    assert ep.get_history() == []
+
+
+def test_record_history_skips_non_numeric_value():
+    ep = Endpoint("state", history=4)
+    _commit(ep, "warm")
+    assert ep.record_history() is False
+    assert ep.get_history() == []
+
+
+def test_record_history_skips_nan():
+    ep = Endpoint("temp", value_type="float", history=4)
+    _commit(ep, float("nan"))
+    assert ep.record_history() is False
+    assert ep.get_history() == []
+
+
+def test_record_history_accepts_bool_values():
+    ep = Endpoint("motion", value_type="bool", history=4)
+    _commit(ep, True)
+    assert ep.record_history() is True
+    assert ep.get_history() == [True]
+
+
+def test_record_history_records_repeated_identical_values():
+    # History samples current state on cadence, not on change -- a stalled
+    # sensor's unchanged value is deliberately re-recorded each interval
+    # (see record_history()'s docstring), unlike update_state()'s _event,
+    # which only fires on an actual change.
+    ep = Endpoint("temp", value_type="float", history=4)
+    _commit(ep, 5.0)
+    ep.record_history()
+    ep.record_history()
+    assert ep.get_history() == [5.0, 5.0]
+
+
+def test_invalid_history_size_raises():
+    with pytest.raises(ValueError):
+        Endpoint("temp", history=-1)
+    with pytest.raises(ValueError):
+        Endpoint("temp", history=True)
+    with pytest.raises(ValueError):
+        Endpoint("temp", history=4.5)
+
+
+def test_history_interval_without_history_raises():
+    with pytest.raises(ValueError):
+        Endpoint("temp", history_interval=300.0)
+
+
+def test_history_size_zero_with_interval_raises():
+    with pytest.raises(ValueError):
+        Endpoint("temp", history=0, history_interval=300.0)
+
+
+def test_history_interval_defaults_to_none():
+    ep = Endpoint("temp", value_type="float", history=4)
+    assert ep.history_interval is None
+
+
+def test_history_interval_stored_when_declared():
+    ep = Endpoint("temp", value_type="float", history=4, history_interval=300.0)
+    assert ep.history_interval == 300.0
+
+
+def test_history_and_sticky_track_independently():
+    ep = Endpoint("temp", value_type="float", history=4)
+    ep.subscribe_log("logger")
+    _commit(ep, 3.0)
+    ep.update_log_value()
+    ep.record_history()
+    _commit(ep, 7.0)
+    ep.update_log_value()
+    ep.record_history()
+    assert ep.get_log_value("logger") == 7.0
+    assert ep.get_history() == [3.0, 7.0]

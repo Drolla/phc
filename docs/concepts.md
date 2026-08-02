@@ -66,6 +66,12 @@ through unchanged. An endpoint definition may opt into:
   `write_transform: "value + 1.5"`). Both default to unset (pass through
   unchanged); a round-trip endpoint (read and written) needs both declared
   consistently — they aren't derived from one another.
+- `history` — keeps a short in-memory buffer of this endpoint's past
+  numeric values, sampled on a cadence, for the `history()`/`fractile()`/
+  `median()`/`average()` functions in a task's `condition`/`script`/`set`
+  `expr:` — see [Value history & fractiles](scripting.md#value-history--fractiles).
+  Not the same thing as [`extensions/logdb`](logdb.md)'s long-term,
+  disk-backed history used for graphing.
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw

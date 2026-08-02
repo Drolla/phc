@@ -36,21 +36,26 @@ def _snippet(source: str) -> str:
 
 # Endpoint properties reachable via `.attr` on a bound EndpointRef (see below)
 # -- the only attribute names this sandbox permits at all.
-_ALLOWED_ATTRIBUTES = frozenset({"state", "changed", "text", "event", "sticky"})
+_ALLOWED_ATTRIBUTES = frozenset({"state", "changed", "text", "event", "sticky", "history"})
 
 # Namespace functions whose first argument -- if a string literal -- names a
 # "<device>.<endpoint>" path. compile_expression()/compile_script() collect
 # these as `referenced_paths`, so core.config can validate/subscribe an
-# endpoint referenced this way exactly like one declared via `refs:`.
+# endpoint referenced this way exactly like one declared via `refs:`. Note
+# history/fractile/median/average also accept a LIST of ref strings (see
+# core.task._build_rule_namespace) -- only the single-string-ref call shape
+# is harvested here; a list argument is not (see _validate below).
 _PATH_TAKING_FUNCTIONS = frozenset({"state", "changed", "text", "event", "sticky",
-                                     "set_state", "reset_sticky"})
+                                     "set_state", "reset_sticky",
+                                     "history", "fractile", "median", "average"})
 
 # A small, fixed subset of real builtins -- no eval/exec/getattr/open/
 # __import__/dir/type/vars/isinstance reachable from a namespace, since
 # `{"__builtins__": _SAFE_BUILTINS}` replaces Python's real builtins module
 # rather than extending it.
 _SAFE_BUILTINS = {name: getattr(builtins, name) for name in
-                  ("abs", "min", "max", "len", "round", "int", "float", "bool", "str", "sorted")}
+                  ("abs", "min", "max", "len", "round", "int", "float", "bool", "str", "sorted",
+                   "sum")}
 
 # Structurally allowed AST node types. Absence is enough to reject a
 # construct (import, def/class/lambda, while, try/raise, with, comprehensions,
@@ -65,6 +70,12 @@ _SAFE_BUILTINS = {name: getattr(builtins, name) for name in
 # _SAFE_BUILTINS), and a Subscript can't appear as an assignment/for-loop
 # target since Assign/For below require a bare Name there. Slicing
 # (ast.Slice, e.g. x[1:3]) is intentionally not included.
+#
+# ast.Is/ast.IsNot (e.g. `if x is None:`) are allowed for the same reason as
+# Subscript above: identity comparison isn't dunder-dispatched, so it grants
+# no new capability beyond the already-allowed Eq/NotEq/etc. Needed so a
+# script can check a possibly-empty fractile()/median()/average()/state()
+# result against None without triggering "disallowed syntax".
 _ALLOWED_NODE_TYPES = (
     ast.Module, ast.Expression, ast.Expr, ast.Load, ast.Store,
     ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set,
@@ -74,6 +85,7 @@ _ALLOWED_NODE_TYPES = (
     ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
     ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
     ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn,
+    ast.Is, ast.IsNot,
     ast.IfExp, ast.Call,
     ast.Assign, ast.If, ast.For, ast.Pass,
 )
@@ -173,9 +185,9 @@ class EndpointRef:
     """Lazy, read-only view of one device endpoint against a specific
     namespace-construction's live `devices` dict -- backs both the `refs:`
     attribute-access sugar (`sensor_a.state`) and, via the same underlying
-    Endpoint, the state()/changed()/text()/event()/sticky() namespace
-    functions. Resolved at attribute-access time, not at construction, since
-    `devices` is rebuilt fresh every tick.
+    Endpoint, the state()/changed()/text()/event()/sticky()/history()
+    namespace functions. Resolved at attribute-access time, not at
+    construction, since `devices` is rebuilt fresh every tick.
 
     `subscriber_id` (typically the owning task's tag) backs `.sticky`, which
     forwards to Endpoint.get_log_value() -- see core.endpoint's sticky log
@@ -209,3 +221,17 @@ class EndpointRef:
     @property
     def sticky(self):
         return self._endpoint().get_log_value(self._subscriber_id)
+
+    @property
+    def history(self) -> list:
+        """This endpoint's recorded value history, oldest first. Raises
+        ValueError (naming the endpoint) if it never declared `history:` --
+        the one runtime check standing between a fractile()/median()/
+        average() call and silently pooling fewer sensors than intended,
+        since a list-of-refs argument defeats compile-time path validation
+        (see core.scripting's _PATH_TAKING_FUNCTIONS docstring)."""
+        endpoint = self._endpoint()
+        if endpoint.history_size == 0:
+            raise ValueError(
+                f"{self._device_id}.{self._endpoint_key} has no history: declaration")
+        return endpoint.get_history()

@@ -140,12 +140,34 @@ There is no `log_levels:` top-level key — every destination carries its own
 
 ## Time and duration strings
 
-`update:` intervals, a task's `repeat:`/`min_interval:`, and window bounds
-(e.g. [`extensions/random_light`](random-light.md)'s `windows:`) accept a
-**duration** string: a plain number of seconds, or a compact string
-combining fixed-length units `ms`/`s`/`m`/`h`/`D` (day)/`W` (week), e.g.
-`"10s"`, `"1h30m"`, `"2D12h"`. Calendar units (`Y`/`M`) aren't valid in a
-duration, since they aren't a fixed number of seconds.
+`update:` intervals, a task's `repeat:`/`min_interval:`, an endpoint's
+`history.interval` (see [Value history & fractiles](scripting.md#value-history--fractiles)),
+and window bounds (e.g. [`extensions/random_light`](random-light.md)'s
+`windows:`) accept a **duration** string: a plain number of seconds, or a
+compact string combining fixed-length units `ms`/`s`/`m`/`h`/`D` (day)/`W`
+(week), e.g. `"10s"`, `"1h30m"`, `"2D12h"`. Calendar units (`Y`/`M`) aren't
+valid in a duration, since they aren't a fixed number of seconds.
+
+A device's `update:` and an endpoint's `history.interval` also accept a
+**name** looked up in the system YAML's top-level `intervals:` map, instead
+of a literal duration — handy for a shared cadence used by several devices,
+retunable in one place:
+
+```yaml
+intervals:
+  fast: 3s
+  radon: 5m
+
+devices:
+  - id: desk_lamp
+    module: virtual
+    update: fast          # -> 3s
+    endpoints:
+      - { key: temp, type: float, history: { size: 4, interval: radon } }  # -> 5m
+```
+
+A device/endpoint entry can still give a literal duration directly instead
+of a name — the two are interchangeable at every place that accepts one.
 
 A task's `time:` accepts a **time** spec instead:
 

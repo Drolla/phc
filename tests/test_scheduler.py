@@ -495,6 +495,29 @@ def test_tick_hook_observes_this_ticks_freshly_committed_state():
     assert observed == ["on"]
 
 
+def test_history_hook_records_this_ticks_committed_state():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+    from core.config import _collect_history_records, _make_history_tick_hook
+
+    sensor = VirtualDevice("sensor", endpoints=[
+        Endpoint("temp", writable=True, value_type="float", history=4)],
+        update_interval=1.0)
+    flat = {"sensor": sensor}
+    records = _collect_history_records(flat)
+    hook = _make_history_tick_hook(records)
+    scheduler = Scheduler(flat, tick_hooks=[hook])
+
+    sensor.set(21.5)
+    scheduler.tick(now=0.0)
+    # The history hook runs in pass 4, after this tick's own update_state()
+    # commit (pass 3) -- so the freshly fetched value is already in the
+    # buffer by the time tick() returns, unlike a task (pass 2), which only
+    # ever sees the PREVIOUS tick's commit (see
+    # test_scheduler_runs_condition_task_only_on_change_tick, above).
+    assert sensor.endpoint("temp").get_history() == [21.5]
+
+
 def test_tick_hook_exception_is_caught_and_does_not_stop_other_hooks():
     from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
