@@ -5,6 +5,7 @@ against its module's declared module.yaml along the way."""
 import copy
 import importlib
 import re
+import time
 from pathlib import Path
 
 import yaml
@@ -105,7 +106,12 @@ _IncludeLoader.add_constructor("!include", _include_constructor)
 _ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "name", "description",
                         "type", "unit", "values", "log_aggregation", "min", "max",
                         "default", "format", "endpoint_profile", "read_transform",
-                        "write_transform"}
+                        "write_transform", "history"}
+
+# Keys allowed on a `history: {size: ..., interval: ...}` long-form mapping.
+# `size` is required; `interval` is optional (defaults to the owning
+# device's resolved update interval -- see _collect_history_records).
+_HISTORY_ENTRY_KEYS = {"size", "interval"}
 
 # Metadata keys allowed on a device_profiles entry alongside its required
 # `endpoints:` list -- brand/type/product/description are documentation only,
@@ -705,7 +711,8 @@ def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, device_id: str
 
 
 def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_id: str,
-                      params: dict) -> tuple[list[Endpoint], list[tuple[Endpoint, object]]]:
+                      params: dict, intervals_map: dict | None = None
+                      ) -> tuple[list[Endpoint], list[tuple[Endpoint, object]]]:
     """Build this device instance's Endpoint objects: start from the module's
     declared endpoints, overlay any instance-level overrides (by `key`) and
     append instance-only endpoints not declared by the module. Returns
@@ -716,7 +723,9 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
     function itself has no awareness that profiles exist. `params` is the
     device's already-resolved params, used only to substitute `{param}`
     templates (see _substitute_endpoint_spec) in the fully-merged specs --
-    templating is independent of whether an endpoint came from a profile."""
+    templating is independent of whether an endpoint came from a profile.
+    `intervals_map` (the system YAML's top-level `intervals:`) is only used
+    to resolve a named `history.interval` -- see _parse_history_spec."""
     allowed_keys = _ENDPOINT_ENTRY_KEYS | module.endpoint_param_names
     for spec in instance_endpoints or []:
         unknown = set(spec) - allowed_keys
@@ -751,6 +760,14 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             raise ConfigError(
                 f"device {device_id!r}: endpoint {spec['key']!r} has invalid log_aggregation "
                 f"{log_aggregation!r}, expected one of {LOG_AGGREGATIONS}")
+        history_size, history_interval = 0, None
+        if "history" in spec:
+            if value_type == "str":
+                raise ConfigError(
+                    f"device {device_id!r}: endpoint {spec['key']!r} declares history: but "
+                    f"has type 'str' -- history only aggregates numeric values")
+            history_size, history_interval = _parse_history_spec(
+                spec["history"], intervals_map or {}, device_id, spec["key"])
         cls = get_endpoint_class(spec.get("kind"))
         # Declared endpoint parameters (e.g. zway's command_group/address)
         # are ordinary top-level fields on `spec` all the way through
@@ -776,6 +793,8 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 format=spec.get("format"),
                 read_transform=spec.get("read_transform"),
                 write_transform=spec.get("write_transform"),
+                history=history_size,
+                history_interval=history_interval,
             )
         except ValueError as exc:
             raise ConfigError(f"device {device_id!r}: {exc}") from None
@@ -784,6 +803,17 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             seeds.append((ep, spec["default"]))
 
     return endpoints, seeds
+
+
+def _parse_interval_value(value, intervals_map: dict) -> float:
+    """Resolve one duration value: a name is looked up in `intervals_map`
+    (the system YAML's top-level `intervals:`) before being parsed as a
+    duration string (see core.intervals.parse_duration). Shared by
+    _resolve_interval (a device's `update:`) and _parse_history_spec (a
+    history's `interval:`), so the two named-interval lookups can't drift."""
+    if isinstance(value, str) and value in intervals_map:
+        value = intervals_map[value]
+    return parse_duration(value)
 
 
 def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_map: dict,
@@ -803,9 +833,52 @@ def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_
         value = module.update
     if value is None:
         return None
-    if isinstance(value, str) and value in intervals_map:
-        value = intervals_map[value]
-    return parse_duration(value)
+    return _parse_interval_value(value, intervals_map)
+
+
+def _parse_history_spec(raw, intervals_map: dict, device_id: str, endpoint_key: str
+                         ) -> tuple[int, float | None]:
+    """Parse an endpoint spec's `history:` field into (size, interval),
+    where interval is a duration in seconds or None (meaning "default to
+    the owning device's resolved update interval" -- see
+    _collect_history_records). Accepts either a bare positive int
+    (shorthand for {size: N}) or a {size, interval} mapping; `interval`
+    accepts a name from `intervals_map` before being parsed as a duration,
+    exactly like a device's own `update:` (see _parse_interval_value).
+    Raises ConfigError for anything that cannot work: an unrecognized
+    mapping key, a missing/non-integer/non-positive size, or a malformed
+    interval. No upper bound on size -- see docs/scripting.md for the
+    memory/CPU cost this implies for a very large history."""
+    if isinstance(raw, dict):
+        unknown = set(raw) - _HISTORY_ENTRY_KEYS
+        if unknown:
+            raise ConfigError(
+                f"device {device_id!r}: endpoint {endpoint_key!r} history has "
+                f"unrecognized key(s) {sorted(unknown)}")
+        if "size" not in raw:
+            raise ConfigError(
+                f"device {device_id!r}: endpoint {endpoint_key!r} history requires 'size'")
+        size = raw["size"]
+        interval_raw = raw.get("interval")
+    else:
+        size = raw
+        interval_raw = None
+
+    if not isinstance(size, int) or isinstance(size, bool) or size < 1:
+        raise ConfigError(
+            f"device {device_id!r}: endpoint {endpoint_key!r} history size must be "
+            f"a positive int, got {size!r}")
+
+    interval = None
+    if interval_raw is not None:
+        try:
+            interval = _parse_interval_value(interval_raw, intervals_map)
+        except ValueError as exc:
+            raise ConfigError(
+                f"device {device_id!r}: endpoint {endpoint_key!r} history interval "
+                f"is invalid: {exc}") from None
+
+    return size, interval
 
 
 def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | None,
@@ -838,7 +911,7 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     params = _merge_params(module, instance_params, device_id,
                            module_config.module_params, module_config.device_param_defaults)
     endpoint_specs = _expand_endpoint_specs(effective_module, entry, device_id)
-    endpoints, seeds = _merge_endpoints(module, endpoint_specs, device_id, params)
+    endpoints, seeds = _merge_endpoints(module, endpoint_specs, device_id, params, intervals_map)
     update_interval = _resolve_interval(module, entry, intervals_map, module_config.update)
 
     qualified_id = f"{parent_qualified_id}.{device_id}" if parent_qualified_id else device_id
@@ -1044,6 +1117,87 @@ def _make_sticky_tick_hook(sticky_endpoints: set):
     return _hook
 
 
+class _HistoryRecord:
+    """One endpoint's history-sampling schedule: the Endpoint to sample,
+    its resolved sampling interval (seconds), and the wall-clock time it is
+    next due. Built once by _collect_history_records() and driven by
+    _make_history_tick_hook()'s tick hook -- a plain __slots__ record (see
+    scripting.Compiled's __slots__ for the same pattern), since this is
+    internal bookkeeping, not part of any public API."""
+
+    __slots__ = ("endpoint", "interval", "next_due")
+
+    def __init__(self, endpoint: Endpoint, interval: float):
+        self.endpoint = endpoint
+        self.interval = interval
+        # 0.0 so the very first tick hook invocation is immediately due --
+        # matching Device._last_run's float("-inf") (see core.device),
+        # which makes a freshly built device due on the scheduler's first
+        # tick.
+        self.next_due = 0.0
+
+
+def _collect_history_records(flat: dict[str, Device]) -> list[_HistoryRecord]:
+    """Build one _HistoryRecord for every endpoint (of every device in
+    `flat`) that declared `history:`. An endpoint's own history_interval
+    (declared `interval:`) wins; otherwise the owning device's resolved
+    update_interval is used, so declaring just `history: N` gives "one
+    sample per poll" for free. Raises ConfigError for an endpoint on a
+    device with no update: interval and no explicit history interval --
+    there would be no cadence to sample it on. Called once, after `roots`
+    is built (see load_system), which is the first point every device's
+    resolved update_interval is known."""
+    records = []
+    for qualified_id, device in flat.items():
+        for endpoint in device.endpoints.values():
+            if endpoint.history_size == 0:
+                continue
+            interval = endpoint.history_interval
+            if interval is None:
+                interval = device.update_interval
+            if interval is None:
+                raise ConfigError(
+                    f"device {qualified_id!r}: endpoint {endpoint.key!r} declares "
+                    f"history: but the device has no update: interval to sample on "
+                    f"-- give the history an explicit interval "
+                    f"(history: {{size: {endpoint.history_size}, interval: 5m}}) or "
+                    f"set update: on the device")
+            records.append(_HistoryRecord(endpoint, interval))
+    return records
+
+
+def _make_history_tick_hook(records: list[_HistoryRecord]):
+    """Build a tick hook (see Scheduler pass 4) that samples every
+    history-declaring endpoint's CURRENT committed value into its buffer,
+    once per its resolved interval -- the history counterpart to
+    _make_sticky_tick_hook, but on a per-endpoint cadence rather than every
+    tick. Unlike _make_sticky_tick_hook's sticky_endpoints set, `records`
+    is fixed at load time and never grows at runtime: unlike a task, a
+    device (and hence its endpoints' history declarations) cannot be
+    created after startup, so there is no live-set-aliasing trick needed
+    here.
+
+    One time.time() call per hook invocation (not per record), then a
+    linear scan -- negligible even for many records. A record's next_due
+    only advances when Endpoint.record_history() actually appended a
+    sample (it skips None/non-numeric/NaN, see that method), so a device
+    that hasn't been polled yet, or whose last read failed, is retried
+    every tick instead of losing a whole interval. Deliberately not
+    Task.mark_run()'s whole-multiples catch-up scheme: a burst is
+    structurally impossible here (this hook runs at most once per tick,
+    appending at most one sample), and a stable sampling grid has no value
+    for a smoothing buffer -- so a plain `next_due = now + interval` is
+    enough."""
+    def _hook(devices: dict[str, Device]) -> None:
+        now = time.time()
+        for record in records:
+            if now < record.next_due:
+                continue
+            if record.endpoint.record_history():
+                record.next_due = now + record.interval
+    return _hook
+
+
 class System:
     """A fully-loaded system: the device tree, its flat id index, tasks, and
     scheduler settings, as built by load_system()."""
@@ -1137,8 +1291,16 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         for entry in raw.get("devices", [])
     ]
 
+    # Every device's update_interval is resolved by now, so this is the
+    # first point an endpoint's history sampling cadence (its own
+    # interval:, or else its device's update:) can be determined -- see
+    # _collect_history_records.
+    history_records = _collect_history_records(flat)
+
     extensions_registry = _load_extensions(raw, flat)
     tick_hooks = [obj.on_tick for obj in extensions_registry.values() if hasattr(obj, "on_tick")]
+    if history_records:
+        tick_hooks.append(_make_history_tick_hook(history_records))
     # One-time async lifecycle hooks (see core.scheduler.Scheduler's
     # start_hooks/stop_hooks) -- same auto-collection idea as tick_hooks
     # above, but for an extension instance that needs to start/stop a

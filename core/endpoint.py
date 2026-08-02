@@ -1,6 +1,8 @@
 """Endpoint: a single piece of readable/writable device state."""
 
+import math
 import time
+from collections import deque
 
 from core import scripting
 
@@ -33,7 +35,8 @@ class Endpoint:
 
     See docs/configuration.md for the endpoint field reference (`type`,
     `unit`, `values`, `min`/`max`, `format`, `read_transform`/
-    `write_transform`, and the `name` vs `description` convention)."""
+    `write_transform`, `history`/`history_interval`, and the `name` vs
+    `description` convention)."""
 
     kind: str = "generic"
 
@@ -43,7 +46,8 @@ class Endpoint:
                  values: dict | None = None, log_aggregation: str = "max",
                  min: float | int | None = None, max: float | int | None = None,
                  format: str | None = None, read_transform: str | None = None,
-                 write_transform: str | None = None):
+                 write_transform: str | None = None, history: int = 0,
+                 history_interval: float | None = None):
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ValueError(f"endpoint {key!r}: invalid type {value_type!r}, "
                               f"expected one of {VALUE_TYPES}")
@@ -52,6 +56,11 @@ class Endpoint:
                               f"expected one of {LOG_AGGREGATIONS}")
         if min is not None and max is not None and min > max:
             raise ValueError(f"endpoint {key!r}: min ({min!r}) is greater than max ({max!r})")
+        if not isinstance(history, int) or isinstance(history, bool) or history < 0:
+            raise ValueError(f"endpoint {key!r}: history must be a non-negative int, "
+                              f"got {history!r}")
+        if history_interval is not None and history == 0:
+            raise ValueError(f"endpoint {key!r}: history_interval requires history to be set")
         self._read_transform = self._compile_transform(key, "read_transform", read_transform)
         self._write_transform = self._compile_transform(key, "write_transform", write_transform)
         self.key = key
@@ -71,6 +80,8 @@ class Endpoint:
         self.max = max
         self.format = format if format is not None else (
             _DEFAULT_FLOAT_FORMAT if value_type == "float" else None)
+        self.history_size = history
+        self.history_interval = history_interval
 
         self._next_state = None
         self._state = None
@@ -84,6 +95,11 @@ class Endpoint:
         # different intervals) each need their own since-last-sample
         # min/max window.
         self._log_subscriptions: dict[str, object] = {}
+        # Bounded FIFO of past committed values, advanced on a cadence by
+        # core.config's history tick hook (see record_history() below) --
+        # deque(maxlen=0) silently drops every append, so a plain endpoint
+        # (history_size == 0) needs no separate guard anywhere.
+        self._history: deque = deque(maxlen=history)
 
     @staticmethod
     def _compile_transform(key: str, field: str, source: str | None):
@@ -181,6 +197,42 @@ class Endpoint:
         right after a logger reads it (get_log_value()), so the next
         update_log_value() call starts a fresh min/max window."""
         self._log_subscriptions[subscriber_id] = None
+
+    def record_history(self) -> bool:
+        """Append the current committed state (get()) to this endpoint's
+        history buffer, returning True iff a sample was actually appended.
+        A no-op (returns False) while history_size == 0 (self._history is a
+        maxlen=0 deque, so append() below already drops it -- this early
+        return only skips the isinstance/isnan work), for a None value (not
+        yet read), and for any non-numeric value -- matching THC's
+        VHistory_Add, which filtered with `string is double -strict`. A
+        bool is accepted (bool is a numeric type in Python, and a 0/1
+        endpoint's history is a legitimate median-filter debounce). A float
+        NaN is skipped: one NaN in the buffer makes sorted() order
+        arbitrary, silently corrupting every fractile()/median()/average()
+        read for the rest of that NaN's time in the window.
+
+        Meant to be called once per sampling interval (see core.config's
+        history tick hook) -- not once per tick, and not only on change:
+        unlike Endpoint.update_state()'s _event (which fires only when the
+        value differs), a stalled sensor's unchanged value is deliberately
+        re-recorded each interval, the same way THC's VHistory_Add kept
+        re-appending $State(...) whether or not it had actually refreshed.
+        """
+        if self.history_size == 0:
+            return False
+        value = self._state
+        if value is None or not isinstance(value, (int, float)):
+            return False
+        if isinstance(value, float) and math.isnan(value):
+            return False
+        self._history.append(value)
+        return True
+
+    def get_history(self) -> list:
+        """This endpoint's history buffer, oldest sample first. Empty if
+        history_size == 0 or no sample has been recorded yet."""
+        return list(self._history)
 
     def to_text(self, value=_UNSET) -> str:
         """Format `value` (defaults to the current state) as display text,

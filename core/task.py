@@ -306,6 +306,48 @@ def _selector_refs(pattern: str, flat: dict[str, Device]) -> list[str]:
     return [f"{device_id}.{endpoint_key}" for device_id, endpoint_key in resolve_selectors([pattern], flat)]
 
 
+def _pool(refs, devices: dict[str, Device], task_tag: str) -> list:
+    """Concatenate the recorded history of one ref (a "device.endpoint"
+    string) or a list of refs into a single pooled list -- backs
+    history()/fractile()/median()/average(). Pooling multiple refs is what
+    lets a script combine several sensors' buffers into one sorted set,
+    e.g. two temperature sensors' 4-sample histories pooled into one
+    8-value fractile (see docs/scripting.md). Raises ValueError (via
+    EndpointRef.history) naming the first ref that never declared
+    `history:`."""
+    ref_list = [refs] if isinstance(refs, str) else refs
+    pool = []
+    for ref in ref_list:
+        device_id, endpoint_key = resolve_endpoint_ref(ref)
+        pool.extend(scripting.EndpointRef(device_id, endpoint_key, devices, task_tag).history)
+    return pool
+
+
+def _fractile(pool: list, f: float):
+    """The value at relative position `f` (0.0-1.0) in `pool` once sorted --
+    f=0 is the smallest recorded sample, f=0.5 the middle one, f=1 the
+    largest. Ported from THC's VHistory_Get (`round(($n-1)*$f)` under
+    Tcl's round-half-away-from-zero); `int(x + 0.5)` reproduces that
+    exactly for f in [0, 1], unlike Python's round() (banker's rounding),
+    which only agrees with Tcl at some fractions/pool sizes -- e.g. they
+    diverge at f=0.5 on an even-length pool. Always returns an actually
+    recorded sample, never an interpolated value. None on an empty pool --
+    the same "nothing observed yet" convention as state()/sticky(). Raises
+    ValueError if f is outside [0, 1] -- a negative f would otherwise index
+    from the end of the sorted list, silently returning a wrong value
+    instead of failing loudly."""
+    if not 0.0 <= f <= 1.0:
+        raise ValueError(f"fractile: f must be between 0 and 1, got {f!r}")
+    if not pool:
+        return None
+    return sorted(pool)[int((len(pool) - 1) * f + 0.5)]
+
+
+def _average(pool: list):
+    """Arithmetic mean of `pool`, or None if empty (see _pool/_fractile)."""
+    return sum(pool) / len(pool) if pool else None
+
+
 def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device],
                            tasks: list["Task"] | None, extensions: dict[str, object] | None,
                            sticky_endpoints: set | None, task_tag: str, writable: bool) -> dict:
@@ -316,13 +358,15 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
     expose and a new function only needs to be added once. See
     docs/scripting.md for the full expr:/code: API reference.
 
-    Always available (read-only): state/changed/text/event/sticky (each
-    takes a "device.endpoint" ref string) and devices(pattern) (a selector,
-    see core.selectors). Only when `writable` (scripted actions): set_state,
-    create_task/kill_task, reset_sticky, and log. `sticky`/`reset_sticky` are
-    keyed by `task_tag` as the Endpoint.subscribe_log() subscriber id (see
-    core.endpoint) -- core.config subscribes every referenced endpoint under
-    that same id at config-build time."""
+    Always available (read-only): state/changed/text/event/sticky/history
+    (each takes a "device.endpoint" ref string), fractile/median/average
+    (each takes one ref OR a list of refs, pooling their recorded history --
+    see _pool), and devices(pattern) (a selector, see core.selectors). Only
+    when `writable` (scripted actions): set_state, create_task/kill_task,
+    reset_sticky, and log. `sticky`/`reset_sticky` are keyed by `task_tag` as
+    the Endpoint.subscribe_log() subscriber id (see core.endpoint) --
+    core.config subscribes every referenced endpoint under that same id at
+    config-build time."""
 
     def _ref(ref: str) -> scripting.EndpointRef:
         device_id, endpoint_key = resolve_endpoint_ref(ref)
@@ -334,6 +378,10 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
         "text": lambda ref: _ref(ref).text,
         "event": lambda ref: _ref(ref).event,
         "sticky": lambda ref: _ref(ref).sticky,
+        "history": lambda refs: _pool(refs, devices, task_tag),
+        "fractile": lambda refs, f: _fractile(_pool(refs, devices, task_tag), f),
+        "median": lambda refs: _fractile(_pool(refs, devices, task_tag), 0.5),
+        "average": lambda refs: _average(_pool(refs, devices, task_tag)),
         "devices": lambda pattern: _selector_refs(pattern, flat),
     }
     if not writable:
