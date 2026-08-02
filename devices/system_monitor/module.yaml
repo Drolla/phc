@@ -1,8 +1,10 @@
 description: >
   Local system performance metrics: CPU load, memory, network/disk throughput,
   disk usage, CPU temperature, uptime. Cross-platform (Windows/Linux).
-  Unavailable data reports null (e.g. CPU temperature without OpenHardwareMonitor
-  on Windows).
+  Unavailable data reports null.
+  CPU temperature reporting uses psutil.sensors_temperatures() on Linux; on
+  Windows, temperature is fetched via OpenHardwareMonitor WMI (requires
+  OpenHardwareMonitor or LibreHardwareMonitor running with admin rights).
 
 update: "10s"
 
@@ -21,7 +23,7 @@ endpoints:
     writable: false
     type: float
     unit: "%"
-    description: Overall CPU utilization, percent, averaged since the last poll.
+    description: Overall CPU utilization, percent, averaged since last poll.
   - key: memory_percent
     readable: true
     writable: false
@@ -33,13 +35,13 @@ endpoints:
     writable: false
     type: float
     unit: "B/s"
-    description: Inbound network throughput since last poll, bytes/second.
+    description: Inbound network throughput since last poll, bytes/s.
   - key: network_tx_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
-    description: Outbound network throughput since last poll, bytes/second.
+    description: Outbound network throughput since last poll, bytes/s.
   - key: disk_usage_percent
     readable: true
     writable: false
@@ -51,22 +53,19 @@ endpoints:
     writable: false
     type: float
     unit: "B/s"
-    description: Disk read throughput since last poll, bytes/second.
+    description: Disk read throughput since last poll, bytes/s.
   - key: disk_write_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
-    description: Disk write throughput since last poll, bytes/second.
+    description: Disk write throughput since last poll, bytes/s.
   - key: cpu_temperature
     readable: true
     writable: false
     type: float
     unit: "°C"
-    description: >
-      CPU temperature. On Linux via psutil.sensors_temperatures(); on Windows
-      via OpenHardwareMonitor WMI (requires OpenHardwareMonitor or
-      LibreHardwareMonitor running with admin rights).
+    description: CPU temperature, degree celcius.
   - key: uptime_seconds
     readable: true
     writable: false
