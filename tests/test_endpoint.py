@@ -68,12 +68,48 @@ def test_update_time_advances_on_change_only():
     assert ep.get_update_time() == t1
 
 
+def test_last_valid_state_is_none_before_any_value():
+    ep = Endpoint("state")
+    assert ep.get_last_valid_state() is None
+
+
+def test_last_valid_state_tracks_get_event():
+    ep = Endpoint("state")
+    ep.set(5)
+    ep.update_state()
+    assert ep.get_last_valid_state() == 5
+    assert ep.get_event() == 5
+
+
+def test_last_valid_state_holds_through_none_then_matches_state_with_no_event():
+    ep = Endpoint("state")
+    ep.set(5)
+    ep.update_state()
+    ep.set(None)
+    ep.update_state()
+    assert ep.get() is None
+    assert ep.get_event() is None
+    assert ep.get_last_valid_state() == 5
+    ep.set(5)
+    ep.update_state()
+    assert ep.get() == 5
+    assert ep.get_event() is None
+    assert ep.get_last_valid_state() == 5
+
+
 def test_state_property_matches_get_set():
     ep = Endpoint("state")
     ep.state = "on"
     ep.update_state()
     assert ep.state == "on"
     assert ep.event == "on"
+
+
+def test_last_valid_state_property_matches_getter():
+    ep = Endpoint("state")
+    ep.state = "on"
+    ep.update_state()
+    assert ep.last_valid_state == "on"
 
 
 def test_writable_readable_and_params_defaults():
