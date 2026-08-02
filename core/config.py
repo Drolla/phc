@@ -1207,7 +1207,8 @@ class System:
     def __init__(self, heartbeat: float, roots: list[Device], devices: dict[str, Device],
                  tasks: list[Task] | None = None, max_workers: int | None = None,
                  fetch_timeout: float | None = None, tick_hooks: list | None = None,
-                 start_hooks: list | None = None, stop_hooks: list | None = None):
+                 start_hooks: list | None = None, stop_hooks: list | None = None,
+                 extensions: dict[str, object] | None = None):
         self.heartbeat = heartbeat
         self.roots = roots
         self.devices = devices
@@ -1228,6 +1229,11 @@ class System:
         # Scheduler(start_hooks=..., stop_hooks=...).
         self.start_hooks = start_hooks or []
         self.stop_hooks = stop_hooks or []
+        # The _load_extensions registry, keyed by "<extension_name>.<instance_name>"
+        # -- exposed so a caller (e.g. phc.py's --debug-portal-port) can check
+        # what the system YAML already configured before adding its own
+        # extension instance on top of it.
+        self.extensions = extensions or {}
 
     def scheduled_devices(self) -> dict[str, Device]:
         """Return the subset of `devices` that have an update_interval (i.e.
@@ -1330,7 +1336,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
 
     system = System(heartbeat=heartbeat, roots=roots, devices=flat, tasks=tasks,
                      max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks,
-                     start_hooks=start_hooks, stop_hooks=stop_hooks)
+                     start_hooks=start_hooks, stop_hooks=stop_hooks, extensions=extensions_registry)
 
     # Extra one-time hook, auto-collected like tick_hooks/start_hooks/
     # stop_hooks above, for an extension instance that needs to see the
