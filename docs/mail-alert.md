@@ -38,5 +38,5 @@ tasks:
 
 `to`/`from` on the action itself override the instance's defaults when
 given. See
-[`examples/surveillance_system.yaml`](../examples/surveillance_system.yaml)
+[`examples/virtual_surveillance_system.yaml`](../examples/virtual_surveillance_system.yaml)
 for a fuller worked example, wired into its intrusion-detection task.

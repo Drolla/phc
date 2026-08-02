@@ -13,7 +13,7 @@ from tests.conftest import fetch_sync
 
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_system.yaml"
-SURVEILLANCE_EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "surveillance_system.yaml"
+SURVEILLANCE_EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_surveillance_system.yaml"
 
 
 @pytest.fixture
@@ -128,11 +128,11 @@ def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_prese
 
 def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     """Round-trip the condition.expr/kind:script/min_interval/create_task/
-    kind:kill_task example (examples/surveillance_system.yaml) through the
-    Scheduler: arming enables the sub-tasks' effects, motion raises the
-    alarm and schedules timed follow-ups (once, thanks to min_interval),
-    and disarming tears them back down -- mirroring the previous Tcl
-    system's surveillance job set end to end."""
+    kind:kill_task example (examples/virtual_surveillance_system.yaml)
+    through the Scheduler: arming enables the sub-tasks' effects, motion
+    raises the alarm and schedules timed follow-ups (once, thanks to
+    min_interval), and disarming tears them back down -- mirroring the
+    previous Tcl system's surveillance job set end to end."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
 
@@ -177,6 +177,38 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     assert system.devices["hallway_light"].get() == 0
     # Only reachable via surveillance_disable's kind:random_light,
     # force:0 action -- the script action never mentions porch_light.
+    assert system.devices["porch_light"].get() == 0
+
+
+def test_end_to_end_surveillance_example_all_lights_override(task_log):
+    """all_lights is independent of armed/alarm state: toggling it forces
+    every random_light-managed light and silences the siren, regardless of
+    whether surveillance is armed (see
+    examples/virtual_surveillance_system.yaml's surveillance_all_lights_on/
+    _off tasks)."""
+    system = load_system(SURVEILLANCE_EXAMPLE)
+    scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
+
+    t = 0.0
+    scheduler.tick(now=t)  # settle initial (unset) state
+
+    system.devices["siren"].set(1)
+    system.devices["all_lights"].set(1)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "all lights on" in task_log.text
+    assert system.devices["siren"].get() == 0
+    assert system.devices["hallway_light"].get() == 1
+    assert system.devices["porch_light"].get() == 1
+
+    system.devices["all_lights"].set(0)
+    for _ in range(3):
+        t += 2.0
+        scheduler.tick(now=t)
+    assert "all lights off" in task_log.text
+    assert system.devices["siren"].get() == 0
+    assert system.devices["hallway_light"].get() == 0
     assert system.devices["porch_light"].get() == 0
 
 
