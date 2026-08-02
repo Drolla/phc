@@ -265,6 +265,108 @@ def test_condition_false_when_no_event():
     assert condition.evaluate(devices) is False
 
 
+def test_condition_changed_false_true_when_no_event():
+    """changed=False is the negation of changed=True, not "always true":
+    it holds only on a tick with NO change event."""
+    light = _light("off")
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=False)
+    fetch_sync(light)
+    light.update_state()  # settle: no event this tick
+    assert condition.evaluate(devices) is True
+
+
+def test_condition_changed_false_false_when_event_present():
+    light = _light("off")
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=False)
+    light.set("on")
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is False
+
+
+def test_condition_value_only_is_a_level_check():
+    """value= alone (no changed=) ignores whether the state just changed --
+    it holds on every tick the CURRENT state matches, transition tick or
+    not, and is combinable with min_interval for a "while X holds" gate."""
+    light = _typed_light(default=1)
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", value=1)
+    # the transition tick itself (_typed_light's own initial commit)
+    assert condition.evaluate(devices) is True
+    # a later, settled tick with no new event -- still True
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is True
+
+
+def test_condition_value_only_false_when_state_differs():
+    light = _typed_light(default=0)
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", value=1)
+    assert condition.evaluate(devices) is False
+
+
+def test_condition_changed_true_and_value_is_an_edge_to_value_check():
+    """changed=True + value= holds only on the tick state transitions TO
+    value -- not on a later stable tick already at that value, and not on
+    a transition to a different value."""
+    light = _typed_light(default=0)
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=True, value=1)
+
+    light.set(1)
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is True  # transitioned to 1 this tick
+
+    fetch_sync(light)
+    light.update_state()  # settle: still 1, but no new event
+    assert condition.evaluate(devices) is False
+
+    light.set(0)
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is False  # transitioned, but to 0 not 1
+
+
+def test_condition_changed_false_and_value_is_a_steady_state_check():
+    """changed=False + value= holds on a tick the state is already at
+    value with no fresh event -- but NOT on the transition tick itself,
+    even though the state matches there too."""
+    light = _typed_light(default=0)
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=False, value=1)
+
+    light.set(1)
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is False  # matches, but this IS the transition tick
+
+    fetch_sync(light)
+    light.update_state()  # settle: still 1, no new event
+    assert condition.evaluate(devices) is True
+
+    light.set(0)
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is False  # no event, but doesn't match value
+
+
+def test_condition_with_no_filters_is_always_true():
+    """Neither changed= nor value= given: both are unset defaults, so
+    evaluate() is unconditionally True regardless of device state -- the
+    same "unconditional" behavior previously spelled changed=False."""
+    light = _light("off")
+    devices = {"living_light": light}
+    condition = Condition(device_id="living_light", endpoint_key="state")
+    assert condition.evaluate(devices) is True
+    fetch_sync(light)
+    light.update_state()
+    assert condition.evaluate(devices) is True
+
+
 # ---------- Task ----------
 
 def test_time_driven_task_runs_once_when_repeat_zero():

@@ -963,7 +963,8 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
                       sticky_endpoints: set) -> Condition | ExprCondition | None:
     """Build a task's `condition:` YAML entry into a Condition or
     ExprCondition, or None if absent. Requires exactly one of `device` (the
-    {device, changed} shorthand) or `expr` (a restricted-Python boolean
+    {device, changed, value} shorthand -- see Condition's docstring for how
+    `changed`/`value` combine) or `expr` (a restricted-Python boolean
     expression, see core.scripting). Raises ConfigError if a referenced
     device doesn't exist or `expr` violates the sandbox whitelist.
 
@@ -993,7 +994,8 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
     device_id, endpoint_key = resolve_endpoint_ref(spec["device"])
     if device_id not in flat:
         raise ConfigError(f"task {task_tag!r}: condition device {device_id!r} not found")
-    return Condition(device_id=device_id, endpoint_key=endpoint_key, changed=spec.get("changed", True))
+    return Condition(device_id=device_id, endpoint_key=endpoint_key,
+                      changed=spec.get("changed"), value=spec.get("value"))
 
 
 def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task],

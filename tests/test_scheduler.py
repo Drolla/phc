@@ -426,14 +426,17 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
     trigger_condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
     code = (
         "create_task({'tag': 'spawned', "
-        "'condition': {'device': 'living_light.state', 'changed': False}, "
+        # no 'changed' key: unconditional, same as omitting it entirely --
+        # changed=False now means its negation (no event this tick), not
+        # "always true" (see core.task.Condition's docstring)
+        "'condition': {'device': 'living_light.state'}, "
         "'action': {'kind': 'log', 'device': 'living_light.state', 'message': 'spawned ran'}})\n"
         "kill_task('victim')"
     )
     spawner = Task("spawner", due_time=float("-inf"), condition=trigger_condition,
                     actions=[ScriptAction(code=code, task_tag="spawner", flat=flat, tasks=tasks)])
     victim = Task("victim", due_time=float("-inf"),
-                   condition=Condition(device_id="living_light", endpoint_key="state", changed=False),
+                   condition=Condition(device_id="living_light", endpoint_key="state"),
                    actions=[LogAction(device_id="living_light", endpoint_key="state", message="victim ran")])
     # "spawner" ordered before "victim": within the same tick, spawner's
     # kill_task('victim') mutates the LIVE list, but this tick's pass 2 loop
