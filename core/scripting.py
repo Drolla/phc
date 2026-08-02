@@ -54,7 +54,8 @@ _PATH_TAKING_FUNCTIONS = frozenset({"state", "changed", "text", "event", "sticky
 # `{"__builtins__": _SAFE_BUILTINS}` replaces Python's real builtins module
 # rather than extending it.
 _SAFE_BUILTINS = {name: getattr(builtins, name) for name in
-                  ("abs", "min", "max", "len", "round", "int", "float", "bool", "str", "sorted")}
+                  ("abs", "min", "max", "len", "round", "int", "float", "bool", "str", "sorted",
+                   "sum")}
 
 # Structurally allowed AST node types. Absence is enough to reject a
 # construct (import, def/class/lambda, while, try/raise, with, comprehensions,
