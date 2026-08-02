@@ -3,7 +3,8 @@
 # devices -- no real hardware behind any of it. Run with:
 #   python phc.py --config examples/virtual_surveillance_system.yaml
 # then open http://127.0.0.1:8080/ in a browser: toggle surveillance/armed
-# to arm, then hallway_motion/state to raise the alarm. See
+# to arm, then hallway_motion/state to raise the alarm -- or toggle
+# all_lights/state at any time for the manual on/off override. See
 # examples/full_house_system.yaml for the same shape wired to real Z-Wave
 # devices instead.
 
@@ -25,6 +26,11 @@ log:
 # minutes) and schedules timed follow-ups; disarming clears the siren/lights
 # and cancels any pending follow-ups. See condition.expr/refs, kind: script,
 # min_interval, and kind: kill_task.
+#
+# all_lights is a second, independent control: a manual on/off override
+# (in the original system also reachable via a code typed on the physical
+# tag reader) that forces every random_light-managed light and silences
+# the siren, regardless of the armed/alarm state.
 devices:
   - id: surveillance
     module: virtual
@@ -96,6 +102,18 @@ devices:
         values: { 0: "clear", 1: "active" }
         default: 0
 
+  - id: all_lights
+    module: virtual
+    name: All lights override
+    update: 2s
+    endpoints:
+      # No `default:` (see surveillance/hallway_motion above, same reason):
+      # watched by a `changed` condition below.
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+
   - id: sun_zurich
     module: sun
     name: Sun (Zurich)
@@ -155,7 +173,7 @@ extensions:
             - id: lights
               title: Lights
               collapsed: false
-              selectors: ["hallway_light/*", "porch_light/*"]
+              selectors: ["hallway_light/*", "porch_light/*", "all_lights/*"]
 
 tasks:
   - tag: surveillance_enable
@@ -235,3 +253,35 @@ tasks:
         instance: "mail_alert.house"
         title: "Surveillance - Intrusion Alert"
         message: "Motion detected while armed"
+
+  - tag: surveillance_all_lights_on
+    description: "Manual override: force every light on and silence the siren"
+    condition:
+      refs: { all_lights: "all_lights.state" }
+      expr: "all_lights.changed and all_lights.state == 1"
+    actions:
+      - kind: log
+        device: "all_lights.state"
+        message: "all lights on"
+      - kind: set
+        device: "siren.state"
+        value: 0
+      - kind: random_light
+        instance: "random_light.house"
+        force: 1
+
+  - tag: surveillance_all_lights_off
+    description: "Manual override: force every light off and silence the siren"
+    condition:
+      refs: { all_lights: "all_lights.state" }
+      expr: "all_lights.changed and all_lights.state == 0"
+    actions:
+      - kind: log
+        device: "all_lights.state"
+        message: "all lights off"
+      - kind: set
+        device: "siren.state"
+        value: 0
+      - kind: random_light
+        instance: "random_light.house"
+        force: 0
