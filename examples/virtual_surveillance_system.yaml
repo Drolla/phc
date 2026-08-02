@@ -1,3 +1,12 @@
+# Demonstrates extensions/random_light + extensions/mail_alert paired
+# together as a surveillance/alarm system, entirely on virtual (fictional)
+# devices -- no real hardware behind any of it. Run with:
+#   python phc.py --config examples/virtual_surveillance_system.yaml
+# then open http://127.0.0.1:8080/ in a browser: toggle surveillance/armed
+# to arm, then hallway_motion/state to raise the alarm. See
+# examples/full_house_system.yaml for the same shape wired to real Z-Wave
+# devices instead.
+
 heartbeat: 1s
 
 log:
@@ -129,6 +138,24 @@ extensions:
             - { start: "20:00", end: "23:00" }
           min_interval: 25m
           probability_on: 0.3
+
+  web_ui:
+    home:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: home
+          title: Surveillance
+          sections:
+            - id: security
+              title: Security
+              collapsed: false
+              selectors: ["surveillance/*", "alarm/*", "hallway_motion/*", "siren/*"]
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["hallway_light/*", "porch_light/*"]
 
 tasks:
   - tag: surveillance_enable

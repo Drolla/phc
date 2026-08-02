@@ -19,7 +19,7 @@
 #                         windows below
 #   - virtual         -- the surveillance control/lights, with no real
 #                         hardware behind them (mirrors
-#                         examples/surveillance_system.yaml)
+#                         examples/virtual_surveillance_system.yaml)
 #   - logdb + web_ui  -- history logging and the pages/graphs that display it
 #   - mail_alert + random_light -- an intrusion alert and randomized lighting
 #     while armed
@@ -95,7 +95,7 @@ devices:
         data_validity_time: 5m
 
       # Virtual stand-ins for the surveillance job set -- see
-      # examples/surveillance_system.yaml for the full arm/disarm/alarm
+      # examples/virtual_surveillance_system.yaml for the full arm/disarm/alarm
       # walkthrough this mirrors. No `default:` on surveillance/armed (like
       # that example): a seeded default would commit a spurious change
       # event at config-load time that the `changed`-gated tasks below would
