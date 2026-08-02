@@ -17,6 +17,9 @@ dev = [
     "pytest>=7.0",
 ]
 
+[project.scripts]
+phc = "phc:main"
+
 [tool.setuptools]
 py-modules = ["phc"]
 
