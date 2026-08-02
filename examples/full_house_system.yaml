@@ -1,7 +1,8 @@
 # Demonstrates a complete PHC system tying together every device module and
 # extension in this repo, in one self-contained file. Run with:
 #   python phc.py --config examples/full_house_system.yaml
-# then open http://127.0.0.1:8080/ in a browser.
+# then open http://127.0.0.1:8080/ in a browser (or http://127.0.0.1:8081/
+# for the live debug view -- see extensions.debug_portal below).
 #
 # This is the single-file, fictional-devices counterpart to fusion18/ (this
 # project's real home automation config, split across several per-module
@@ -22,6 +23,12 @@
 #   - logdb + web_ui  -- history logging and the pages/graphs that display it
 #   - mail_alert + random_light -- an intrusion alert and randomized lighting
 #     while armed
+#   - recovery        -- persists house.surveillance.armed across a restart,
+#                         so an armed system doesn't silently disarm itself
+#                         after a crash (see examples/recovery_system.yaml)
+#   - debug_portal    -- a live view of this whole system's scheduler/task
+#                         queue and endpoint state (see
+#                         examples/debug_portal_system.yaml)
 # See each module/extension's own example file for a narrower walkthrough
 # with more commentary on that piece alone.
 
@@ -171,6 +178,15 @@ extensions:
           min_interval: 25m
           probability_on: 0.3
 
+  # Persists the armed flag across a restart -- an armed system otherwise
+  # falls back to its endpoint's default (disarmed) after a crash, which is
+  # the wrong failure mode for a security feature. See
+  # examples/recovery_system.yaml for the fuller crash-recovery walkthrough.
+  recovery:
+    critical_state:
+      selectors: ["house.surveillance/armed"]
+      path: "state/full_house_recovery.yaml"
+
   logdb:
     full_history:
       selectors: ["house.*/*", "weather.*/*", "sun_zurich/*"]
@@ -251,6 +267,15 @@ extensions:
                   decimation:
                     - { older_than: 25h, factor: 3 }
                     - { older_than: 8D, factor: 8 }
+
+  # A live view of this whole system's scheduler/task queue and endpoint
+  # state -- see examples/debug_portal_system.yaml for a narrower
+  # walkthrough. Disabled by default in any system that omits this block.
+  debug_portal:
+    debug:
+      port: 8081
+      # host: 127.0.0.1   -- already the default (loopback only)
+      # selectors: ["*"]  -- already the default (every endpoint)
 
 tasks:
   - tag: log_full_history

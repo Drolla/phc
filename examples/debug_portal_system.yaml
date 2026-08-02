@@ -20,21 +20,16 @@ log:
       default: INFO
       debug_portal: DEBUG
 
+intervals:
+  fast: 3s
+
 devices:
+  - !include common/living_light_device.yaml
+
   - id: house
     module: host
     name: House
     children:
-      - id: living_light
-        module: virtual
-        name: Living Room Light
-        update: 3s
-        endpoints:
-          - key: state
-            writable: true
-            type: bool
-            default: false
-
       - id: motion1
         module: virtual
         name: Hallway Motion
@@ -56,16 +51,16 @@ devices:
 extensions:
   debug_portal:
     debug:
-      host: 127.0.0.1
       port: 8081
-      selectors: ["*"]
+      # host: 127.0.0.1   -- already the default (loopback only)
+      # selectors: ["*"]  -- already the default (every endpoint)
 
 tasks:
   - tag: blink
     description: "Toggle the living room light every 5s"
     time: "+1s"
     repeat: 5s
-    action: { kind: toggle, device: "house.living_light.state" }
+    action: { kind: toggle, device: "living_light.state" }
 
   - tag: report_motion
     description: "Log whenever hallway motion changes"
@@ -75,4 +70,4 @@ tasks:
   - tag: say_hello
     description: "Fires once, shortly after startup"
     time: "+2s"
-    action: { kind: log, device: "house.living_light", message: "hello from say_hello" }
+    action: { kind: log, device: "living_light", message: "hello from say_hello" }
