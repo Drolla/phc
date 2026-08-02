@@ -20,7 +20,8 @@ state, all on a fixed-heartbeat scheduler.
   page per extension/integration: [random light control](docs/random-light.md),
   [mail alerts](docs/mail-alert.md), [log database](docs/logdb.md),
   [recovery](docs/recovery.md), [web UI](docs/web-ui.md), and the
-  [Razberry/zWay Z-Wave integration](docs/zway.md).
+  [Razberry/zWay Z-Wave integration](docs/zway.md). See also
+  [installing PHC on a Raspberry Pi](docs/raspberry-pi-install.md).
 - **Developer guide** — [`docs/developer/`](docs/developer/):
   [writing a device module](docs/developer/writing-a-device-module.md), plus
   internals for [zway](docs/developer/zway.md) and the
@@ -72,8 +73,12 @@ pip install -e ".[dev]"
 Run PHC against one of the example systems:
 
 ```
-python phc.py --config examples/virtual_system.yaml
+phc --config examples/virtual_system.yaml
 ```
+
+(`pip install -e .` installs the `phc` console command; `python phc.py
+--config ...` works the same way when run from the repo root without
+installing.)
 
 Useful flags:
 
@@ -90,6 +95,11 @@ Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
 ```
 pytest
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, and
+[CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 
