@@ -157,6 +157,13 @@ class Device:
         """Record `now` as this device's last poll time, for due()."""
         self._last_run = now
 
+    def next_due(self) -> float:
+        """Return the time.time() at which due() next becomes True, or +inf
+        for a device with no update_interval (never auto-polled)."""
+        if self.update_interval is None:
+            return float("inf")
+        return self._last_run + self.update_interval
+
     # ---------- 3. User task API ----------
 
     def _resolve(self, key: str):

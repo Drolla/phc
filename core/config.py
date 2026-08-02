@@ -1241,7 +1241,12 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     Configures logging and discovers device modules/extensions as a side
     effect, then builds the device tree, resolves each device's
     params/endpoints/interval against its module, builds every configured
-    extension instance (see _load_extensions), and builds tasks.
+    extension instance (see _load_extensions), and builds tasks. Once the
+    resulting System is assembled, calls on_bind(system) on every extension
+    instance that defines it, so an instance needing the fully-built System
+    (e.g. its tasks:, unavailable at that instance's own configure()-time)
+    can bind to it before the Scheduler starts ticking.
+
     `log_levels_override` (e.g. from CLI flags) is merged into every stream
     destination's `levels:` -- see core.logging_setup.configure_logging.
     """
@@ -1323,6 +1328,18 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     if duplicates:
         raise ConfigError(f"duplicate task tag(s): {sorted(duplicates)}")
 
-    return System(heartbeat=heartbeat, roots=roots, devices=flat, tasks=tasks,
-                  max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks,
-                  start_hooks=start_hooks, stop_hooks=stop_hooks)
+    system = System(heartbeat=heartbeat, roots=roots, devices=flat, tasks=tasks,
+                     max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks,
+                     start_hooks=start_hooks, stop_hooks=stop_hooks)
+
+    # Extra one-time hook, auto-collected like tick_hooks/start_hooks/
+    # stop_hooks above, for an extension instance that needs to see the
+    # fully-built System (e.g. its tasks: -- not yet built when this
+    # instance's own configure() ran, see _load_extensions) before the
+    # Scheduler starts ticking. Unlike start_hooks, this runs synchronously
+    # here, at load time -- no running event loop is required or assumed.
+    for obj in extensions_registry.values():
+        if hasattr(obj, "on_bind"):
+            obj.on_bind(system)
+
+    return system
