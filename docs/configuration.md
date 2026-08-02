@@ -31,7 +31,7 @@ replacing it wholesale. The surrounding mapping's own keys win over the
 fragment's, the same precedence a plain YAML `<<: *anchor` merge already has:
 
 ```yaml
-# common/sun_zurich_params.yaml
+# common/some_location_params.yaml
 latitude: 47.3769
 longitude: 8.5417
 timezone: Europe/Zurich
@@ -39,15 +39,17 @@ timezone: Europe/Zurich
 
 ```yaml
 devices:
-  - id: sun
+  - id: sun_zurich
     module: sun
     update: 1h              # this device's own field, not in the fragment
-    <<: !include common/sun_zurich_params.yaml
+    <<: !include common/some_location_params.yaml
 ```
 
-See [`examples/common/`](../examples/common/) for fragments shared between
-several of the example systems, and any example file under
-[`examples/`](../examples/) that references them for real usage.
+See the `modules: zway:` example below for a real, in-repo fragment used this
+way. [`examples/common/`](../examples/common/) also holds several
+whole-device fragments pulled in via the plain `!include` form above -- see
+any example file under [`examples/`](../examples/) that references them for
+real usage.
 
 ## Modules and shared configuration
 

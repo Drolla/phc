@@ -1486,6 +1486,70 @@ tasks:
     assert report.condition.endpoint_key == "state"
 
 
+def test_load_system_condition_shorthand_value_filter(tmp_path):
+    """The {device, changed, value} shorthand's `value:` key round-trips
+    through load_system() and behaves end to end: `value:` alone is a
+    level check (current state, any tick), `changed: true` + `value:` is
+    an edge check (only the transition tick), and a bare `device:` with
+    neither key is unconstrained (always True) -- see core.task.Condition's
+    docstring for the full independent-AND model."""
+    from tests.conftest import fetch_sync
+
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: armed
+    module: virtual
+    update: 1s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "disarmed", 1: "armed" }
+tasks:
+  - tag: on_arm
+    condition: { device: "armed.state", changed: true, value: 1 }
+    action: { kind: log, device: "armed", message: "armed" }
+  - tag: while_armed
+    condition: { device: "armed.state", value: 1 }
+    action: { kind: log, device: "armed", message: "still armed" }
+  - tag: unconstrained
+    condition: { device: "armed.state" }
+    action: { kind: log, device: "armed", message: "tick" }
+""")
+    system = load_system(system_yaml)
+    on_arm = next(t for t in system.tasks if t.tag == "on_arm").condition
+    while_armed = next(t for t in system.tasks if t.tag == "while_armed").condition
+    unconstrained = next(t for t in system.tasks if t.tag == "unconstrained").condition
+
+    assert (on_arm.changed, on_arm.value) == (True, 1)
+    assert (while_armed.changed, while_armed.value) == (None, 1)
+    assert (unconstrained.changed, unconstrained.value) == (None, None)
+
+    device = system.devices["armed"]
+    fetch_sync(device)
+    device.update_state()  # settle: no event pending, state still None
+
+    assert on_arm.evaluate(system.devices) is False        # no event this tick
+    assert while_armed.evaluate(system.devices) is False   # current state is None, not 1
+    assert unconstrained.evaluate(system.devices) is True  # no filters at all
+
+    device.set(1)
+    fetch_sync(device)
+    device.update_state()
+
+    assert on_arm.evaluate(system.devices) is True        # transitioned to 1 this tick
+    assert while_armed.evaluate(system.devices) is True   # currently 1
+    assert unconstrained.evaluate(system.devices) is True
+
+    fetch_sync(device)
+    device.update_state()  # settle again: still 1, but no new event
+
+    assert on_arm.evaluate(system.devices) is False       # no fresh event
+    assert while_armed.evaluate(system.devices) is True   # still currently 1
+
+
 def test_load_system_action_device_without_endpoint_resolves_bare(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""

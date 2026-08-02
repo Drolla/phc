@@ -22,11 +22,13 @@ modules: !include common/meteoswiss_cache_params.yaml
 # sun and open_meteo take latitude/longitude directly on the device, so swap
 # in whatever location you actually want to track.
 devices:
-  - id: sun
+  - id: sun_zurich
     module: sun
-    name: Sun
+    name: Sun (Zurich)
     update: sun
-    <<: !include common/sun_zurich_params.yaml
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
 
   - id: zurich-weather
     module: open_meteo
@@ -40,13 +42,13 @@ devices:
 tasks:
   - tag: report_sunset
     description: "Log whenever today's sunset time is (re-)computed"
-    condition: { device: "sun.sunset", changed: true }
-    action: { kind: log, device: "sun", message: "sunset today is at {state}" }
+    condition: { device: "sun_zurich.sunset", changed: true }
+    action: { kind: log, device: "sun_zurich", message: "sunset today is at {state}" }
 
   - tag: report_daylight
     description: "Log whenever daylight starts or ends"
-    condition: { device: "sun.is_daylight", changed: true }
-    action: { kind: log, device: "sun", message: "is_daylight changed to {state}" }
+    condition: { device: "sun_zurich.is_daylight", changed: true }
+    action: { kind: log, device: "sun_zurich", message: "is_daylight changed to {state}" }
 
   - tag: report_temperature
     description: "Log whenever the Zurich temperature reading changes"

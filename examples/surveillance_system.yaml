@@ -87,11 +87,13 @@ devices:
         values: { 0: "clear", 1: "active" }
         default: 0
 
-  - id: sun
+  - id: sun_zurich
     module: sun
-    name: Sun
+    name: Sun (Zurich)
     update: 1h
-    <<: !include common/sun_zurich_params.yaml
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
 
 # Randomizes the hallway/porch lights while armed (enable_ref) and not
 # alarmed (pause_ref) -- see extensions/random_light. Sends an alert mail
@@ -112,6 +114,7 @@ extensions:
     house:
       enable_ref: "surveillance.armed"
       pause_ref: "alarm.state"
+      sun_device: "sun_zurich"
       lights:
         # hallway_light sets neither windows/min_interval/probability_on of
         # its own -- it inherits extensions/random_light/extension.yaml's

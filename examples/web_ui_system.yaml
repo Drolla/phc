@@ -58,18 +58,20 @@ devices:
             values: { 0: "off", 1: "low", 2: "high" }
             default: 0
 
-  - id: sun
+  - id: sun_zurich
     module: sun
-    name: Sun
+    name: Sun (Zurich)
     update: 1m
-    <<: !include common/sun_zurich_params.yaml
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
 
 extensions:
   # Feeds the "History" graph panel below -- see the log_db task at the
   # bottom of this file for what actually samples it.
   logdb:
     demo_log:
-      selectors: ["house.desk_lamp/brightness", "sun/elevation"]
+      selectors: ["house.desk_lamp/brightness", "sun_zurich/elevation"]
       csv_path: "logs/web_ui_demo_log.csv"
       max_records: 5000
 
@@ -96,7 +98,7 @@ extensions:
             - id: sun
               title: Sun
               collapsed: false
-              selectors: ["sun/elevation"]
+              selectors: ["sun_zurich/elevation"]
             - id: history
               title: History
               collapsed: false
@@ -104,7 +106,7 @@ extensions:
                 - kind: graph
                   id: demo_history
                   logdb_instance: "logdb.demo_log"
-                  selectors: ["house.desk_lamp/brightness", "sun/elevation"]
+                  selectors: ["house.desk_lamp/brightness", "sun_zurich/elevation"]
                   title: "Desk Lamp Brightness & Sun Elevation"
                   window: 1h
                   decimation:
@@ -115,7 +117,7 @@ extensions:
 
 tasks:
   - tag: log_demo
-    description: "Sample desk_lamp/brightness and sun/elevation for the History graph panel"
+    description: "Sample desk_lamp/brightness and sun_zurich/elevation for the History graph panel"
     time: +2s
     repeat: 10s
     action: { kind: log_db, instance: "logdb.demo_log" }

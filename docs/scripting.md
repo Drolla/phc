@@ -1,11 +1,12 @@
 # Conditions, scripted actions & sticky values
 
-Beyond the `condition: { device, changed }` shorthand (fire when one
-endpoint changes) and a `set` action's plain literal `value:`, a task's
-`condition`, a `script` action's `code`, and a `set` action's `expr` can
-use a small, sandboxed subset of Python — enough to combine several
-devices' state, spawn/cancel tagged follow-up tasks, and read/reset a
-sticky min/max window, without writing a new device module or extension:
+## Overview
+
+A task's `condition`, a `script` action's `code`, and a `set` action's
+`expr` all run in the same small, sandboxed subset of Python — enough to
+combine several devices' state, spawn/cancel tagged follow-up tasks, and
+read/reset a sticky min/max window, without writing a new device module or
+extension:
 
 ```yaml
 tasks:
@@ -23,16 +24,24 @@ tasks:
                        action: { kind: "set", device: "siren.state", value: 0 } })
 ```
 
+No imports, no method-call chains beyond what's explicitly allowed, no
+unbounded loops — this is mistake-containment for a trusted, locally-
+authored YAML file, not a sandbox against a hostile author (see
+`core/scripting.py`'s own docstring). The rest of this page covers what
+[the shared sandbox](#the-shared-sandbox) offers all three surfaces, the
+two ways to write a task's [condition](#conditions), the different
+`kind:`s an [action](#actions) can take and when to reach for each, and
+the [sticky/history](#sticky-values--history) mechanisms available
+throughout.
+
+## The shared sandbox
+
 `condition.expr`, a `script` action's `code`, and a `set` action's `expr`
-all run in the same restricted sandbox — no imports, no attribute access
-beyond a bound ref's `.state`/`.changed`/`.text`/`.event`/`.sticky`/
-`.history`, no method-call chains, no unbounded loops — against one shared
-set of functions, so these three surfaces can never expose different
-capabilities by accident:
+all run against one shared set of functions, so these three surfaces can
+never expose different capabilities by accident:
 
 - Always available: `state(ref)`, `changed(ref)`, `text(ref)`, `event(ref)`,
-  `sticky(ref)` (a since-last-`reset_sticky()` min/max window, the same
-  mechanism [`extensions/logdb`](logdb.md) uses), `history(ref)`,
+  `sticky(ref)` (see [Sticky values](#sticky-values), below), `history(ref)`,
   `fractile(ref, f)`, `median(ref)`, `average(ref)` (see [Value history &
   fractiles](#value-history--fractiles), below), and `devices(pattern)` (a
   glob, e.g. `"house.*/*"`, usable as a `for` target).
@@ -47,33 +56,11 @@ capabilities by accident:
   accepted as a sibling key at all three of these surfaces -- `condition`,
   a `script` action's `code`, and a `set` action's `expr` -- not just on
   the condition shown above.
-- Indexing (`ref[i]`, `event[2]`) and dict-key access (`d['key']`) work on
-  any value a function/attribute returns, e.g. to pull one element out of
-  a multi-item `event` list; slicing (`x[1:3]`) is not supported.
-
-A `set` action's `expr` is a single expression (not a multi-line script)
-evaluated fresh each time the action fires, and its result is written the
-same way a literal `value:` would be — the declarative way to derive one
-endpoint's value from another's, without a `script` action just to read
-one endpoint and write another:
-
-```yaml
-tasks:
-  - tag: mirror_relay
-    condition: { device: "relay_a.state", changed: true }
-    actions:
-      - { kind: set, device: "relay_b.state", expr: "state('relay_a.state')" }
-```
-
-Since the result is written exactly like a literal `value:` would be, a
-`values`-mapped endpoint whose labels aren't a plain on/off pair may need
-the expr to produce the target's own raw value or label explicitly, e.g.
-a ternary: `expr: "'clear' if not motion.state else 'motion'"` (ternaries,
-comparisons, `and`/`or`/`not`, and arithmetic are all allowed).
-
-See [`examples/surveillance_system.yaml`](../examples/surveillance_system.yaml)
-for a fuller worked example (arm/disarm, retriggered intrusion detection,
-timed follow-ups, mass-cancel on disarm).
+- Attribute access on a bound ref is limited to `.state`/`.changed`/
+  `.text`/`.event`/`.sticky`/`.history`. Indexing (`ref[i]`, `event[2]`)
+  and dict-key access (`d['key']`) work on any value a function/attribute
+  returns, e.g. to pull one element out of a multi-item `event` list;
+  slicing (`x[1:3]`) is not supported.
 
 An endpoint's `read_transform`/`write_transform` (see [Endpoint types,
 units & text](concepts.md#endpoint-types-units--text)) reuse the same
@@ -82,7 +69,213 @@ underlying expression compiler but *not* the same namespace: they only see
 builtins — no `state()`/`changed()`/refs, since a transform runs on one
 endpoint's own value in isolation, not against the wider device tree.
 
-## Value history & fractiles
+## Conditions
+
+A task fires either on a schedule (`time`/`repeat`) or when its
+`condition` holds — and a `condition` can be written two ways: the
+`{device, changed, value}` shorthand, for gating on one endpoint, or
+`expr:`, a general boolean expression, for anything involving more than
+one device or richer logic.
+
+### The `{device, changed, value}` shorthand
+
+`changed` and `value` are independent filters, ANDed together — either
+one left out is trivially satisfied and doesn't constrain the result at
+all:
+
+- `changed: true` — holds only on a tick the endpoint has a fresh change
+  event (`event(ref)` is not `None`).
+- `changed: false` — the negation: holds only on a tick with **no** change
+  event. This is a real filter, not "ignore changes" — leave `changed:`
+  out entirely for that.
+- `value: X` — holds whenever the endpoint's *current* state equals `X`,
+  regardless of whether it just changed. `value:` alone is therefore a
+  **level** check ("holds every tick state currently matches X"); paired
+  with `changed: true`, it becomes an **edge** check ("holds only the one
+  tick state transitions to X"), since state and the change event coincide
+  exactly on the tick of a change.
+- Neither given: no constraint at all — the condition is unconditionally
+  `True` every tick.
+
+```yaml
+condition: { device: "relay_a.state", changed: true }                 # any change
+condition: { device: "surveillance.armed", changed: true, value: 1 }  # armed, just now
+condition: { device: "surveillance.armed", value: 1 }                 # armed, any tick
+condition: { device: "surveillance.armed", changed: false, value: 1 } # armed, steady (not the arriving tick)
+```
+
+The level-check reading (`value:` with `changed` left out, or explicitly
+`changed: false`) combined with `min_interval:` is a pattern that used to
+need a `time:`-driven task plus a manual `expr:` check inside the action:
+
+```yaml
+tasks:
+  - tag: nag_while_armed
+    condition: { device: "surveillance.armed", value: 1 }
+    min_interval: 1h   # at most once an hour, for as long as armed stays 1
+    action:
+      kind: mail_alert
+      instance: "mail_alert.house"
+      title: "Still armed"
+      message: "System has been armed for a while"
+```
+
+### `expr:`
+
+For anything beyond one endpoint's own changed/value, `expr:` is a
+restricted-Python boolean expression evaluated against [the shared
+sandbox](#the-shared-sandbox):
+
+```yaml
+condition:
+  refs: { armed: "security.armed", motion: "hallway.motion" }
+  expr: "armed.state == 1 and motion.changed and motion.state == 1"
+```
+
+### Five equivalent ways to say the same thing
+
+To compare the shorthand against `expr:`'s different styles directly, here
+are five conditions that all fire on the exact same tick — the one
+`surveillance.armed` transitions to `1`:
+
+```yaml
+# 1. The shorthand
+condition: { device: "surveillance.armed", changed: true, value: 1 }
+
+# 2. expr, refs-bound attribute style
+condition:
+  refs: { armed: "surveillance.armed" }
+  expr: "armed.changed and armed.state == 1"
+
+# 3. Same, using .event instead of .changed + .state
+condition:
+  refs: { armed: "surveillance.armed" }
+  expr: "armed.event == 1"
+
+# 4. expr, inline function-call style (no refs:)
+condition: { expr: "changed('surveillance.armed') and state('surveillance.armed') == 1" }
+
+# 5. Same, using event() instead of changed() + state()
+condition: { expr: "event('surveillance.armed') == 1" }
+```
+
+Forms 2/3 and 4/5 are equivalent pairs because `event(ref)` *is*
+`state(ref)` on the tick of a change (both come from the same
+`update_state()` commit — see `core/endpoint.py`) and `None` on every
+other tick, so `event(ref) == 1` already implies "changed, to 1" in one
+comparison. Reach for the shorthand (form 1) when a single endpoint's
+value is all the condition needs — it's the shortest, and doesn't require
+naming any of the sandbox's functions at all; reach for `expr:` when the
+condition spans more than one device or needs boolean logic the shorthand
+can't express.
+
+## Actions
+
+A task's `action`/`actions:` list dispatches on `kind:`. Nine kinds are
+registered across the codebase:
+
+| kind | what it does |
+|---|---|
+| `set` | Set the target endpoint to a literal `value:` or a dynamic `expr:` result. |
+| `toggle` | Flip the target endpoint between its two declared `values`, or `"on"`/`"off"`. |
+| `log` | Log a `message` template (`{state}`/`{text}` available) against the target. |
+| `create_task` | Build and register a new task at runtime from a nested `specs:`. |
+| `kill_task` | Remove every task whose tag matches any of `tags` (fnmatch glob). |
+| `script` | Run a restricted-Python script against the shared sandbox, writable. |
+| `mail_alert` | Send one message through a configured SMTP instance — see [mail alerts](mail-alert.md). |
+| `log_db` | Sample a configured `logdb` instance — see [log database](logdb.md). |
+| `random_light` | Run or force a `random_light` instance's randomize pass — see [random light control](random-light.md). |
+
+`set` and `script` are the two kinds this sandbox actually powers, and
+often overlap — the same effect can usually be written either way.
+
+### The same fixed effect, three ways
+
+Turning the siren off is a fixed target (`0`), achievable with any of the
+three general-purpose kinds:
+
+```yaml
+actions:
+  - { kind: set, device: "siren.state", value: 0 }        # a literal value
+  - { kind: set, device: "siren.state", expr: "0" }        # expr producing a constant
+  - { kind: script, code: "set_state('siren.state', 0)" }  # a one-line script
+```
+
+All three write the same raw value the same way (`Endpoint.from_text()`/
+`set_text()`), so for a fixed target the plain literal `value:` is the
+simplest choice — reach for `expr:`/`script` once the target stops being a
+constant.
+
+### The same dynamic effect, two ways
+
+`value:` can only ever be a literal — deriving a value from *another*
+endpoint needs `expr:` or `script`:
+
+```yaml
+# expr: a single expression, re-evaluated fresh each time the action fires
+actions:
+  - { kind: set, device: "relay_b.state", expr: "state('relay_a.state')" }
+```
+
+```yaml
+# script: the same mirror, spelled out as a statement
+actions:
+  - kind: script
+    code: "set_state('relay_b.state', state('relay_a.state'))"
+```
+
+Since the result is written exactly like a literal `value:` would be, a
+`values`-mapped endpoint whose labels aren't a plain on/off pair may need
+the expr to produce the target's own raw value or label explicitly, e.g. a
+ternary: `expr: "'clear' if not motion.state else 'motion'"` (ternaries,
+comparisons, `and`/`or`/`not`, and arithmetic are all allowed).
+
+### Beyond a single value: when to reach for `script`
+
+`set`'s `expr:` is a single expression — it can only ever produce the one
+value it writes. `script`'s `code:` is a sequence of statements, and is
+the only place `set_state`/`create_task`/`kill_task`/`reset_sticky`/`log`
+are available at all — so anything with more than one step (logging *and*
+writing *and* scheduling a follow-up, say) needs `script`, not `set`. The
+[intrusion example](#overview) at the top of this page is exactly that
+case: one action logs, sets two endpoints, and schedules a timed follow-up
+task, all together.
+
+See
+[`examples/surveillance_system.yaml`](../examples/surveillance_system.yaml)
+for a fuller worked example (arm/disarm, retriggered intrusion detection,
+timed follow-ups, mass-cancel on disarm).
+
+## Sticky values & history
+
+### Sticky values
+
+`sticky(ref)` reads a since-last-`reset_sticky()` min/max window on one
+endpoint — the same mechanism [`extensions/logdb`](logdb.md) uses to make
+sure a brief spike between two samples isn't lost. Every endpoint a
+condition/script/`set expr:` references this way is subscribed under the
+owning task's tag (`task_tag`, typically the task's own `tag:`) as its
+`subscriber_id`, so two different tasks tracking the same endpoint each
+get their own independent window — resetting one doesn't affect the
+other's:
+
+```yaml
+tasks:
+  - tag: report_daily_peak
+    time: "07:00"
+    repeat: 1D
+    action:
+      kind: script
+      code: |
+        log(f"yesterday's peak was {sticky('outdoor_temp.value')}")
+        reset_sticky('outdoor_temp.value')
+```
+
+`sticky(ref)` returns `None` until at least one value has been observed
+since the last reset (or since startup) — the same "nothing yet"
+convention as `state()`/`history()`/`fractile()`.
+
+### Value history & fractiles
 
 An endpoint can keep a short in-memory buffer of its own past numeric
 values, sampled on a cadence, for combining several recent readings into
@@ -195,5 +388,5 @@ volatile ring buffer read directly by a script/condition/`set expr:`, with
 no separate task or storage of its own. Nothing stops you from also
 publishing a `fractile()` result to a `virtual` device's endpoint via a
 `set` action's `expr:` if you want it graphable too — see [Endpoint and
-device profiles](profiles.md) and the `set` action example earlier on this
-page for the pattern.
+device profiles](profiles.md) and [the dynamic-mirror example
+above](#the-same-dynamic-effect-two-ways) for the pattern.

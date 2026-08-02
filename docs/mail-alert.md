@@ -24,7 +24,7 @@ extensions:
 
 tasks:
   - tag: intrusion_alert
-    condition: { device: "hallway_motion.state" }
+    condition: { device: "hallway_motion.state", changed: true }
     min_interval: 5m   # don't refire more than once every 5 minutes
     actions:
       - kind: set

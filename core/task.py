@@ -35,25 +35,35 @@ def resolve_endpoint_ref(ref: str, *, allow_bare: bool = False) -> tuple[str, st
 
 
 class Condition:
-    """Gates a Task's action on a device endpoint's change event.
+    """Gates on a device endpoint's change event (changed) and/or current
+    state (value), independently ANDed together. None = no constraint.
 
-    Since the Scheduler's pass 3 commits update_state() for every device
-    every tick (not just polled/due ones -- a device's state may also
-    change via a task's own action), get_event() is always freshly
-    computed as of the PREVIOUS tick's commit by the time a task runs."""
+    changed=True fires the tick event happens; changed=False fires only
+    when no event occurs. value=X checks current state (level: holds every
+    tick at X; or edge: holds only the transition tick if changed=True).
 
-    def __init__(self, *, device_id: str, endpoint_key: str, changed: bool = True):
+    Scheduler timing: get_event() is freshly computed each tick, so timing
+    gating observes the PREVIOUS tick's state changes."""
+
+    def __init__(self, *, device_id: str, endpoint_key: str,
+                 changed: bool | None = None, value=None):
         self.device_id = device_id
         self.endpoint_key = endpoint_key
         self.changed = changed
+        self.value = value
 
     def evaluate(self, devices: dict[str, Device]) -> bool:
-        """True if the condition holds: always True when `changed` is False,
-        else True only if the referenced endpoint has a change event this tick."""
-        if not self.changed:
-            return True
+        """True if both filters hold (each trivially holding if unset --
+        see class docstring): `changed`, against get_event(); `value`,
+        against the endpoint's current get()."""
         device = devices[self.device_id]
-        return device.get_event(self.endpoint_key) is not None
+        if self.changed is None:
+            cond_changed = True
+        else:
+            event = device.get_event(self.endpoint_key)
+            cond_changed = (event is not None) if self.changed else (event is None)
+        cond_value = self.value is None or device.get(self.endpoint_key) == self.value
+        return cond_changed and cond_value
 
 
 class ExprCondition:
