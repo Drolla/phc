@@ -9,14 +9,14 @@
 # together:
 #   - zway            -- physical Z-Wave devices behind a Razberry/zWay
 #                         controller (corridor_light/hallway_motion/
-#                         front_door_tag below share one controller, so
+#                         front_door_tag/siren below share one controller, so
 #                         their status reads coalesce into a single fetch --
 #                         see examples/zway_system.yaml)
 #   - waveplus_bridge -- an Airthings Wave Plus air-quality sensor
 #   - meteoswiss      -- an outdoor MeteoSwiss weather station
 #   - sun             -- sun position, feeding random_light's sunset/sunrise
 #                         windows below
-#   - virtual         -- the surveillance control/siren/lights, with no real
+#   - virtual         -- the surveillance control/lights, with no real
 #                         hardware behind them (mirrors
 #                         examples/surveillance_system.yaml)
 #   - logdb + web_ui  -- history logging and the pages/graphs that display it
@@ -55,40 +55,28 @@ devices:
       - id: corridor_light
         module: zway
         name: Corridor Light
+        device_profile: fibaro-fgs222
+        node: 7
         endpoints:
-          - key: state
-            writable: true
-            type: int
-            values: { 0: "off", 255: "on" }
-            command_group: SwitchBinary
-            address: "7.1"
+          - { key: sw1, name: "Corridor Light" }
 
       - id: hallway_motion
         module: zway
         name: Hallway Motion Sensor
-        endpoints:
-          - key: state
-            type: int
-            values: { 0: "clear", 1: "motion" }
-            command_group: SensorBinary
-            address: "12"
-          - key: battery
-            type: int
-            unit: "%"
-            command_group: Battery
-            address: "12.0"
+        device_profile: everspring-pir_sensor
+        node: 12
 
-      # node: is needed even though every endpoint's address: is written out
-      # fully explicitly -- a TagReader device still needs its own node
-      # number for the one-time Configure_TagReader(node) call.
       - id: front_door_tag
         module: zway
         name: Front Door Tag Reader
+        device_profile: benext-tag_reader
         node: 22
-        endpoints:
-          - key: state
-            command_group: TagReader
-            address: "22"
+
+      - id: siren
+        module: zway
+        name: Siren
+        device_profile: everspring-siren_300_series
+        node: 16
 
       - id: cellar_air
         module: waveplus_bridge
@@ -114,17 +102,6 @@ devices:
             writable: true
             type: int
             values: { 0: "disarmed", 1: "armed" }
-
-      - id: siren
-        module: virtual
-        name: Siren
-        update: 2s
-        endpoints:
-          - key: state
-            writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
 
       - id: porch_light
         module: virtual
@@ -158,9 +135,9 @@ devices:
         update: weather
         station: BER
 
-  - id: sun
+  - id: sun_zurich
     module: sun
-    name: Sun
+    name: Sun (Zurich)
     update: 1h
     latitude: 47.3769
     longitude: 8.5417
@@ -181,10 +158,11 @@ extensions:
     house:
       enable_ref: "house.surveillance.armed"
       pause_ref: "house.alarm.state"
+      sun_device: "sun_zurich"
       lights:
         # corridor_light inherits this instance's own default windows
         # (sunset-relative evening cutoff, sunrise-relative morning start).
-        - device: "house.corridor_light.state"
+        - device: "house.corridor_light.sw1"
           default: true
         # porch_light overrides all three per-light instead.
         - device: "house.porch_light.state"
@@ -195,7 +173,7 @@ extensions:
 
   logdb:
     full_history:
-      selectors: ["house.*/*", "weather.*/*", "sun/*"]
+      selectors: ["house.*/*", "weather.*/*", "sun_zurich/*"]
       csv_path: "logs/full_house_history.csv"
       max_records: 100000
       full_vector_interval: 100
@@ -241,7 +219,7 @@ extensions:
             - id: sun
               title: Sun
               collapsed: true
-              selectors: ["sun/*"]
+              selectors: ["sun_zurich/*"]
 
         - id: history
           title: History
@@ -257,7 +235,7 @@ extensions:
                   selectors:
                     - "house.surveillance/*"
                     - "house.alarm/*"
-                    - "house.corridor_light/state"
+                    - "house.corridor_light/sw1"
                     - "house.porch_light/state"
                     - "house.siren/state"
                   window: 24h
@@ -293,9 +271,11 @@ tasks:
 
   - tag: surveillance_enable
     description: "Arming resets the alarm flag and forces lights off before random control takes over"
-    condition:
-      refs: { armed: "house.surveillance.armed" }
-      expr: "armed.changed and armed.state == 1"
+    # The {device, changed, value} shorthand -- equivalent to (and shorter
+    # than) an expr like "armed.changed and armed.state == 1" -- see
+    # docs/scripting.md's Conditions section for five equivalent ways to
+    # write this same gate.
+    condition: { device: "house.surveillance.armed", changed: true, value: 1 }
     actions:
       - kind: script
         code: |
@@ -314,7 +294,7 @@ tasks:
         code: |
           log('surveillance disabled')
           set_state('house.siren.state', 0)
-          set_state('house.corridor_light.state', 0)
+          set_state('house.corridor_light.sw1', 0)
           set_state('house.alarm.state', 0)
           kill_task('surv_*')
       - kind: random_light
@@ -338,7 +318,7 @@ tasks:
         code: |
           log('intrusion detected')
           set_state('house.alarm.state', 1)
-          set_state('house.siren.state', 1)
+          set_state('house.siren.state', 255)
           create_task({
               'tag': 'surv_siren_off',
               'time': '+3m',
@@ -348,7 +328,7 @@ tasks:
               'tag': 'surv_light_off',
               'time': '+45m',
               'actions': [
-                  { 'kind': 'set', 'device': 'house.corridor_light.state', 'value': 0 },
+                  { 'kind': 'set', 'device': 'house.corridor_light.sw1', 'value': 0 },
                   { 'kind': 'set', 'device': 'house.alarm.state', 'value': 0 },
                   { 'kind': 'random_light', 'instance': 'random_light.house', 'force': 0 },
               ],
