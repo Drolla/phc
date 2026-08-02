@@ -70,6 +70,12 @@ _SAFE_BUILTINS = {name: getattr(builtins, name) for name in
 # _SAFE_BUILTINS), and a Subscript can't appear as an assignment/for-loop
 # target since Assign/For below require a bare Name there. Slicing
 # (ast.Slice, e.g. x[1:3]) is intentionally not included.
+#
+# ast.Is/ast.IsNot (e.g. `if x is None:`) are allowed for the same reason as
+# Subscript above: identity comparison isn't dunder-dispatched, so it grants
+# no new capability beyond the already-allowed Eq/NotEq/etc. Needed so a
+# script can check a possibly-empty fractile()/median()/average()/state()
+# result against None without triggering "disallowed syntax".
 _ALLOWED_NODE_TYPES = (
     ast.Module, ast.Expression, ast.Expr, ast.Load, ast.Store,
     ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set,
@@ -79,6 +85,7 @@ _ALLOWED_NODE_TYPES = (
     ast.UnaryOp, ast.Not, ast.USub, ast.UAdd,
     ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
     ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.In, ast.NotIn,
+    ast.Is, ast.IsNot,
     ast.IfExp, ast.Call,
     ast.Assign, ast.If, ast.For, ast.Pass,
 )
