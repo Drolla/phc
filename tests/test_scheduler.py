@@ -13,7 +13,7 @@ from tests.conftest import fetch_sync
 
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_system.yaml"
-SURVEILLANCE_EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "surveillance_system.yaml"
+SURVEILLANCE_EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_surveillance_system.yaml"
 
 
 @pytest.fixture
@@ -128,11 +128,11 @@ def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_prese
 
 def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     """Round-trip the condition.expr/kind:script/min_interval/create_task/
-    kind:kill_task example (examples/surveillance_system.yaml) through the
-    Scheduler: arming enables the sub-tasks' effects, motion raises the
-    alarm and schedules timed follow-ups (once, thanks to min_interval),
-    and disarming tears them back down -- mirroring the previous Tcl
-    system's surveillance job set end to end."""
+    kind:kill_task example (examples/virtual_surveillance_system.yaml)
+    through the Scheduler: arming enables the sub-tasks' effects, motion
+    raises the alarm and schedules timed follow-ups (once, thanks to
+    min_interval), and disarming tears them back down -- mirroring the
+    previous Tcl system's surveillance job set end to end."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
 
