@@ -700,6 +700,17 @@ def test_min_interval_blocks_refire_within_cooldown():
     assert task.run(5.0, devices) is True  # cooldown elapsed
 
 
+def test_last_fired_property_tracks_run():
+    light = _light("off")
+    devices = {"living_light": light}
+    task = Task("blink", due_time=0.0, repeat=0.0,
+                actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+
+    assert task.last_fired == float("-inf")
+    task.run(3.0, devices)
+    assert task.last_fired == 3.0
+
+
 def test_min_interval_debounces_condition_task(task_log):
     light = _light("off")
     fetch_sync(light)

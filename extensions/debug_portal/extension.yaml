@@ -1,0 +1,45 @@
+description: >
+  Live debugging portal: a small aiohttp.web server showing the scheduler's
+  task queue (in planned execution order), the device poll queue, and the
+  live state/event/last-valid-state of every selected endpoint. The page
+  updates once per scheduler tick over Server-Sent Events -- there is no
+  separate refresh interval to configure, and no history is kept: each
+  tick's snapshot is shown and discarded, so a cell only shows red for the
+  tick period during which it actually changed.
+
+  Disabled by default -- this extension does nothing unless an
+  `extensions.debug_portal.<instance>:` entry is present in the system
+  YAML.
+
+  v1: no authentication -- host defaults to loopback-only; set it
+  explicitly to expose beyond localhost, and only on a trusted LAN.
+
+parameters:
+  - name: host
+    override: allowed
+    default: "127.0.0.1"
+    description: Interface to bind the HTTP server to.
+
+  - name: port
+    override: allowed
+    default: 8081
+    description: TCP port to bind the HTTP server to.
+
+  - name: selectors
+    override: allowed
+    default: ["*"]
+    description: >
+      List of "<device-glob>/<endpoint-glob>" selector patterns (same
+      syntax as extensions.logdb's `selectors`), or bare "*" for
+      everything (the default). Chooses which endpoints appear in the
+      portal's endpoint table; the task queue and device poll queue
+      always show every task/scheduled device regardless of this setting.
+
+  - name: shutdown_timeout
+    override: allowed
+    default: 5
+    description: >
+      Seconds to wait for in-flight requests to finish when the server
+      stops, before forcing them closed (aiohttp.web.AppRunner). Any open
+      live-view connection is woken immediately on shutdown, so this
+      mainly bounds an in-flight GET /api/snapshot request.

@@ -2052,6 +2052,49 @@ devices:
     assert len(calls["stop"]) == 1
 
 
+# ---------- on_bind auto-collection ----------
+
+def test_load_system_calls_on_bind_with_fully_built_system(tmp_path, monkeypatch):
+    """on_bind runs after tasks: are built (unlike configure(), see
+    _load_extensions), so an instance can see system.tasks -- this is the
+    behavior extensions.debug_portal relies on to bind to the live task
+    list. Absence of on_bind on an instance (the common case -- no shipped
+    extension besides debug_portal defines it) must not raise."""
+    import core.config as config_module
+
+    bound = []
+
+    class FakeExtensionInstance:
+        def on_bind(self, system):
+            bound.append(system)
+
+    class FakeExtensionInstanceWithoutOnBind:
+        pass
+
+    monkeypatch.setattr(
+        config_module, "_load_extensions",
+        lambda raw, flat: {"fake.instance": FakeExtensionInstance(),
+                            "fake.other": FakeExtensionInstanceWithoutOnBind()})
+
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: noop
+    time: "+1h"
+    action: { kind: toggle, device: "living_light.state" }
+""")
+    system = load_system(system_yaml)
+
+    assert len(bound) == 1
+    assert bound[0] is system
+    assert len(system.tasks) == 1
+
+
 # ---------- Task.min_interval ----------
 
 def test_load_system_task_min_interval_parsed(tmp_path):

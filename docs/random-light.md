@@ -41,4 +41,4 @@ configured light to that value immediately — for a surrounding system to
 drop into its own tasks' `actions:` list (e.g. force everything off when
 arming/disarming, force everything on as a deterrent during an alarm), as
 seen throughout
-[`examples/surveillance_system.yaml`](../examples/surveillance_system.yaml).
+[`examples/virtual_surveillance_system.yaml`](../examples/virtual_surveillance_system.yaml).

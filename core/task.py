@@ -524,3 +524,5 @@ class Task:
             self.due_time += self.repeat * math.ceil((now - self.due_time + 1e-9) / self.repeat)
         else:
             self.due_time = float("inf")
+
+    last_fired = property(lambda self: self._last_fired)

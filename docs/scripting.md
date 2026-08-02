@@ -242,7 +242,7 @@ case: one action logs, sets two endpoints, and schedules a timed follow-up
 task, all together.
 
 See
-[`examples/surveillance_system.yaml`](../examples/surveillance_system.yaml)
+[`examples/virtual_surveillance_system.yaml`](../examples/virtual_surveillance_system.yaml)
 for a fuller worked example (arm/disarm, retriggered intrusion detection,
 timed follow-ups, mass-cancel on disarm).
 

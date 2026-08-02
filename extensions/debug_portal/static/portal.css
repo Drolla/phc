@@ -1,0 +1,166 @@
+/* Purpose-built styling for the debug portal's dense status tables --
+ * deliberately NOT sharing extensions/web_ui/static/bootstrap.min.css: this
+ * extension runs its own aiohttp app on its own port, so web_ui's /static
+ * isn't reachable from here anyway, and a dense debugging table shares
+ * almost nothing with Bootstrap's form/card components. Theme follows
+ * prefers-color-scheme via plain CSS variables -- no Bootstrap
+ * data-bs-theme attribute dance needed, since nothing here encodes theme
+ * into an image/data-URI. */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #666666;
+  --border: #d8d8d8;
+  --row-alt: #f4f4f4;
+  --changed-bg: #d6392f;
+  --changed-fg: #ffffff;
+  --conn-on: #1a8a4a;
+  --conn-off: #999999;
+  --input-bg: #f4f4f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --fg: #e8e8e8;
+    --muted: #9a9a9a;
+    --border: #33363c;
+    --row-alt: #1b1e23;
+    --changed-bg: #b3261e;
+    --changed-fg: #ffffff;
+    --conn-on: #4fd68a;
+    --conn-off: #6b6f76;
+    --input-bg: #1b1e23;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
+}
+
+.statusbar h1 {
+  font-size: 1rem;
+  margin: 0 0.5rem 0 0;
+}
+
+.statusbar .filter input {
+  font: inherit;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.15rem 0.4rem;
+}
+
+.statusbar button {
+  font: inherit;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.15rem 0.6rem;
+  cursor: pointer;
+}
+
+.conn-dot {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.conn-on {
+  color: var(--conn-on);
+}
+
+.conn-off {
+  color: var(--conn-off);
+}
+
+main {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.queues {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.queue {
+  flex: 1 1 320px;
+  min-width: 280px;
+}
+
+h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.2rem 0.6rem 0.2rem 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+tbody tr:nth-child(even) {
+  background: var(--row-alt);
+}
+
+tr.hidden {
+  display: none;
+}
+
+.endpoints {
+  overflow-x: auto;
+}
+
+/* Both directions (add and remove) transition, so a cell reddens as
+ * smoothly as it fades back -- see portal.js's setCell() for when
+ * ".changed" is toggled. */
+td {
+  transition: background-color 400ms ease-out, color 400ms ease-out;
+}
+
+td.changed {
+  background: var(--changed-bg);
+  color: var(--changed-fg);
+}
