@@ -469,7 +469,9 @@ class Task:
         reached. If repeat > 0, mark_run() advances due_time by whole
         multiples of repeat (mirrors parse_time's own repeat-rollforward,
         so a stalled process catches up instead of firing a burst). If
-        repeat <= 0, the task fires at most once (due_time -> +inf).
+        repeat <= 0, the task fires at most once (due_time -> +inf, see
+        `spent`) and the Scheduler drops it from its task list right after,
+        rather than keeping it resident but permanently dormant.
 
     `min_interval` (default 0: no cooldown) is a retrigger cooldown applied
     uniformly to both modes: once fired, run() won't fire again until at
@@ -526,3 +528,11 @@ class Task:
             self.due_time = float("inf")
 
     last_fired = property(lambda self: self._last_fired)
+
+    @property
+    def spent(self) -> bool:
+        """True once a time-driven, non-repeating task has fired its one and
+        only run (mark_run() parked it at due_time=inf) and can be dropped
+        from the Scheduler's task list. Always False for a condition-driven
+        or repeating task, which stay resident indefinitely."""
+        return self.condition is None and self.repeat <= 0 and self.due_time == float("inf")
