@@ -250,6 +250,38 @@ def test_scheduler_runs_blink_task_and_reschedules():
     assert light.get() == "off"
 
 
+def test_scheduler_removes_one_shot_task_after_it_fires():
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    light.set("off")
+    fetch_sync(light)
+    light.update_state()
+
+    one_shot = Task("once", due_time=1.0,
+                     actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    repeating = Task("repeating", due_time=1.0, repeat=3.0,
+                      actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
+    conditional = Task("conditional", due_time=float("-inf"), condition=condition,
+                        actions=[LogAction(device_id="living_light", endpoint_key="state",
+                                            message="changed")])
+
+    scheduler = Scheduler({"living_light": light}, tasks=[one_shot, repeating, conditional])
+
+    scheduler.tick(now=1.0)
+    assert one_shot not in scheduler._tasks
+    assert repeating in scheduler._tasks
+    assert conditional in scheduler._tasks
+
+    # Stays gone -- it isn't re-added or re-evaluated on later ticks.
+    scheduler.tick(now=10.0)
+    assert one_shot not in scheduler._tasks
+    assert len(scheduler._tasks) == 2
+
+
 def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
     from devices.virtual.device import VirtualDevice
     from core.endpoint import Endpoint
