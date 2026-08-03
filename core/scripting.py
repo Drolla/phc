@@ -130,11 +130,12 @@ class Compiled:
     evaluate_expression()/run_script() calls against different namespaces
     (e.g. once per Scheduler tick)."""
 
-    __slots__ = ("code", "referenced_paths")
+    __slots__ = ("code", "referenced_paths", "source")
 
-    def __init__(self, code, referenced_paths: frozenset[str]):
+    def __init__(self, code, referenced_paths: frozenset[str], source: str):
         self.code = code
         self.referenced_paths = referenced_paths
+        self.source = source
 
 
 def compile_expression(source: str) -> Compiled:
@@ -145,7 +146,7 @@ def compile_expression(source: str) -> Compiled:
         tree = ast.parse(source, mode="eval")
     except SyntaxError as exc:
         raise ScriptError(f"invalid expression syntax: {exc}") from None
-    compiled = Compiled(compile(tree, "<condition-expr>", "eval"), _validate(tree))
+    compiled = Compiled(compile(tree, "<condition-expr>", "eval"), _validate(tree), source)
     logger.debug("compile expr done: referenced path(s): %s", sorted(compiled.referenced_paths))
     return compiled
 
@@ -158,7 +159,7 @@ def compile_script(source: str) -> Compiled:
         tree = ast.parse(source, mode="exec")
     except SyntaxError as exc:
         raise ScriptError(f"invalid script syntax: {exc}") from None
-    compiled = Compiled(compile(tree, "<script-action>", "exec"), _validate(tree))
+    compiled = Compiled(compile(tree, "<script-action>", "exec"), _validate(tree), source)
     logger.debug("compile script done: referenced path(s): %s", sorted(compiled.referenced_paths))
     return compiled
 
@@ -167,18 +168,20 @@ def evaluate_expression(compiled: Compiled, namespace: dict):
     """Evaluate a compile_expression() result against `namespace`. A runtime
     error (e.g. NameError for a typo'd ref) is not caught here -- it
     propagates to the caller, same as any other action/condition failure."""
-    logger.debug("evaluate expr: namespace %s", sorted(namespace))
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("evaluate expr: %s", _snippet(compiled.source))
     result = eval(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
-    logger.debug("evaluate expr done: result %r", result)
+    logger.debug("evaluate expr: Done -> result=%r", result)
     return result
 
 
 def run_script(compiled: Compiled, namespace: dict) -> None:
     """Execute a compile_script() result against `namespace`. See
     evaluate_expression() re: runtime error handling."""
-    logger.debug("run script: namespace %s", sorted(namespace))
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("run script: %s", _snippet(compiled.source))
     exec(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
-    logger.debug("run script done")
+    logger.debug("run script: Done")
 
 
 class EndpointRef:
