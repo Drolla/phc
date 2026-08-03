@@ -5,6 +5,10 @@
    (Bootstrap doesn't style raw <details> any more than Pico did -- the
    disclosure triangle is browser-default styling either way). */
 
+header.container, main.container {
+  max-width: 100% !important;
+}
+
 /* A section's top-level devices, and any device's own nested children, are
    both "a list of sibling device cards" -- lay both out as a responsive
    grid so cards reflow into as many columns as fit (no media query: the
