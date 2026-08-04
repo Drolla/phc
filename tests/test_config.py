@@ -1770,6 +1770,106 @@ tasks:
         load_system(system_yaml)
 
 
+def test_load_system_create_task_specs_and_template_both_given_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+task_specs:
+  - tag: clear_alert
+    time: "+1s"
+    action: { kind: set, device: "living_light.state", value: "off" }
+tasks:
+  - tag: raise_alert
+    time: "+1s"
+    action:
+      kind: create_task
+      specs: { tag: clear_alert, time: "+1s", action: { kind: set, device: "living_light.state", value: "off" } }
+      template: clear_alert
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+# ---------- task_specs: / create_task's template: ----------
+
+def test_load_system_task_specs_builds_without_raising_at_load_time(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    update: 1s
+    endpoints: [{ key: state, writable: true, default: "off" }]
+task_specs:
+  - tag: clear_alert
+    time: "+1s"
+    action: { kind: set, device: "living_light.state", value: "off" }
+tasks:
+  - tag: raise_alert
+    condition: { device: "living_light.state", changed: true }
+    action: { kind: create_task, template: clear_alert }
+""")
+    system = load_system(system_yaml)
+    task = next(t for t in system.tasks if t.tag == "raise_alert")
+    from core.task import CreateTaskAction
+    action = task.actions[0]
+    assert isinstance(action, CreateTaskAction)
+    # Only the top-level tasks: entries are built into Task objects at load
+    # time -- task_specs: entries stay raw dicts until a template: reference
+    # actually resolves them (see core.task.register_task).
+    assert [t.tag for t in system.tasks] == ["raise_alert"]
+
+
+def test_load_system_task_specs_duplicate_tag_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+task_specs:
+  - tag: clear_alert
+    time: "+1s"
+    action: { kind: set, device: "living_light.state", value: "off" }
+  - tag: clear_alert
+    time: "+2s"
+    action: { kind: set, device: "living_light.state", value: "on" }
+tasks:
+  - tag: raise_alert
+    time: "+1s"
+    action: { kind: create_task, template: clear_alert }
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_create_task_unknown_template_does_not_raise_at_load_time(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: raise_alert
+    time: "+1s"
+    action: { kind: create_task, template: nonexistent }
+""")
+    # Lazy resolution: template: is only looked up when create_task actually
+    # fires (same laziness as a literal specs:, see
+    # test_load_system_create_task_with_bad_nested_device_does_not_raise_at_load_time
+    # above), so an unknown name must not raise at load_system() time.
+    system = load_system(system_yaml)
+    assert any(t.tag == "raise_alert" for t in system.tasks)
+
+
 def test_load_system_task_referencing_unknown_device_raises(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""

@@ -13,7 +13,8 @@ from tests.conftest import fetch_sync
 
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_system.yaml"
-SURVEILLANCE_EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_surveillance_system.yaml"
+SURVEILLANCE_EXAMPLE = (Path(__file__).resolve().parent.parent / "examples"
+                         / "virtual_surveillance-task_defs_1-nested.yaml")
 
 
 @pytest.fixture
@@ -128,11 +129,12 @@ def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_prese
 
 def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     """Round-trip the condition.expr/kind:script/min_interval/create_task/
-    kind:kill_task example (examples/virtual_surveillance_system.yaml)
-    through the Scheduler: arming enables the sub-tasks' effects, motion
-    raises the alarm and schedules timed follow-ups (once, thanks to
-    min_interval), and disarming tears them back down -- mirroring the
-    previous Tcl system's surveillance job set end to end."""
+    kind:kill_task example
+    (examples/virtual_surveillance-task_defs_1-nested.yaml) through the
+    Scheduler: arming spawns surv_random_light/surv_intrusion (both nested
+    create_task actions), motion raises the alarm and schedules further
+    timed follow-ups (once, thanks to min_interval), and disarming tears
+    all of them back down."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
 
@@ -145,13 +147,15 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
         scheduler.tick(now=t)
     assert "surveillance enabled" in task_log.text
     assert system.devices["alarm"].get() == 0
+    spawned_on_arm = {"surv_random_light", "surv_intrusion"}
+    assert spawned_on_arm <= {task.tag for task in system.tasks}
 
     system.devices["hallway_motion"].set(1)
     for _ in range(3):
         t += 2.0
         scheduler.tick(now=t)
     assert "intrusion detected" in task_log.text
-    spawned_tags = {"surv_alert_log", "surv_siren_off", "surv_light_off"}
+    spawned_tags = {"surv_alert_log", "surv_siren_off", "surv_light_off", "surv_alert_mail"}
     assert spawned_tags <= {task.tag for task in system.tasks}
 
     for _ in range(3):
@@ -159,7 +163,7 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
         scheduler.tick(now=t)  # let the alarm/siren writes settle onto the devices
     assert system.devices["alarm"].get() == 1
     assert system.devices["siren"].get() == 1
-    # kind:random_light, force:1 (surveillance_intrusion's second action)
+    # kind:random_light, force:1 (surv_intrusion's second-to-last action)
     # forces BOTH lights on as a deterrent -- porch_light is never touched
     # by the script action itself, so this specifically exercises the
     # random_light extension's force override.
@@ -171,7 +175,7 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
         t += 2.0
         scheduler.tick(now=t)
     assert "surveillance disabled" in task_log.text
-    assert spawned_tags.isdisjoint({task.tag for task in system.tasks})
+    assert (spawned_tags | spawned_on_arm).isdisjoint({task.tag for task in system.tasks})
     assert system.devices["alarm"].get() == 0
     assert system.devices["siren"].get() == 0
     assert system.devices["hallway_light"].get() == 0
@@ -184,8 +188,8 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
     """all_lights is independent of armed/alarm state: toggling it forces
     every random_light-managed light and silences the siren, regardless of
     whether surveillance is armed (see
-    examples/virtual_surveillance_system.yaml's surveillance_all_lights_on/
-    _off tasks)."""
+    examples/virtual_surveillance-task_defs_1-nested.yaml's
+    surveillance_all_lights_on/_off tasks)."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
 
@@ -397,6 +401,73 @@ def test_scheduler_create_task_action_spawns_task_that_later_fires():
     light.update_state()
     scheduler.tick(now=spawned.due_time + 1.1)
     assert light.get() == "off"
+
+
+def test_scheduler_create_task_template_spawns_task_that_later_fires():
+    """Same as test_scheduler_create_task_action_spawns_task_that_later_fires
+    above, but the create_task action gives `template:` instead of a
+    literal `specs:` -- the spec is looked up by name in task_specs at fire
+    time (see core.task.register_task/CreateTaskAction), everything else
+    about spawning/firing the resulting task is identical."""
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+    from core.task import CreateTaskAction
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    flat = {"living_light": light}
+
+    task_specs = {
+        "clear_alert": {
+            "tag": "clear_alert",
+            "time": "+1s",
+            "action": {"kind": "set", "device": "living_light.state", "value": "off"},
+        },
+    }
+    tasks: list[Task] = []
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
+    trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
+                    actions=[CreateTaskAction(template="clear_alert", flat=flat, tasks=tasks,
+                                               task_specs=task_specs)])
+    tasks.append(trigger)
+
+    scheduler = Scheduler(flat, tasks=tasks)
+
+    assert len(tasks) == 1  # only the trigger task exists so far
+
+    light.set("on")
+    scheduler.tick(now=0.0)
+    scheduler.tick(now=1.0)  # condition sees tick 0's commit here, create_task fires
+
+    assert len(tasks) == 2
+    spawned = next(t for t in tasks if t.tag == "clear_alert")
+    assert spawned.due_time > 1.0
+
+    # advance past the spawned task's due_time and confirm it actually fires
+    scheduler.tick(now=spawned.due_time + 0.1)
+    fetch_sync(light)
+    light.update_state()
+    scheduler.tick(now=spawned.due_time + 1.1)
+    assert light.get() == "off"
+
+
+def test_scheduler_create_task_unknown_template_raises_at_fire_time():
+    """Unlike a literal specs:, template: is only resolved when the
+    create_task action fires -- an unknown name surfaces as a ValueError
+    from perform() then, not at construction/config-load time (see
+    core.task.register_task)."""
+    from devices.virtual.device import VirtualDevice
+    from core.endpoint import Endpoint
+    from core.task import CreateTaskAction
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    flat = {"living_light": light}
+
+    tasks: list[Task] = []
+    action = CreateTaskAction(template="nonexistent", flat=flat, tasks=tasks, task_specs={})
+    with pytest.raises(ValueError):
+        action.perform(flat)
 
 
 def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
