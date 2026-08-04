@@ -999,7 +999,8 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
 
 
 def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task],
-                   extensions: dict[str, object], sticky_endpoints: set):
+                   extensions: dict[str, object], sticky_endpoints: set,
+                   task_specs: dict[str, dict] | None = None):
     """Build one `action:`/`actions[]` YAML entry into an Action instance,
     dispatching on `kind` (via the task-kind registry). Every kind is built
     the same way: device_id/endpoint_key are resolved from `device:` when
@@ -1007,21 +1008,22 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     e.g. "meteo-bern" rather than "meteo-bern.temperature", the Action
     subclass then falling back to whole-device get()/set() semantics;
     Conditions, above, intentionally do NOT allow this), None otherwise --
-    and flat/tasks/extensions/task_tag/sticky_endpoints are passed to every
-    kind unconditionally, so a kind with no single device target (create_task,
-    kill_task, script, and every extension action) can act on the task list
-    itself, look up a named extension instance (see
-    core.config._load_extensions), or (kind: script, or kind: set with an
+    and flat/tasks/extensions/task_tag/sticky_endpoints/task_specs are
+    passed to every kind unconditionally, so a kind with no single device
+    target (create_task, kill_task, script, and every extension action) can
+    act on the task list itself, look up a named extension instance (see
+    core.config._load_extensions) or a named `task_specs:` template (see
+    core.task.CreateTaskAction), or (kind: script, or kind: set with an
     `expr:`) run against the shared rule namespace (see
     core.task._build_rule_namespace), while an ordinary device-oriented
     kind simply never touches them. Raises ConfigError on a
     missing/unregistered kind, a given device that doesn't exist, a spec
     missing one of that kind's own required constructor arguments (e.g.
-    create_task's `specs`), or -- for kind: script, or kind: set with an
-    `expr:` -- a code/expr block that violates the sandbox whitelist. A
-    device-oriented kind (e.g. set, toggle) whose `device:` is missing
-    builds without error here -- it fails at that action's own perform()
-    instead, the first time it fires."""
+    create_task's `specs`/`template`), or -- for kind: script, or kind: set
+    with an `expr:` -- a code/expr block that violates the sandbox
+    whitelist. A device-oriented kind (e.g. set, toggle) whose `device:` is
+    missing builds without error here -- it fails at that action's own
+    perform() instead, the first time it fires."""
     kind = spec.get("kind")
     if kind is None:
         raise ConfigError(f"task {task_tag!r}: action requires a 'kind'")
@@ -1041,7 +1043,7 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     try:
         action = action_cls(device_id=device_id, endpoint_key=endpoint_key, flat=flat,
                              tasks=tasks, extensions=extensions, task_tag=task_tag,
-                             sticky_endpoints=sticky_endpoints, **extra)
+                             sticky_endpoints=sticky_endpoints, task_specs=task_specs, **extra)
     except (TypeError, ValueError, scripting.ScriptError) as exc:
         raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
 
@@ -1057,12 +1059,14 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
 
 
 def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
-                 extensions: dict[str, object], sticky_endpoints: set) -> Task:
+                 extensions: dict[str, object], sticky_endpoints: set,
+                 task_specs: dict[str, dict] | None = None) -> Task:
     """Build one `tasks:` YAML entry (or a `create_task`/script action's
-    nested spec) into a Task. Requires exactly one of `condition` or `time`
-    to determine how the task fires, and exactly one of `action`/`actions`.
-    `min_interval` (optional, default 0: no cooldown) is parsed the same way
-    as `repeat` -- see Task's class docstring."""
+    nested spec, or a `task_specs:` entry once instantiated by a
+    `template:` reference) into a Task. Requires exactly one of `condition`
+    or `time` to determine how the task fires, and exactly one of
+    `action`/`actions`. `min_interval` (optional, default 0: no cooldown)
+    is parsed the same way as `repeat` -- see Task's class docstring."""
     tag = entry["tag"]
     repeat_spec = entry.get("repeat", 0)
     repeat_seconds = parse_duration(repeat_spec) if repeat_spec else 0.0
@@ -1088,10 +1092,11 @@ def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
         action_specs = entry["actions"]
         if not isinstance(action_specs, list) or not action_specs:
             raise ConfigError(f"task {tag!r}: 'actions' must be a non-empty list")
-        actions = [_build_action(spec, flat, tag, tasks, extensions, sticky_endpoints)
+        actions = [_build_action(spec, flat, tag, tasks, extensions, sticky_endpoints, task_specs)
                    for spec in action_specs]
     else:
-        actions = [_build_action(entry["action"], flat, tag, tasks, extensions, sticky_endpoints)]
+        actions = [_build_action(entry["action"], flat, tag, tasks, extensions,
+                                  sticky_endpoints, task_specs)]
 
     return Task(
         tag,
@@ -1322,10 +1327,23 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     start_hooks = [obj.on_start for obj in extensions_registry.values() if hasattr(obj, "on_start")]
     stop_hooks = [obj.on_stop for obj in extensions_registry.values() if hasattr(obj, "on_stop")]
 
+    # task_specs: entries are name -> raw dict, resolved lazily by a
+    # `create_task` action's `template:` (see core.task.CreateTaskAction) --
+    # not built into Task objects here, matching the existing laziness of a
+    # create_task action's own literal `specs:` (see _build_task). Only a
+    # duplicate-tag check happens eagerly, to catch a copy-paste mistake at
+    # load time rather than only once some template is actually used.
+    task_specs: dict[str, dict] = {}
+    for entry in raw.get("task_specs", []):
+        spec_tag = entry["tag"]
+        if spec_tag in task_specs:
+            raise ConfigError(f"task_specs: duplicate tag {spec_tag!r}")
+        task_specs[spec_tag] = entry
+
     tasks: list[Task] = []
     sticky_endpoints: set = set()
     for entry in raw.get("tasks", []):
-        tasks.append(_build_task(entry, flat, tasks, extensions_registry, sticky_endpoints))
+        tasks.append(_build_task(entry, flat, tasks, extensions_registry, sticky_endpoints, task_specs))
     if sticky_endpoints:
         tick_hooks.append(_make_sticky_tick_hook(sticky_endpoints))
 

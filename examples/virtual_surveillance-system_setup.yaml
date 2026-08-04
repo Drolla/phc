@@ -1,7 +1,16 @@
-# Device/extension setup for a virtual (no real hardware) surveillance/alarm
-# system. Only useful combined with a task-definitions file that includes it
-# (e.g. virtual_surveillance-task_defs_0_orig.yaml) -- this file alone has no
-# tasks:, so nothing here is actually acted on by itself.
+# Virtual surveillance/alarm system (no real hardware), composed of:
+#   0) virtual_surveillance-system_setup.yaml (this file) - system setup:
+#      devices, modules, extensions, log.
+#   1) virtual_surveillance-task_defs_1-nested.yaml - task definitions,
+#      inlined, no templates, no scripting. Includes 0).
+#   2) virtual_surveillance-task_defs_2-tempated.yaml - task definitions,
+#      dynamically created tasks factored into named task_specs: templates.
+#      Includes 0).
+#   3) virtual_surveillance-task_defs_3-coded.yaml - task definitions,
+#      every condition/action written as expr:/script code. Includes 0).
+#
+# This file (0): device/extension setup only, no tasks: -- pick one of
+# 1)/2)/3) to actually run the system.
 
 heartbeat: 1s
 
@@ -9,14 +18,11 @@ log:
   - dest: stdout
     levels:
       default: INFO
-      # Trace condition.expr/kind:script compilation and evaluation
-      # (source, referenced paths, namespace, result) -- see
-      # core/scripting.py.
-      scripting: DEBUG
 
-# surveillance/armed is the arm/disarm control; hallway_motion/state is the
-# intrusion sensor; all_lights/state is an independent manual on/off
-# override. Toggle these directly to exercise the tasks that watch them.
+# surveillance/armed is the arm/disarm control; hallway_motion/state and
+# cellar_motion/state are the intrusion sensors; all_lights/state is an
+# independent manual on/off override. Toggle these directly to exercise the
+# tasks that watch them.
 devices:
   - id: surveillance
     module: virtual
@@ -36,6 +42,15 @@ devices:
   - id: hallway_motion
     module: virtual
     name: Hallway motion sensor
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "clear", 1: "detected" }
+
+  - id: cellar_motion
+    module: virtual
+    name: Cellar motion sensor
     endpoints:
       - key: state
         writable: true
@@ -148,7 +163,7 @@ extensions:
             - id: security
               title: Security
               collapsed: false
-              selectors: ["surveillance/*", "alarm/*", "hallway_motion/*", "siren/*"]
+              selectors: ["surveillance/*", "alarm/*", "hallway_motion/*", "cellar_motion/*", "siren/*"]
             - id: lights
               title: Lights
               collapsed: false
