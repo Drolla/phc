@@ -1,7 +1,12 @@
-# Device/extension setup for a virtual (no real hardware) surveillance/alarm
-# system. Only useful combined with a task-definitions file that includes it
-# (e.g. virtual_surveillance-task_defs_0_orig.yaml) -- this file alone has no
-# tasks:, so nothing here is actually acted on by itself.
+# One virtual (no real hardware) surveillance/alarm system, split across 4
+# files: this one holds the device/extension setup; the three
+# virtual_surveillance-task_defs_[123]-*.yaml files each define the same
+# task set a different way (fully inlined, via named templates, or fully
+# scripted) and !include this file to get a runnable system. Compare them
+# to see the same behavior expressed in each style.
+#
+# This file alone has no tasks:, so nothing here is actually acted on by
+# itself -- pick one of the three task_defs files to run.
 
 heartbeat: 1s
 
@@ -9,10 +14,6 @@ log:
   - dest: stdout
     levels:
       default: INFO
-      # Trace condition.expr/kind:script compilation and evaluation
-      # (source, referenced paths, namespace, result) -- see
-      # core/scripting.py.
-      scripting: DEBUG
 
 # surveillance/armed is the arm/disarm control; hallway_motion/state and
 # cellar_motion/state are the intrusion sensors; all_lights/state is an

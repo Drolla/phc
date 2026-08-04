@@ -1,8 +1,15 @@
-# Description 3) - Every condition is an expr:, every action list is a
-# single script (code:) statement -- random_light/mail_alert stay as
-# separate declarative actions alongside the script since the sandbox has
-# no callable equivalent for extension action kinds (see docs/scripting.md).
-# Combined with virtual_surveillance-system_setup.yaml, included below.
+# One virtual (no real hardware) surveillance/alarm system, split across 4
+# files: virtual_surveillance-system_setup.yaml (!include'd below) holds the
+# device/extension setup; this and the other two
+# virtual_surveillance-task_defs_[123]-*.yaml files each define the same
+# task set a different way. Compare them to see the same behavior expressed
+# in each style.
+#
+# This file: 3) fully scripted -- every condition is an expr:, every action
+# list is a single script (code:) statement. random_light/mail_alert stay
+# as separate declarative actions alongside the script since the sandbox
+# has no callable equivalent for extension action kinds (see
+# docs/scripting.md).
 #
 # surv_intrusion is the one task whose own actions include a further
 # nested `kind: script` (its follow-up create_task calls), which would
