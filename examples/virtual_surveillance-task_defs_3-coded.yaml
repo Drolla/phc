@@ -1,23 +1,29 @@
-# One virtual (no real hardware) surveillance/alarm system, split across 4
-# files: virtual_surveillance-system_setup.yaml (!include'd below) holds the
-# device/extension setup; this and the other two
-# virtual_surveillance-task_defs_[123]-*.yaml files each define the same
-# task set a different way. Compare them to see the same behavior expressed
-# in each style.
+# Virtual surveillance/alarm system (no real hardware), composed of:
+#   0) virtual_surveillance-system_setup.yaml - system setup: devices,
+#      modules, extensions, log. Included below.
+#   1) virtual_surveillance-task_defs_1-nested.yaml - task definitions,
+#      inlined, no templates, no scripting. Includes 0).
+#   2) virtual_surveillance-task_defs_2-tempated.yaml - task definitions,
+#      dynamically created tasks factored into named task_specs: templates.
+#      Includes 0).
+#   3) virtual_surveillance-task_defs_3-coded.yaml (this file) - task
+#      definitions, every condition/action written as expr:/script code.
+#      Includes 0).
 #
-# This file: 3) fully scripted -- every condition is an expr:, every action
-# list is a single script (code:) statement. random_light/mail_alert stay
-# as separate declarative actions alongside the script since the sandbox
+# This file (3): every task's condition: is an expr: (state()/changed()
+# calls, no device:/changed:/value: shorthand), and every task's actions:
+# collapses into one kind: script code: block. random_light/mail_alert stay
+# as separate declarative actions alongside the script, since the sandbox
 # has no callable equivalent for extension action kinds (see
 # docs/scripting.md).
 #
 # surv_intrusion is the one task whose own actions include a further
 # nested `kind: script` (its follow-up create_task calls), which would
 # otherwise mean a code: string embedded inside another code: string.
-# Rather than inline it, it's pulled out into task_specs: below and
-# create_task is called with a `template:` reference instead of a literal
-# spec -- narrowly avoiding the code-in-code case, without templating
-# anything else in this file.
+# Rather than inline it, it's pulled out into task_specs: below (the one
+# templating use in this file) and create_task is called with a
+# `template:` reference instead of a literal spec -- narrowly avoiding the
+# code-in-code case, without templating anything else here.
 
 <<: !include virtual_surveillance-system_setup.yaml
 

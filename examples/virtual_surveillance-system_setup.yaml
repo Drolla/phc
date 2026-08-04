@@ -1,12 +1,16 @@
-# One virtual (no real hardware) surveillance/alarm system, split across 4
-# files: this one holds the device/extension setup; the three
-# virtual_surveillance-task_defs_[123]-*.yaml files each define the same
-# task set a different way (fully inlined, via named templates, or fully
-# scripted) and !include this file to get a runnable system. Compare them
-# to see the same behavior expressed in each style.
+# Virtual surveillance/alarm system (no real hardware), composed of:
+#   0) virtual_surveillance-system_setup.yaml (this file) - system setup:
+#      devices, modules, extensions, log.
+#   1) virtual_surveillance-task_defs_1-nested.yaml - task definitions,
+#      inlined, no templates, no scripting. Includes 0).
+#   2) virtual_surveillance-task_defs_2-tempated.yaml - task definitions,
+#      dynamically created tasks factored into named task_specs: templates.
+#      Includes 0).
+#   3) virtual_surveillance-task_defs_3-coded.yaml - task definitions,
+#      every condition/action written as expr:/script code. Includes 0).
 #
-# This file alone has no tasks:, so nothing here is actually acted on by
-# itself -- pick one of the three task_defs files to run.
+# This file (0): device/extension setup only, no tasks: -- pick one of
+# 1)/2)/3) to actually run the system.
 
 heartbeat: 1s
 
