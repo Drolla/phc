@@ -231,16 +231,31 @@ class LogAction(Action):
 
 
 def register_task(specs: dict, flat: dict[str, Device], tasks: list["Task"],
-                   extensions: dict[str, object], sticky_endpoints: set) -> "Task":
+                   extensions: dict[str, object], sticky_endpoints: set,
+                   task_specs: dict[str, dict] | None = None) -> "Task":
     """Build `specs` (same shape as a top-level tasks[] entry) into a Task
     and (re-)register it in the live `tasks` list, replacing any existing
     task with the same tag rather than duplicating it -- so a repeatedly-
     firing trigger re-arms the same spawned task instead of accumulating one
     per firing. Shared by CreateTaskAction and the script sandbox's
-    create_task() function (see _build_rule_namespace)."""
+    create_task() function (see _build_rule_namespace).
+
+    `specs` may give `template: <name>` instead of a full literal task
+    definition, resolved by name against `task_specs` (the top-level
+    `task_specs:` section, name -> raw entry, same shape as a `tasks:`
+    entry) -- see CreateTaskAction."""
     from core.config import _build_task  # local import: avoid config<->task import cycle
 
-    new_task = _build_task(specs, flat, tasks, extensions, sticky_endpoints)
+    if "template" in specs:
+        task_specs = task_specs or {}
+        name = specs["template"]
+        try:
+            specs = task_specs[name]
+        except KeyError:
+            raise ValueError(f"create_task: unknown template {name!r}; "
+                              f"available: {sorted(task_specs)}") from None
+
+    new_task = _build_task(specs, flat, tasks, extensions, sticky_endpoints, task_specs)
     existing = next((t for t in tasks if t.tag == new_task.tag), None)
     if existing is not None:
         tasks.remove(existing)
@@ -265,30 +280,38 @@ def kill_tasks(patterns, tasks: list["Task"]) -> int:
 @register_task_kind("create_task")
 class CreateTaskAction(Action):
     """Builds a new Task from a nested `specs:` task definition (same shape
-    as a top-level tasks[] entry) and appends it to the live task list --
-    so a firing task can spawn a follow-up task at runtime (e.g. "turn this
-    off again in 1s") instead of it having to be pre-declared as an
-    independent, permanently-resident task in YAML. The nested spec is
-    parsed and validated lazily, the first time this fires -- a broken spec
-    raises then, caught like any other action failure by the Scheduler's
-    per-task exception handler, not at config-load time.
+    as a top-level tasks[] entry), or from a named `template:` looked up in
+    the top-level `task_specs:` section, and appends it to the live task
+    list -- so a firing task can spawn a follow-up task at runtime (e.g.
+    "turn this off again in 1s") instead of it having to be pre-declared as
+    an independent, permanently-resident task in YAML. Exactly one of
+    `specs`/`template` is required. Either way, the spec is parsed and
+    validated lazily, the first time this fires -- a broken spec raises
+    then, caught like any other action failure by the Scheduler's per-task
+    exception handler, not at config-load time.
 
     If a task with the same tag already exists, it is replaced rather than
     duplicated -- so a repeatedly-firing trigger (e.g. a condition that can
     hold many times over the process's lifetime) re-arms the same spawned
     task instead of accumulating one per firing."""
 
-    def __init__(self, *, specs: dict, flat: dict[str, Device], tasks: list["Task"],
-                 extensions: dict | None = None, sticky_endpoints: set | None = None, **params):
+    def __init__(self, *, specs: dict | None = None, template: str | None = None,
+                 flat: dict[str, Device], tasks: list["Task"],
+                 extensions: dict | None = None, sticky_endpoints: set | None = None,
+                 task_specs: dict[str, dict] | None = None, **params):
         super().__init__(**params)
-        self._specs = specs
+        if (specs is None) == (template is None):
+            raise ValueError("create_task: specify exactly one of 'specs' or 'template'")
+        self._specs = specs if specs is not None else {"template": template}
         self._flat = flat
         self._tasks = tasks
         self._extensions = extensions if extensions is not None else {}
         self._sticky_endpoints = sticky_endpoints if sticky_endpoints is not None else set()
+        self._task_specs = task_specs
 
     def perform(self, devices: dict[str, Device]) -> None:
-        register_task(self._specs, self._flat, self._tasks, self._extensions, self._sticky_endpoints)
+        register_task(self._specs, self._flat, self._tasks, self._extensions,
+                       self._sticky_endpoints, self._task_specs)
 
 
 @register_task_kind("kill_task")
@@ -360,7 +383,8 @@ def _average(pool: list):
 
 def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device],
                            tasks: list["Task"] | None, extensions: dict[str, object] | None,
-                           sticky_endpoints: set | None, task_tag: str, writable: bool) -> dict:
+                           sticky_endpoints: set | None, task_tag: str, writable: bool,
+                           task_specs: dict[str, dict] | None = None) -> dict:
     """The one place that defines what a condition's `expr:` or a script
     action's `code:` can call -- both ExprCondition.evaluate() and
     ScriptAction.perform() build their namespace here, the former with
@@ -407,7 +431,7 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
 
     namespace.update({
         "set_state": _set_state,
-        "create_task": lambda spec: register_task(spec, flat, tasks, extensions, sticky_endpoints),
+        "create_task": lambda spec: register_task(spec, flat, tasks, extensions, sticky_endpoints, task_specs),
         "kill_task": lambda *tags: kill_tasks(tags, tasks),
         "reset_sticky": _reset_sticky,
         "log": lambda msg: logger.info(msg),
@@ -433,7 +457,7 @@ class ScriptAction(Action):
     def __init__(self, *, code: str, task_tag: str, flat: dict[str, Device],
                  tasks: list["Task"], extensions: dict[str, object] | None = None,
                  sticky_endpoints: set | None = None, refs: dict[str, str] | None = None,
-                 **params):
+                 task_specs: dict[str, dict] | None = None, **params):
         super().__init__(**params)
         self.compiled = scripting.compile_script(code)
         self.refs = refs or {}
@@ -442,12 +466,14 @@ class ScriptAction(Action):
         self._tasks = tasks
         self._extensions = extensions if extensions is not None else {}
         self._sticky_endpoints = sticky_endpoints if sticky_endpoints is not None else set()
+        self._task_specs = task_specs
 
     def perform(self, devices: dict[str, Device]) -> None:
         namespace = _build_rule_namespace(devices=devices, flat=self._flat, tasks=self._tasks,
                                            extensions=self._extensions,
                                            sticky_endpoints=self._sticky_endpoints,
-                                           task_tag=self._task_tag, writable=True)
+                                           task_tag=self._task_tag, writable=True,
+                                           task_specs=self._task_specs)
         for name, ref in self.refs.items():
             device_id, endpoint_key = resolve_endpoint_ref(ref)
             namespace[name] = scripting.EndpointRef(device_id, endpoint_key, devices, self._task_tag)
