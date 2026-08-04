@@ -35,7 +35,6 @@ devices:
   - id: surveillance
     module: virtual
     name: Surveillance control
-    update: 2s
     endpoints:
       # No `default:` here (unlike the other endpoints below): a seeded
       # default commits an initial change event at config-load time, which
@@ -51,7 +50,6 @@ devices:
   - id: hallway_motion
     module: virtual
     name: Hallway motion sensor
-    update: 2s
     endpoints:
       - key: state
         writable: true
@@ -61,7 +59,6 @@ devices:
   - id: siren
     module: virtual
     name: Siren
-    update: 2s
     endpoints:
       - key: state
         writable: true
@@ -72,7 +69,6 @@ devices:
   - id: hallway_light
     module: virtual
     name: Hallway light
-    update: 2s
     endpoints:
       - key: state
         writable: true
@@ -83,7 +79,6 @@ devices:
   - id: porch_light
     module: virtual
     name: Porch light
-    update: 2s
     endpoints:
       - key: state
         writable: true
@@ -94,7 +89,6 @@ devices:
   - id: alarm
     module: virtual
     name: Alarm active flag
-    update: 2s
     endpoints:
       - key: state
         writable: true
@@ -105,7 +99,6 @@ devices:
   - id: all_lights
     module: virtual
     name: All lights override
-    update: 2s
     endpoints:
       # No `default:` (see surveillance/hallway_motion above, same reason):
       # watched by a `changed` condition below.

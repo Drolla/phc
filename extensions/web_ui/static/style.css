@@ -5,6 +5,7 @@
    (Bootstrap doesn't style raw <details> any more than Pico did -- the
    disclosure triangle is browser-default styling either way). */
 
+/* Ensure that the page takes the full window width */
 header.container, main.container {
   max-width: 100% !important;
 }

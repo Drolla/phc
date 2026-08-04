@@ -3,7 +3,7 @@ description: >
   Writes are buffered and echoed back on the next update. Define whatever
   endpoints your device instance needs.
 
-update: "5s"
+update: "1s"
 
 parameters: []
 

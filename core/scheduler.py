@@ -143,6 +143,7 @@ class Scheduler:
             # effect starting the next tick, consistent with tasks only ever
             # observing state committed by the PREVIOUS tick (see Task's
             # class docstring).
+            spent = []
             for task in list(self._tasks):
                 if task.due(now):
                     try:
@@ -153,6 +154,18 @@ class Scheduler:
                         logger.exception("task %s failed", task.tag)
                     finally:
                         task.mark_run(now)
+                    if task.spent:
+                        spent.append(task)
+            # Drop tasks that just fired their one and only run (time-driven,
+            # repeat<=0) -- mark_run() already parked them at due_time=inf, so
+            # this is cleanup, not scheduling; removed after the loop (not
+            # in-place during it) for the same reason the loop iterates a
+            # snapshot: a same-tick create_task/kill_task action may also be
+            # mutating self._tasks.
+            for task in spent:
+                if task in self._tasks:
+                    self._tasks.remove(task)
+                    logger.info("task %s removed (one-shot, fired)", task.tag)
         finally:
             writes = _write_collector.get()
             _write_collector.reset(token)

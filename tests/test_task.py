@@ -380,6 +380,31 @@ def test_time_driven_task_runs_once_when_repeat_zero():
     task.mark_run(0.0)
     assert task.due(0.1) is False
     assert task.due_time == float("inf")
+    assert task.spent is True
+
+
+def test_spent_is_false_before_first_run_and_for_repeating_or_condition_tasks():
+    light = _light("off")
+    devices = {"living_light": light}
+
+    once = Task("once", due_time=0.0, repeat=0.0,
+                actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    assert once.spent is False
+    once.run(0.0, devices)
+    once.mark_run(0.0)
+    assert once.spent is True
+
+    repeating = Task("repeating", due_time=0.0, repeat=3.0,
+                      actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    repeating.run(0.0, devices)
+    repeating.mark_run(0.0)
+    assert repeating.spent is False
+
+    condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
+    conditional = Task("conditional", due_time=float("-inf"), condition=condition,
+                        actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    conditional.mark_run(0.0)
+    assert conditional.spent is False
 
 
 def test_time_driven_task_reschedules_on_repeat():
