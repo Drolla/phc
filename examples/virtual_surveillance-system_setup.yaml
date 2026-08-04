@@ -1,0 +1,155 @@
+# Device/extension setup for a virtual (no real hardware) surveillance/alarm
+# system. Only useful combined with a task-definitions file that includes it
+# (e.g. virtual_surveillance-task_defs_0_orig.yaml) -- this file alone has no
+# tasks:, so nothing here is actually acted on by itself.
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+      # Trace condition.expr/kind:script compilation and evaluation
+      # (source, referenced paths, namespace, result) -- see
+      # core/scripting.py.
+      scripting: DEBUG
+
+# surveillance/armed is the arm/disarm control; hallway_motion/state is the
+# intrusion sensor; all_lights/state is an independent manual on/off
+# override. Toggle these directly to exercise the tasks that watch them.
+devices:
+  - id: surveillance
+    module: virtual
+    name: Surveillance control
+    endpoints:
+      # No `default:` here (unlike the other endpoints below): a seeded
+      # default commits an initial change event at config-load time, which
+      # would still be visible -- and spuriously fire this condition -- on
+      # the Scheduler's very first tick (task pass runs before that tick's
+      # own commit clears it). armed/motion are watched by a `changed`
+      # condition, so they start truly unset instead.
+      - key: armed
+        writable: true
+        type: int
+        values: { 0: "disarmed", 1: "armed" }
+
+  - id: hallway_motion
+    module: virtual
+    name: Hallway motion sensor
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "clear", 1: "detected" }
+
+  - id: siren
+    module: virtual
+    name: Siren
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: hallway_light
+    module: virtual
+    name: Hallway light
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: porch_light
+    module: virtual
+    name: Porch light
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: alarm
+    module: virtual
+    name: Alarm active flag
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "clear", 1: "active" }
+        default: 0
+
+  - id: all_lights
+    module: virtual
+    name: All lights override
+    endpoints:
+      # No `default:` (see surveillance/hallway_motion above, same reason):
+      # watched by a `changed` condition below.
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+
+  - id: sun_zurich
+    module: sun
+    name: Sun (Zurich)
+    update: 1h
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich
+
+# Randomizes the hallway/porch lights while armed (enable_ref) and not
+# alarmed (pause_ref) -- see extensions/random_light. Sends an alert mail
+# (with an email-to-SMS gateway address alongside an ordinary mailbox) when
+# an intrusion is detected -- see extensions/mail_alert.
+extensions:
+  mail_alert:
+    house:
+      smtp_host: "smtp.example.com"
+      username: "alerts@example.com"
+      password: "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
+      from: "alerts@example.com"
+      to:
+        - "someone@example.com"
+        - "15555550123@sms.example.com"
+
+  random_light:
+    house:
+      enable_ref: "surveillance.armed"
+      pause_ref: "alarm.state"
+      sun_device: "sun_zurich"
+      lights:
+        # hallway_light sets neither windows/min_interval/probability_on of
+        # its own -- it inherits extensions/random_light/extension.yaml's
+        # own default windows (a fixed evening cutoff, sunset-relative
+        # start; a fixed morning start, sunrise-relative end), demonstrating
+        # the extension-default -> instance -> per-light cascade.
+        - device: "hallway_light.state"
+          default: true
+        # porch_light overrides all three per-light instead.
+        - device: "porch_light.state"
+          windows:
+            - { start: "20:00", end: "23:00" }
+          min_interval: 25m
+          probability_on: 0.3
+
+  web_ui:
+    home:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: home
+          title: Surveillance
+          sections:
+            - id: security
+              title: Security
+              collapsed: false
+              selectors: ["surveillance/*", "alarm/*", "hallway_motion/*", "siren/*"]
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["hallway_light/*", "porch_light/*", "all_lights/*"]
