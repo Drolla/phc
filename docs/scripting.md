@@ -179,7 +179,7 @@ registered across the codebase:
 | `set` | Set the target endpoint to a literal `value:` or a dynamic `expr:` result. |
 | `toggle` | Flip the target endpoint between its two declared `values`, or `"on"`/`"off"`. |
 | `log` | Log a `message` template (`{state}`/`{text}` available) against the target. |
-| `create_task` | Build and register a new task at runtime from a nested `specs:`. |
+| `create_task` | Build and register a new task at runtime from a nested `specs:`, or from a named `template:` (see [Reusable task templates](#reusable-task-templates)). |
 | `kill_task` | Remove every task whose tag matches any of `tags` (fnmatch glob). |
 | `script` | Run a restricted-Python script against the shared sandbox, writable. |
 | `mail_alert` | Send one message through a configured SMTP instance — see [mail alerts](mail-alert.md). |
@@ -242,9 +242,65 @@ case: one action logs, sets two endpoints, and schedules a timed follow-up
 task, all together.
 
 See
-[`examples/virtual_surveillance_system.yaml`](../examples/virtual_surveillance_system.yaml)
+[`examples/virtual_surveillance-task_defs_3-coded.yaml`](../examples/virtual_surveillance-task_defs_3-coded.yaml)
 for a fuller worked example (arm/disarm, retriggered intrusion detection,
-timed follow-ups, mass-cancel on disarm).
+timed follow-ups, mass-cancel on disarm) — paired with
+[`examples/virtual_surveillance-system_setup.yaml`](../examples/virtual_surveillance-system_setup.yaml)
+via `!include` (see [Splitting configuration across
+files](configuration.md#splitting-configuration-across-files)). The same
+task set is also available written two other ways: fully inlined
+([`_1-nested.yaml`](../examples/virtual_surveillance-task_defs_1-nested.yaml))
+or via named templates
+([`_2-tempated.yaml`](../examples/virtual_surveillance-task_defs_2-tempated.yaml),
+see [Reusable task templates](#reusable-task-templates) below).
+
+## Reusable task templates
+
+A `create_task` action's nested `specs:` can get deeply repetitive when the
+same follow-up shape is spawned from several places, or when a task's own
+actions spawn further nested tasks (a `create_task` whose `specs:` itself
+contains a `create_task`). The top-level `task_specs:` section holds named,
+reusable task definitions — each entry the same shape as a `tasks:` entry —
+that a `create_task` action can instantiate by name instead of repeating
+the whole definition inline:
+
+```yaml
+task_specs:
+  - tag: clear_alert
+    time: "+1s"
+    action: { kind: set, device: "siren.state", value: 0 }
+
+tasks:
+  - tag: intrusion
+    condition: { device: "hallway.motion", changed: true, value: 1 }
+    actions:
+      - { kind: set, device: "siren.state", value: 1 }
+      - { kind: create_task, template: clear_alert }
+```
+
+`template:` and `specs:` are mutually exclusive — give exactly one.
+Resolution happens lazily, the first time the `create_task` action actually
+fires (matching a literal `specs:`'s own laziness): an unknown `template:`
+name only raises once something tries to instantiate it, not at config-load
+time. This also means a `task_specs:` entry that's never referenced by any
+`create_task` is simply never built into a `Task` — task_specs: on its own
+declares nothing live.
+
+The same `template:` key works from a script's `create_task()` call, since
+both surfaces resolve through the same lookup:
+
+```yaml
+actions:
+  - kind: script
+    code: "create_task({'template': 'clear_alert'})"
+```
+
+A `task_specs:` entry's own `actions:` can itself use `create_task`/
+`template:` to spawn further tasks — useful for pulling a task's nested
+follow-ups out of a `script` action's `code:`, so a `create_task` call
+doesn't need a `code:` string embedded inside another `code:` string. See
+[`examples/virtual_surveillance-task_defs_3-coded.yaml`](../examples/virtual_surveillance-task_defs_3-coded.yaml)'s
+`surv_intrusion` template for a worked example of exactly that.
 
 ## Sticky values & history
 
