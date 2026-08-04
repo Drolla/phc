@@ -14,9 +14,10 @@ log:
       # core/scripting.py.
       scripting: DEBUG
 
-# surveillance/armed is the arm/disarm control; hallway_motion/state is the
-# intrusion sensor; all_lights/state is an independent manual on/off
-# override. Toggle these directly to exercise the tasks that watch them.
+# surveillance/armed is the arm/disarm control; hallway_motion/state and
+# cellar_motion/state are the intrusion sensors; all_lights/state is an
+# independent manual on/off override. Toggle these directly to exercise the
+# tasks that watch them.
 devices:
   - id: surveillance
     module: virtual
@@ -36,6 +37,15 @@ devices:
   - id: hallway_motion
     module: virtual
     name: Hallway motion sensor
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "clear", 1: "detected" }
+
+  - id: cellar_motion
+    module: virtual
+    name: Cellar motion sensor
     endpoints:
       - key: state
         writable: true
@@ -148,7 +158,7 @@ extensions:
             - id: security
               title: Security
               collapsed: false
-              selectors: ["surveillance/*", "alarm/*", "hallway_motion/*", "siren/*"]
+              selectors: ["surveillance/*", "alarm/*", "hallway_motion/*", "cellar_motion/*", "siren/*"]
             - id: lights
               title: Lights
               collapsed: false
