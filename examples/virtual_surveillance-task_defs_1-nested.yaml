@@ -1,0 +1,85 @@
+# Description 1) - Simple statements, no code, all tasks embedded. Combined
+# with virtual_surveillance-system_setup.yaml, included below.
+
+<<: !include virtual_surveillance-system_setup.yaml
+
+tasks:
+  - tag: surveillance_enable
+    description: "Arming resets the alarm flag and forces lights off before random control takes over"
+    condition: { device: "surveillance.armed", changed: true, value: 1 }
+    actions:
+      - {kind: log, device: "surveillance.armed", message: "surveillance enabled"}
+      - {kind: set, device: "alarm.state", value: 0}
+      - {kind: random_light, instance: "random_light.house", force: 0}
+      - kind: create_task
+        specs:
+          tag: surv_random_light
+          description: "While armed and not alarmed, randomize the hallway/porch lights"
+          time: +5s
+          repeat: 1m
+          action: { kind: random_light, instance: "random_light.house" }
+      - kind: create_task
+        specs:
+          tag: surv_intrusion
+          description: "Motion while armed raises the alarm, at most once per 5 minutes"
+          condition:
+            refs: { hallway: "hallway_motion.state", cellar: "cellar_motion.state" }
+            expr: "(hallway.changed and hallway.state == 1) or (cellar.changed and cellar.state == 1)"
+          min_interval: 5m
+          actions:
+            - {kind: log, device: "alarm.state", message: "intrusion detected"}
+            - {kind: set, device: "alarm.state", value: 1}
+            - {kind: set, device: "siren.state", value: 1}
+            - kind: create_task
+              specs:
+                tag: surv_alert_log
+                time: "+2s"
+                action: { kind: log, device: "alarm.state", message: "alert: intrusion detected" }
+            - kind: create_task
+              specs:
+                tag: surv_siren_off
+                time: "+3m"
+                action: { kind: set, device: "siren.state", value: 0 }
+            - kind: create_task
+              specs:
+                tag: surv_light_off
+                time: "+45m"
+                actions:
+                  - { kind: set, device: "hallway_light.state", value: 0 }
+                  - { kind: set, device: "alarm.state", value: 0 }
+                  - { kind: random_light, instance: "random_light.house", force: 0 }
+            - {kind: random_light, instance: "random_light.house", force: 1}
+            - kind: create_task
+              specs:
+                tag: surv_alert_mail
+                description: "Send the intrusion alert mail, at most once per 45 minutes"
+                time: "+2s"
+                min_interval: 45m
+                action: { kind: mail_alert, instance: "mail_alert.house", title: "Surveillance - Intrusion Alert", message: "Motion detected while armed" }
+
+  - tag: surveillance_disable
+    description: "Disarming clears the siren/lights and cancels pending follow-ups"
+    condition: { device: "surveillance.armed", changed: true, value: 0 }
+    actions:
+      - {kind: log, device: "surveillance.armed", message: "surveillance disabled"}
+      - {kind: set, device: "siren.state", value: 0}
+      - {kind: set, device: "hallway_light.state", value: 0}
+      - {kind: set, device: "alarm.state", value: 0}
+      - {kind: kill_task, tags: ["surv_*"]}
+      - {kind: random_light, instance: "random_light.house", force: 0}
+
+  - tag: surveillance_all_lights_on
+    description: "Manual override: force every light on and silence the siren"
+    condition: { device: "all_lights.state", changed: true, value: 1 }
+    actions:
+      - {kind: log, device: "all_lights.state", message: "all lights on"}
+      - {kind: set, device: "siren.state", value: 0}
+      - {kind: random_light, instance: "random_light.house", force: 1}
+
+  - tag: surveillance_all_lights_off
+    description: "Manual override: force every light off and silence the siren"
+    condition: { device: "all_lights.state", changed: true, value: 0 }
+    actions:
+      - {kind: log, device: "all_lights.state", message: "all lights off"}
+      - {kind: set, device: "siren.state", value: 0}
+      - {kind: random_light, instance: "random_light.house", force: 0}

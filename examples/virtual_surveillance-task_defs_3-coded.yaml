@@ -1,0 +1,97 @@
+# Description 3) - Every condition is an expr:, every action list is a
+# single script (code:) statement -- random_light/mail_alert stay as
+# separate declarative actions alongside the script since the sandbox has
+# no callable equivalent for extension action kinds (see docs/scripting.md).
+# Combined with virtual_surveillance-system_setup.yaml, included below.
+#
+# surv_intrusion is the one task whose own actions include a further
+# nested `kind: script` (its follow-up create_task calls), which would
+# otherwise mean a code: string embedded inside another code: string.
+# Rather than inline it, it's pulled out into task_specs: below and
+# create_task is called with a `template:` reference instead of a literal
+# spec -- narrowly avoiding the code-in-code case, without templating
+# anything else in this file.
+
+<<: !include virtual_surveillance-system_setup.yaml
+
+task_specs:
+  - tag: surv_intrusion
+    description: "Motion while armed raises the alarm, at most once per 5 minutes"
+    condition:
+      expr: "(changed('hallway_motion.state') and state('hallway_motion.state') == 1)
+             or (changed('cellar_motion.state') and state('cellar_motion.state') == 1)"
+    min_interval: 5m
+    actions:
+      - kind: script
+        code: |
+          log('intrusion detected')
+          set_state('alarm.state', 1)
+          set_state('siren.state', 1)
+          create_task({'tag': 'surv_alert_log', 'time': '+2s',
+                       'action': {'kind': 'log', 'device': 'alarm.state',
+                                  'message': 'alert: intrusion detected'}})
+          create_task({'tag': 'surv_siren_off', 'time': '+3m',
+                       'action': {'kind': 'set', 'device': 'siren.state', 'value': 0}})
+          create_task({'tag': 'surv_light_off', 'time': '+45m', 'actions': [
+              {'kind': 'set', 'device': 'hallway_light.state', 'value': 0},
+              {'kind': 'set', 'device': 'alarm.state', 'value': 0},
+              {'kind': 'random_light', 'instance': 'random_light.house', 'force': 0},
+          ]})
+          create_task({'tag': 'surv_alert_mail', 'time': '+2s', 'min_interval': '45m',
+                       'description': 'Send the intrusion alert mail, at most once per 45 minutes',
+                       'action': {'kind': 'mail_alert', 'instance': 'mail_alert.house',
+                                  'title': 'Surveillance - Intrusion Alert',
+                                  'message': 'Motion detected while armed'}})
+      - {kind: random_light, instance: "random_light.house", force: 1}
+
+tasks:
+  - tag: surveillance_enable
+    description: "Arming resets the alarm flag and forces lights off before random control takes over"
+    condition: { expr: "changed('surveillance.armed') and state('surveillance.armed') == 1" }
+    actions:
+      - kind: script
+        code: |
+          log('surveillance enabled')
+          set_state('alarm.state', 0)
+          create_task({
+              'tag': 'surv_random_light',
+              'description': 'While armed and not alarmed, randomize the hallway/porch lights',
+              'time': '+5s',
+              'repeat': '1m',
+              'action': { 'kind': 'random_light', 'instance': 'random_light.house' },
+          })
+          create_task({'template': 'surv_intrusion'})
+      - {kind: random_light, instance: "random_light.house", force: 0}
+
+  - tag: surveillance_disable
+    description: "Disarming clears the siren/lights and cancels pending follow-ups"
+    condition: { expr: "changed('surveillance.armed') and state('surveillance.armed') == 0" }
+    actions:
+      - kind: script
+        code: |
+          log('surveillance disabled')
+          set_state('siren.state', 0)
+          set_state('hallway_light.state', 0)
+          set_state('alarm.state', 0)
+          kill_task('surv_*')
+      - {kind: random_light, instance: "random_light.house", force: 0}
+
+  - tag: surveillance_all_lights_on
+    description: "Manual override: force every light on and silence the siren"
+    condition: { expr: "changed('all_lights.state') and state('all_lights.state') == 1" }
+    actions:
+      - kind: script
+        code: |
+          log('all lights on')
+          set_state('siren.state', 0)
+      - {kind: random_light, instance: "random_light.house", force: 1}
+
+  - tag: surveillance_all_lights_off
+    description: "Manual override: force every light off and silence the siren"
+    condition: { expr: "changed('all_lights.state') and state('all_lights.state') == 0" }
+    actions:
+      - kind: script
+        code: |
+          log('all lights off')
+          set_state('siren.state', 0)
+      - {kind: random_light, instance: "random_light.house", force: 0}
