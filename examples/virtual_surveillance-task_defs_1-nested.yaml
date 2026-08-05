@@ -32,6 +32,11 @@ tasks:
           description: "While armed and not alarmed, randomize the hallway/porch lights"
           time: +5s
           repeat: 1m
+          # Only "not alarmed" needs a condition here -- "armed" is already
+          # implicit: this task only exists while armed, since it's spawned
+          # here (surveillance_enable) and killed on disarm (see
+          # surveillance_disable's kill_task below).
+          condition: { device: "alarm.state", value: 0 }
           action: { kind: random_light, instance: "random_light.house" }
       - kind: create_task
         specs:

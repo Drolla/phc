@@ -69,33 +69,15 @@ def _parse_probability(value, label: str) -> float:
     return probability_on
 
 
-def _resolve_optional_ref(spec, flat: dict[str, Device], instance_key: str, label: str):
-    """Resolve an optional "<device>.<endpoint>" ref param (enable_ref/
-    pause_ref) to (device_id, endpoint_key), or None if unset."""
-    if not spec:
-        return None
-    device_id, endpoint_key = resolve_endpoint_ref(spec)
-    if device_id not in flat:
-        raise ConfigError(f"random_light instance {instance_key!r}: {label} device {device_id!r} not found")
-    return device_id, endpoint_key
-
-
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "RandomLightInstance":
-    """Extension entry point (see core.config._load_extensions): parse and
-    validate every configured light against `flat`, plus optional
-    enable_ref/pause_ref gating and the sun device (only required if some
-    light's *effective* windows -- its own, or the instance default it
-    falls back to -- reference it). `extensions_registry` (see
-    core.config._load_extensions) is unused here -- random_light never
-    references another extension's instance.
-
-    `windows`/`min_interval`/`probability_on` are declared, defaulted
-    extension parameters (extension.yaml), so `params[...]` already holds
-    the instance's value or extension.yaml's default by the time this
-    runs (read directly, no `.get()`, matching extensions/logdb). Each
-    light may still override any of the three -- the extension/instance/
-    per-light cascade."""
+    """Extension entry point (see core.config._load_extensions and
+    docs/random-light.md). `extensions_registry` is unused -- random_light
+    never references another extension's instance. `windows`/`min_interval`/
+    `probability_on` are declared, defaulted extension parameters
+    (extension.yaml), so `params[...]` already holds the instance's value
+    or extension.yaml's default by the time this runs (read directly, no
+    `.get()`, matching extensions/logdb)."""
     default_label = f"instance {instance_key!r} default"
     default_windows, default_needs_sun = _parse_windows(params["windows"], default_label)
     default_min_interval = parse_duration(params["min_interval"])
@@ -140,31 +122,24 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
     if needs_sun and sun_device_id not in flat:
         raise ConfigError(f"random_light instance {instance_key!r}: sun device {sun_device_id!r} not found")
 
-    enable_ref = _resolve_optional_ref(params.get("enable_ref"), flat, instance_key, "enable_ref")
-    pause_ref = _resolve_optional_ref(params.get("pause_ref"), flat, instance_key, "pause_ref")
-
     controller = RandomLightController(lights)
-    return RandomLightInstance(controller, targets, sun_device_id=sun_device_id if needs_sun else None,
-                                enable_ref=enable_ref, pause_ref=pause_ref)
+    return RandomLightInstance(controller, targets, sun_device_id=sun_device_id if needs_sun else None)
 
 
 class RandomLightInstance:
     """One configured random_light instance: a RandomLightController (the
-    pure algorithm) plus the resolved device targets and optional gating
-    refs. apply() is called by RandomLightAction.perform() (below), which
-    runs in the Scheduler's task pass (pass 2) -- so writes here are
-    automatically batched via core.device's _write_collector, like any
-    other Action (unlike an on_tick hook, which runs in pass 4, outside
-    that context; this instance has no on_tick)."""
+    pure algorithm) plus the resolved device targets. apply() is called by
+    RandomLightAction.perform() (below), which runs in the Scheduler's task
+    pass (pass 2) -- so writes here are automatically batched via
+    core.device's _write_collector, like any other Action (unlike an
+    on_tick hook, which runs in pass 4, outside that context; this instance
+    has no on_tick)."""
 
     def __init__(self, controller: RandomLightController, targets: dict[str, tuple[str, str]],
-                 sun_device_id: str | None, enable_ref: tuple[str, str] | None,
-                 pause_ref: tuple[str, str] | None):
+                 sun_device_id: str | None):
         self._controller = controller
         self._targets = targets
         self._sun_device_id = sun_device_id
-        self._enable_ref = enable_ref
-        self._pause_ref = pause_ref
 
     @staticmethod
     def _read(devices: dict[str, Device], ref: tuple[str, str]):
@@ -172,19 +147,11 @@ class RandomLightInstance:
         return devices[device_id].get(endpoint_key)
 
     def apply(self, devices: dict[str, Device], force: int | None = None) -> None:
-        """force=None: run the gated periodic randomize pass -- a no-op if
-        pause_ref reads 1, or enable_ref is set and doesn't read 1.
-        force=0/1: bypass pause_ref/enable_ref/windows entirely, forcing
-        every light to that value -- for a surrounding system's own on/off
-        calls (arm, disarm, alarm). Reads current states and sunrise/sunset
-        fresh each call (never cached); writes only lights whose target
-        differs from their current state."""
-        if force is None:
-            if self._pause_ref is not None and self._read(devices, self._pause_ref) == 1:
-                return
-            if self._enable_ref is not None and self._read(devices, self._enable_ref) != 1:
-                return
-
+        """force=None: run the periodic randomize pass. force=0/1: bypass
+        windows entirely, forcing every light to that value -- for a
+        surrounding system's own on/off calls (arm, disarm, alarm). Reads
+        current states and sunrise/sunset fresh each call (never cached);
+        writes only lights whose target differs from their current state."""
         now = time.time()
         current_states = {light_id: self._read(devices, ref) for light_id, ref in self._targets.items()}
         sunrise = sunset = None

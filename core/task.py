@@ -481,34 +481,16 @@ class ScriptAction(Action):
 
 
 class Task:
-    """A scheduled or condition-driven unit of work.
+    """A scheduled and/or condition-gated unit of work, self-managing its
+    own due_time/`finished` state from a single run() call each tick. See
+    docs/configuration.md#tasks for the gating/repeat/min_interval
+    semantics and the due_time defaulting matrix.
 
-    Two firing modes, both driven by the Scheduler's tick(now):
-      - Condition-driven (condition is not None): due() is always True;
-        run() only performs the actions if condition.evaluate() is True.
-        `repeat`/`due_time` are not used for scheduling in this mode. Since
-        the Scheduler runs tasks before committing this tick's fetch (see
-        core/scheduler.py), a `changed` condition can only observe what was
-        committed by the PREVIOUS tick -- it reacts to a device's change
-        one tick after that value was actually fetched, never the same tick.
-      - Time-driven (condition is None): due() fires once due_time is
-        reached. If repeat > 0, mark_run() advances due_time by whole
-        multiples of repeat (mirrors parse_time's own repeat-rollforward,
-        so a stalled process catches up instead of firing a burst). If
-        repeat <= 0, the task fires at most once (due_time -> +inf, see
-        `spent`) and the Scheduler drops it from its task list right after,
-        rather than keeping it resident but permanently dormant.
+    `finished` is read-only: Indicates that the task is executed and not
+    required anymore."""
 
-    `min_interval` (default 0: no cooldown) is a retrigger cooldown applied
-    uniformly to both modes: once fired, run() won't fire again until at
-    least `min_interval` seconds have passed, regardless of how often the
-    condition holds or due_time is reached in between -- mirrors the
-    previous Tcl system's job `-min_interval`, primarily useful for
-    debouncing a `changed`/`expr` condition that could otherwise re-fire
-    every tick it holds."""
-
-    def __init__(self, tag: str, *, description: str = "", due_time: float,
-                 repeat: float = 0.0, min_interval: float = 0.0,
+    def __init__(self, tag: str, *, description: str = "", due_time: float | None = None,
+                 repeat: float | None = None, min_interval: float = 0.0,
                  condition: Condition | ExprCondition | None = None,
                  actions: list[Action]):
         self.tag = tag
@@ -518,22 +500,18 @@ class Task:
         self.min_interval = min_interval
         self.condition = condition
         self.actions = actions
+        self._finished = False
         self._last_fired = float("-inf")
 
-    def due(self, now: float) -> bool:
-        """True if run() should be called this tick: always True for
-        condition-driven tasks (the condition itself gates whether actions
-        fire), else True once `now` reaches due_time."""
-        if self.condition is not None:
-            return True
-        return now >= self.due_time
-
     def run(self, now: float, devices: dict[str, Device]) -> bool:
-        """Perform all actions, in order, if due and not cooling down.
-        Returns True iff the actions ran this call. The condition/due-ness
-        and min_interval gates are both checked once per call, not per
-        action -- every action in the list fires unconditionally once both
-        gates pass."""
+        """Gate on due_time, condition, then min_interval (each checked once
+        per call, not per action) -- a fixed short-circuit chain, so a false
+        condition or a cooldown still in effect returns before
+        min_interval's own bookkeeping (`_last_fired`) is touched. Runs all
+        actions and rearms/finishes (see docs/configuration.md#tasks) if
+        every gate passes. Returns True iff the actions ran."""
+        if self.due_time is not None and now < self.due_time:
+            return False
         if self.condition is not None and not self.condition.evaluate(devices):
             return False
         if self.min_interval and (now - self._last_fired) < self.min_interval:
@@ -541,24 +519,14 @@ class Task:
         for action in self.actions:
             action.perform(devices)
         self._last_fired = now
+        if self.due_time is not None:
+            # See class docstring: a bare condition task (due_time still
+            # None) skips this branch entirely and just stays resident.
+            if self.repeat is None:
+                self._finished = True
+            elif self.repeat > 0:
+                self.due_time += self.repeat * math.ceil((now - self.due_time + 1e-9) / self.repeat)
         return True
 
-    def mark_run(self, now: float) -> None:
-        """Advance due_time past `now` for a time-driven task (see class
-        docstring); no-op for condition-driven tasks."""
-        if self.condition is not None:
-            return
-        if self.repeat and self.repeat > 0:
-            self.due_time += self.repeat * math.ceil((now - self.due_time + 1e-9) / self.repeat)
-        else:
-            self.due_time = float("inf")
-
     last_fired = property(lambda self: self._last_fired)
-
-    @property
-    def spent(self) -> bool:
-        """True once a time-driven, non-repeating task has fired its one and
-        only run (mark_run() parked it at due_time=inf) and can be dropped
-        from the Scheduler's task list. Always False for a condition-driven
-        or repeating task, which stay resident indefinitely."""
-        return self.condition is None and self.repeat <= 0 and self.due_time == float("inf")
+    finished = property(lambda self: self._finished)

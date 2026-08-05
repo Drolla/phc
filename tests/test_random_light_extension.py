@@ -1,6 +1,6 @@
 """Tests for extensions.random_light.extension: configure()'s validation
 and extension-default/instance/per-light cascade, RandomLightInstance.apply()'s
-gating/write-diffing, RandomLightAction, and an end-to-end test through
+write-diffing, RandomLightAction, and an end-to-end test through
 core.config.load_system(). The pure algorithm itself is tested in
 tests/test_random_light.py."""
 
@@ -30,10 +30,7 @@ def _devices():
     porch_light = VirtualDevice("porch_light", endpoints=[
         Endpoint("state", writable=True, value_type="int", values={0: "off", 1: "on"}),
     ])
-    surveillance = VirtualDevice("surveillance", endpoints=[Endpoint("armed", writable=True, value_type="int")])
-    alarm = VirtualDevice("alarm", endpoints=[Endpoint("state", writable=True, value_type="int")])
-    return {"hallway_light": hallway_light, "porch_light": porch_light,
-            "surveillance": surveillance, "alarm": alarm}
+    return {"hallway_light": hallway_light, "porch_light": porch_light}
 
 
 def _light_entry(**overrides):
@@ -54,8 +51,6 @@ def _base_params(**overrides):
         "min_interval": "30m",
         "probability_on": 0.5,
         "sun_device": "sun",
-        "enable_ref": None,
-        "pause_ref": None,
     }
     params.update(overrides)
     return params
@@ -205,48 +200,7 @@ def test_configure_instance_default_sun_anchored_ok_when_sun_device_present():
     assert instance._sun_device_id == "sun"
 
 
-# ---------- configure(): enable_ref / pause_ref ----------
-
-def test_configure_enable_ref_unknown_device_raises():
-    flat = _devices()
-    with pytest.raises(ConfigError):
-        configure(_base_params(enable_ref="nonexistent.state"), flat, "random_light.house")
-
-
-def test_configure_pause_ref_unknown_device_raises():
-    flat = _devices()
-    with pytest.raises(ConfigError):
-        configure(_base_params(pause_ref="nonexistent.state"), flat, "random_light.house")
-
-
-def test_configure_enable_and_pause_ref_none_when_omitted():
-    flat = _devices()
-    instance = configure(_base_params(), flat, "random_light.house")
-    assert instance._enable_ref is None
-    assert instance._pause_ref is None
-
-
 # ---------- RandomLightInstance.apply() ----------
-
-def test_apply_no_op_when_paused():
-    flat = _devices()
-    params = _base_params(lights=[_light_entry(probability_on=1.0)], pause_ref="alarm.state")
-    instance = configure(params, flat, "random_light.house")
-    _commit(flat["hallway_light"], "state", 0)
-    _commit(flat["alarm"], "state", 1)
-    instance.apply(flat)
-    assert flat["hallway_light"]._pending == {}
-
-
-def test_apply_no_op_when_not_enabled():
-    flat = _devices()
-    params = _base_params(lights=[_light_entry(probability_on=1.0)], enable_ref="surveillance.armed")
-    instance = configure(params, flat, "random_light.house")
-    _commit(flat["hallway_light"], "state", 0)
-    _commit(flat["surveillance"], "armed", 0)
-    instance.apply(flat)
-    assert flat["hallway_light"]._pending == {}
-
 
 def test_apply_writes_only_changed_lights():
     flat = _devices()
@@ -262,15 +216,15 @@ def test_apply_writes_only_changed_lights():
     assert flat["porch_light"]._pending == {}
 
 
-def test_apply_force_bypasses_gating():
+def test_apply_force_bypasses_window():
+    # A window that can never be "inside" (end before start, see
+    # Light.in_window) -- force=1 still turns the light on regardless.
     flat = _devices()
-    params = _base_params(enable_ref="surveillance.armed", pause_ref="alarm.state")
+    params = _base_params(lights=[_light_entry(windows=[{"start": "12:00", "end": "11:59"}])])
     instance = configure(params, flat, "random_light.house")
-    _commit(flat["hallway_light"], "state", 1)
-    _commit(flat["surveillance"], "armed", 0)
-    _commit(flat["alarm"], "state", 1)
-    instance.apply(flat, force=0)
-    assert flat["hallway_light"]._pending == {"state": 0}
+    _commit(flat["hallway_light"], "state", 0)
+    instance.apply(flat, force=1)
+    assert flat["hallway_light"]._pending == {"state": 1}
 
 
 # ---------- RandomLightAction ----------

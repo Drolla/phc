@@ -140,6 +140,100 @@ the command line.
 There is no `log_levels:` top-level key — every destination carries its own
 `levels:` instead.
 
+## Tasks
+
+A task fires its `action:`/`actions:` when it's *due* and its `condition:`
+(if any) holds. Every task needs a unique `tag:` (used by `kill_task`/
+`create_task` to target it, see [scripting.md](scripting.md#reusable-task-templates))
+and exactly one of `action:`/`actions:`.
+
+### Gating: `condition:` and `time:`/`repeat:`
+
+`condition:` and `time:`/`repeat:` are independent knobs, not mutually
+exclusive -- a task may give either, both, or neither:
+
+- Neither `condition:` nor `time:`/`repeat:` -- due every heartbeat tick,
+  unconditionally.
+- `condition:` only (no `time:`, no `repeat:`) -- due every tick, but only
+  fires when the condition holds (e.g.
+  `{ device: "house.motion.state", changed: true }` or an `expr:`, see
+  [scripting.md](scripting.md#conditions)). This is how to express an
+  always-armed rule, since there's no separate "permanent job" category.
+- `time:` and/or `repeat:` given (with or without `condition:`) -- fires on
+  the schedule described below, and only when the condition also holds at
+  that moment if one is given (e.g. "check at 22:00, but only if the light
+  is still on").
+
+### `repeat:` — one-shot, permanent, or repeating
+
+`repeat:` controls what happens after a due-time task fires:
+
+- Omitted -- **one-shot**: fires once at `time:`, then the task is removed
+  from the running system.
+- `0` or negative -- **permanent**: `time:` only matters for the very first
+  check; after that the task is due every tick, forever (subject to
+  `condition:`/`min_interval:` as usual).
+- A positive duration -- **repeating**: after firing, `time:` advances by
+  whole multiples of `repeat:` until it's `>= now`, so a stalled process
+  catches up instead of firing a burst, then the task fires again once
+  that new time is reached.
+
+`time:` is always optional. Omitting it defaults the first due-time to
+"now" (the task fires on the next heartbeat) -- except with no `repeat:`
+and a `condition:` given, which has no due-time schedule at all:
+
+| `time:` | `repeat:` | `condition:` | First due-time | Behavior |
+|---|---|---|---|---|
+| omitted | omitted | omitted | now | one-shot, fires next heartbeat |
+| omitted | omitted | given | *(none)* | always-armed, condition-gated only |
+| omitted | 0/negative | either | now | permanent, fires next heartbeat then every tick |
+| omitted | positive | either | now | repeating, anchored at now |
+| given | omitted | either | `time:` | one-shot, fires once |
+| given | 0/negative | either | `time:` | permanent, first check at `time:` |
+| given | positive | either | `time:` | repeating, anchored at `time:` |
+
+("either" means `condition:` may or may not also be given; it just adds
+the condition gate on top of the due-time behavior in that row.)
+
+### `min_interval:` — retrigger cooldown
+
+An optional `min_interval:` adds a retrigger cooldown on top of the above:
+once fired, a task won't fire again until at least that long has passed,
+regardless of how often its condition holds or its due-time schedule comes
+up in between -- primarily useful for debouncing a `changed`/`expr`
+condition, or a permanent/fast-repeating task, that would otherwise
+re-fire every tick.
+
+When a task becomes due, its gates are checked in a fixed order, each one
+short-circuiting the rest: `time:`/`repeat:` due-ness first, then
+`condition:`, then `min_interval:`. In particular, a false `condition:` or
+a cooldown still in effect stops the check right there — the task's
+actions never run, and `min_interval:`'s own retrigger timer isn't touched
+by a fire that didn't happen.
+
+### Tasks and the heartbeat: a one-tick lag
+
+Every task in a running system is checked once per heartbeat `tick`, all
+against the *same* snapshot of device state -- specifically, whatever the
+previous tick committed. A tick first fetches every due device, then runs
+tasks, then commits the newly fetched values and computes this tick's
+change events. Because tasks run *before* that commit, a `condition:
+{ changed: true }` (or an `expr:` using `changed()`/`event()`) reacts to a
+device's change exactly one tick after the value was actually fetched --
+never on the same tick the change was observed. This is deliberate and
+keeps every task's view of the world consistent within a tick, rather than
+having task order affect which tasks see a change first.
+
+### Actions
+
+Each `action:`/entry in `actions:` runs one effect against a device, the
+task list, or an extension -- `set`, `toggle`, `log`, `create_task`,
+`kill_task`, `script`, or an extension-provided kind (e.g.
+[`mail_alert`](mail-alert.md)). See
+[scripting.md](scripting.md#actions) for the full list and when to reach
+for each, and [Reusable task templates](scripting.md#reusable-task-templates)
+for spawning/replacing tasks at runtime via `create_task`.
+
 ## Time and duration strings
 
 `update:` intervals, a task's `repeat:`/`min_interval:`, an endpoint's

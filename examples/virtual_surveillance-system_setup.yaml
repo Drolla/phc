@@ -116,10 +116,9 @@ devices:
     longitude: 8.5417
     timezone: Europe/Zurich
 
-# Randomizes the hallway/porch lights while armed (enable_ref) and not
-# alarmed (pause_ref) -- see extensions/random_light. Sends an alert mail
-# (with an email-to-SMS gateway address alongside an ordinary mailbox) when
-# an intrusion is detected -- see extensions/mail_alert.
+# Randomizes the hallway/porch lights and ends an alert mail (with an
+# email-to-SMS gateway address alongside an ordinary mailbox) when an intrusion
+# is detected.
 extensions:
   mail_alert:
     house:
@@ -133,8 +132,6 @@ extensions:
 
   random_light:
     house:
-      enable_ref: "surveillance.armed"
-      pause_ref: "alarm.state"
       sun_device: "sun_zurich"
       lights:
         # hallway_light sets neither windows/min_interval/probability_on of

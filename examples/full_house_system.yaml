@@ -163,8 +163,6 @@ extensions:
 
   random_light:
     house:
-      enable_ref: "house.surveillance.armed"
-      pause_ref: "house.alarm.state"
       sun_device: "sun_zurich"
       lights:
         # corridor_light inherits this instance's own default windows
@@ -330,6 +328,9 @@ tasks:
     description: "While armed and not alarmed, randomize the corridor/porch lights"
     time: +5s
     repeat: 1m
+    condition:
+      refs: { armed: "house.surveillance.armed", alarm: "house.alarm.state" }
+      expr: "armed.state == 1 and alarm.state == 0"
     action: { kind: random_light, instance: "random_light.house" }
 
   - tag: surveillance_intrusion

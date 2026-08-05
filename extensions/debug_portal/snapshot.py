@@ -12,29 +12,32 @@ from core.task import Task
 
 def _task_sort_key(due_in: float | None, mode: str) -> tuple[int, float]:
     """Planned-execution-order sort key: soonest numeric due_in first, then
-    condition-driven tasks (re-evaluated every tick, so due "now" in spirit
-    but not a countdown), then time-driven tasks that will never fire again
-    (due_time exhausted, repeat <= 0)."""
+    condition-gated tasks with no due_time countdown (re-evaluated every
+    tick, so due "now" in spirit but not a countdown), then tasks that will
+    never fire again (due_time exhausted, repeat <= 0, no condition to
+    re-arm them)."""
     if due_in is not None:
         return (0, due_in)
-    if mode == "cond":
+    if mode in ("cond", "cond+time"):
         return (1, 0.0)
     return (2, 0.0)
 
 
 def _describe_task(task: Task, now: float) -> dict:
     """Mirrors core.scheduler.Scheduler._log_task_countdown's own due-time
-    classification (condition-driven / never / countdown), but as
-    structured fields rather than a single debug log line. `due_in` is
-    None both for a condition-driven task (no countdown applies) and for a
-    time-driven task that has exhausted its due_time (repeat <= 0, already
-    fired) -- `mode` disambiguates the two on the client."""
-    mode = "cond" if task.condition is not None else "time"
-    if mode == "cond" or task.due_time == float("inf"):
+    classification, but as structured fields rather than a single debug
+    log line. See docs/configuration.md#tasks for `mode`'s cond/time/
+    cond+time meanings. `due_in` is None for a task with no due_time
+    schedule, or an exhausted one (due_time=+inf) -- `mode` disambiguates
+    the two on the client."""
+    has_condition = task.condition is not None
+    has_due_time = task.due_time is not None
+    mode = "cond+time" if (has_condition and has_due_time) else "cond" if has_condition else "time"
+    if not has_due_time or task.due_time == float("inf"):
         due_in = None
     else:
         due_in = max(0.0, task.due_time - now)
-    repeat = task.repeat if (mode == "time" and task.repeat > 0) else None
+    repeat = task.repeat if (has_due_time and task.repeat is not None and task.repeat > 0) else None
     cooldown = max(0.0, task.min_interval - (now - task.last_fired)) if task.min_interval else 0.0
     return {
         "tag": task.tag,

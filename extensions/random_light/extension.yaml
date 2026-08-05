@@ -6,11 +6,12 @@ description: >
   instance's own values (below) when omitted, which fall back to this
   file's defaults -- extension default -> instance -> per-light. A
   `kind: random_light` task's periodic firing (no `force:`) randomizes
-  every light currently inside its window, forcing lights outside it off,
-  gated by optional enable_ref/pause_ref; if no light ends up on, one
-  `default`-flagged light is switched on instead (still subject to its own
-  window). A `kind: random_light, force: 0`/`force: 1` action bypasses all
-  of that, forcing every configured light to that value immediately -- for
+  every light currently inside its window, forcing lights outside it off;
+  if no light ends up on, one `default`-flagged light is switched on
+  instead (still subject to its own window). See docs/configuration.md's
+  Tasks section for gating this on other device state via `condition:`.
+  A `kind: random_light, force: 0`/`force: 1` action bypasses all of
+  that, forcing every configured light to that value immediately -- for
   a surrounding system (e.g. surveillance/alarm) to call directly.
 
 parameters:
@@ -59,17 +60,3 @@ parameters:
       Device id of the sun device (see devices/sun). Only required to
       exist if a window actually in use (default or per-light) references
       sunrise/sunset.
-
-  - name: enable_ref
-    override: allowed
-    default: null
-    description: >
-      Optional "<device>.<endpoint>" ref; the periodic pass (force:
-      omitted) only runs when this reads 1. null = always enabled.
-
-  - name: pause_ref
-    override: allowed
-    default: null
-    description: >
-      Optional "<device>.<endpoint>" ref; the periodic pass is skipped
-      entirely (no lights touched) when this reads 1. null = never paused.

@@ -14,8 +14,6 @@ light below that doesn't set its own) → each light's own override:
 extensions:
   random_light:
     house:
-      enable_ref: "surveillance.armed"   # optional: only randomize while armed
-      pause_ref: "alarm.state"           # optional: skip entirely during an active alarm
       lights:
         - device: "hallway_light.state"
           default: true   # forced on if, after a pass, no light ended up on
@@ -32,13 +30,18 @@ tasks:
   - tag: random_light_tick
     time: "+5s"
     repeat: 1m
+    # Gate the periodic pass on other device state (e.g. "only while
+    # armed and not alarmed") with the task's own condition: -- see
+    # docs/configuration.md's Tasks section -- rather than a
+    # random_light-specific parameter.
+    condition: { device: "surveillance.armed", value: 1 }
     action: { kind: random_light, instance: "random_light.house" }
 ```
 
 A `kind: random_light` action with `force: 0`/`force: 1` bypasses windows,
-probability, and `enable_ref`/`pause_ref` entirely, forcing every
-configured light to that value immediately — for a surrounding system to
-drop into its own tasks' `actions:` list (e.g. force everything off when
-arming/disarming, force everything on as a deterrent during an alarm), as
-seen throughout
-[`examples/virtual_surveillance_system.yaml`](../examples/virtual_surveillance_system.yaml).
+probability, and any `condition:` entirely, forcing every configured light
+to that value immediately — for a surrounding system to drop into its own
+tasks' `actions:` list (e.g. force everything off when arming/disarming,
+force everything on as a deterrent during an alarm), as seen throughout
+[`examples/virtual_surveillance-task_defs_1-nested.yaml`](../examples/virtual_surveillance-task_defs_1-nested.yaml)
+(and its `-system_setup`/`-task_defs_2`/`-task_defs_3` companions).

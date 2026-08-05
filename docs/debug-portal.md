@@ -23,11 +23,15 @@ Open `http://127.0.0.1:8081/` (or whatever `host`/`port` you configured)
 in a browser. The page has three parts:
 
 - **Task queue** — every configured task, in planned execution order:
-  soonest due time first, then condition-driven tasks (`mode: cond` —
-  these are re-evaluated every tick rather than counting down), then any
-  time-driven task that has already fired for good (`mode: time`, shown as
-  `never`). Each row also shows its `repeat` interval and any remaining
-  `min_interval` cooldown.
+  soonest due time first, then condition-gated tasks with no due-time
+  countdown (`mode: cond` or `cond+time` — these are re-evaluated every
+  tick rather than counting down), then any task with neither a countdown
+  nor a condition to re-arm it. `mode` is `cond` (a bare `condition:`),
+  `time` (a `time:`/`repeat:` schedule), or `cond+time` (both given —
+  e.g. "check at 22:00, but only if X"). Each row also shows its `repeat`
+  interval and any remaining `min_interval` cooldown. A one-shot task
+  (`repeat:` omitted) removes itself the tick it fires, so it simply
+  disappears from the list rather than lingering as `never`.
 - **Device poll queue** — every device with an `update:` interval, sorted
   by time until its next scheduled fetch.
 - **Endpoints** — one row per selector-matched `(device, endpoint)` pair:

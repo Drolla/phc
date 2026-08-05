@@ -369,42 +369,64 @@ def test_condition_with_no_filters_is_always_true():
 
 # ---------- Task ----------
 
-def test_time_driven_task_runs_once_when_repeat_zero():
+def test_one_shot_task_runs_once_and_marks_itself_finished():
+    """repeat=None (the default, i.e. omitted) is ONE-SHOT (see Task's
+    class docstring -- THC's -repeat "" case): fires once, then
+    `finished` becomes True. Task never touches any task list itself --
+    removing a finished task from the live list is the Scheduler's job
+    (see core/scheduler.py's tick loop)."""
     light = _light("off")
     devices = {"living_light": light}
-    task = Task("blink", due_time=0.0, repeat=0.0,
+    task = Task("blink", due_time=0.0,
                 actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
 
-    assert task.due(0.0) is True
+    assert task.finished is False
     assert task.run(0.0, devices) is True
-    task.mark_run(0.0)
-    assert task.due(0.1) is False
-    assert task.due_time == float("inf")
-    assert task.spent is True
+    assert task.finished is True
 
 
-def test_spent_is_false_before_first_run_and_for_repeating_or_condition_tasks():
+def test_permanent_task_repeat_zero_fires_every_tick():
+    """repeat=0 (or negative) is PERMANENT (THC's -repeat 0): due_time is
+    left alone and the task keeps firing on every subsequent tick."""
+    light = _light("off")
+    devices = {"living_light": light}
+    task = Task("heartbeat", repeat=0.0,
+                actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    assert task.run(0.0, devices) is True
+    assert task.due_time is None
+    assert task.finished is False
+    assert task.run(1.0, devices) is True  # still fires -- due_time never gated it
+
+
+def test_condition_only_task_never_finished_regardless_of_repeat():
+    """A bare condition (no `time:` ever given, due_time stays None) has
+    no due-time schedule to exhaust, so it's never `finished` -- stays
+    resident and re-evaluated every tick regardless of `repeat`."""
     light = _light("off")
     devices = {"living_light": light}
 
-    once = Task("once", due_time=0.0, repeat=0.0,
-                actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
-    assert once.spent is False
-    once.run(0.0, devices)
-    once.mark_run(0.0)
-    assert once.spent is True
-
-    repeating = Task("repeating", due_time=0.0, repeat=3.0,
-                      actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
-    repeating.run(0.0, devices)
-    repeating.mark_run(0.0)
-    assert repeating.spent is False
+    once_repeat = Task("once_repeat_default",
+                        actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    assert once_repeat.run(0.0, devices) is True
+    assert once_repeat.finished is False
+    assert once_repeat.due_time is None
 
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    conditional = Task("conditional", due_time=float("-inf"), condition=condition,
+    conditional = Task("conditional", condition=condition,
                         actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
-    conditional.mark_run(0.0)
-    assert conditional.spent is False
+    assert conditional.run(0.0, devices) is True
+    assert conditional.finished is False
+    assert conditional.due_time is None  # condition-only, no schedule: untouched
+
+
+def test_time_driven_task_reschedules_on_repeat_and_stays_not_finished():
+    light = _light("off")
+    devices = {"living_light": light}
+    task = Task("repeating", due_time=0.0, repeat=3.0,
+                actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
+    assert task.run(0.0, devices) is True
+    assert task.due_time == 3.0  # rearmed, not exhausted
+    assert task.finished is False
 
 
 def test_time_driven_task_reschedules_on_repeat():
@@ -413,12 +435,11 @@ def test_time_driven_task_reschedules_on_repeat():
     task = Task("blink", due_time=1.0, repeat=3.0,
                 actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
 
-    assert task.due(1.0) is True
+    assert task.run(0.5, devices) is False  # not due yet
     assert task.run(1.0, devices) is True
-    task.mark_run(1.0)
     assert task.due_time == 4.0
-    assert task.due(2.0) is False
-    assert task.due(4.0) is True
+    assert task.run(2.0, devices) is False
+    assert task.run(4.0, devices) is True
 
 
 def test_time_driven_task_reschedule_catches_up_after_stall():
@@ -429,19 +450,21 @@ def test_time_driven_task_reschedule_catches_up_after_stall():
 
     task.run(1.0, devices)
     # process stalled; next tick observed is way past several missed periods
-    task.mark_run(11.0)
+    task.run(11.0, devices)
     assert task.due_time == 13.0
 
 
-def test_condition_task_is_always_due_gate_is_condition_only():
+def test_condition_task_with_no_due_time_is_always_due_gate_is_condition_only():
     light = _light("off")
     devices = {"living_light": light}
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    task = Task("report", due_time=float("-inf"), repeat=0.0, condition=condition,
+    task = Task("report", repeat=0.0, condition=condition,
                 actions=[LogAction(device_id="living_light", endpoint_key="state",
                                     message="changed to {state}")])
-    assert task.due(0.0) is True
-    assert task.due(9999.0) is True
+    # due_time defaults to None: never gates run(), only the condition does.
+    assert task.due_time is None
+    task.run(9999.0, devices)
+    assert task.due_time is None  # untouched: no repeat rearm without a due-time schedule
 
 
 def test_condition_task_only_performs_action_when_condition_true(task_log):
@@ -450,7 +473,7 @@ def test_condition_task_only_performs_action_when_condition_true(task_log):
     light.update_state()  # settle: clear the event from the initial set()
     devices = {"living_light": light}
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    task = Task("report", due_time=float("-inf"), condition=condition,
+    task = Task("report", condition=condition,
                 actions=[LogAction(device_id="living_light", endpoint_key="state",
                                     message="changed to {state}")])
 
@@ -488,7 +511,7 @@ def test_condition_task_with_multiple_actions_all_run_only_when_condition_true(t
     lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True)])
     devices = {"living_light": light, "desk_lamp": lamp}
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    task = Task("both", due_time=float("-inf"), condition=condition,
+    task = Task("both", condition=condition,
                 actions=[LogAction(device_id="living_light", endpoint_key="state",
                                     message="changed to {state}"),
                          SetAction(device_id="desk_lamp", endpoint_key="power", value="on")])
@@ -742,7 +765,7 @@ def test_min_interval_debounces_condition_task(task_log):
     light.update_state()  # settle
     devices = {"living_light": light}
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    task = Task("report", due_time=float("-inf"), condition=condition, min_interval=10.0,
+    task = Task("report", condition=condition, min_interval=10.0,
                 actions=[LogAction(device_id="living_light", endpoint_key="state",
                                     message="changed to {state}")])
 
