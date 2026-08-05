@@ -115,8 +115,8 @@ profile is specific to your setup rather than a real shared product — e.g.
 a `virtual` siren with no real hardware behind it doesn't belong in
 `devices/virtual/module.yaml`'s generic library. It also composes with
 `<<: !include` for free, since that's a plain YAML merge key: a
-`device_profiles:` block can live in a shared `common/*.yaml` file included
-from multiple system configs, the same way
-[`examples/common/zway_controller_params.yaml`](../examples/common/zway_controller_params.yaml)
-is today. See [`examples/virtual_system.yaml`](../examples/virtual_system.yaml)
-for a worked example.
+`device_profiles:` block can live in a shared fragment file included from
+multiple system configs (see [Splitting configuration across
+files](configuration.md#splitting-configuration-across-files)). See
+[`examples/virtual_system.yaml`](../examples/virtual_system.yaml) for a
+worked example.

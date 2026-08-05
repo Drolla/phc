@@ -45,11 +45,10 @@ devices:
     <<: !include common/some_location_params.yaml
 ```
 
-See the `modules: zway:` example below for a real, in-repo fragment used this
-way. [`examples/common/`](../examples/common/) also holds several
-whole-device fragments pulled in via the plain `!include` form above -- see
-any example file under [`examples/`](../examples/) that references them for
-real usage.
+This is most useful when several system YAML files in the same project
+genuinely share a fragment -- e.g. a `zway:` controller's connection
+params, reused across every system config talking to that same
+controller -- rather than for a single system's own internal structure.
 
 ## Modules and shared configuration
 
