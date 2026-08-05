@@ -50,9 +50,15 @@ modules:
   # Every zway device below shares one controller, so its connection
   # params and update interval are set once here rather than repeated on
   # each device -- see examples/zway_system.yaml for the same pattern.
+  # Devices on a different physical controller should NOT share these:
+  # they need their own base_url and would otherwise be silently,
+  # incorrectly assumed to share one controller's batched fetch.
   zway:
     update: zwave
-    <<: !include common/zway_controller_params.yaml
+    base_url: http://192.168.1.21:8083
+    user: admin
+    password: admin
+    cache_time: 30s
 
 devices:
   - id: house

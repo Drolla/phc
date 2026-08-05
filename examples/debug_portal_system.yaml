@@ -24,7 +24,16 @@ intervals:
   fast: 3s
 
 devices:
-  - !include common/living_light_device.yaml
+  - id: living_light
+    module: virtual
+    name: Living Room Light
+    update: fast
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
 
   - id: house
     module: host

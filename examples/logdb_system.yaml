@@ -11,13 +11,34 @@ intervals:
 devices:
   # log_aggregation defaults to "max" -- a brief "on" pulse between two log
   # samples is still captured (see the logdb extension below).
-  - !include common/living_light_device.yaml
+  - id: living_light
+    module: virtual
+    name: Living Room Light
+    update: fast
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
 
   - id: house
     module: host
     name: Whole House
     children:
-      - !include common/kitchen_device.yaml
+      - id: kitchen
+        module: host
+        name: Kitchen
+        children:
+          - id: kitchen_light
+            module: virtual
+            update: 5s
+            endpoints:
+              - key: state
+                writable: true
+                type: int
+                values: { 0: "off", 1: "on" }
+                default: 0
 
       - id: hallway_light
         module: virtual

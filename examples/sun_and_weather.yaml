@@ -17,7 +17,10 @@ intervals:
 # `scope: module` in devices/meteoswiss/module.yaml -- one shared value for
 # every station, not per device); update/cache_time are shared too, via
 # modules.meteoswiss below.
-modules: !include common/meteoswiss_cache_params.yaml
+modules:
+  meteoswiss:
+    update: weather
+    cache_time: 5m
 
 # sun and open_meteo take latitude/longitude directly on the device, so swap
 # in whatever location you actually want to track.
@@ -37,7 +40,10 @@ devices:
     latitude: 47.3769
     longitude: 8.5417
 
-  - !include common/meteo_bern_device.yaml
+  - id: meteo-bern
+    module: meteoswiss
+    name: Bern Weather
+    station: BER
 
 tasks:
   - tag: report_sunset

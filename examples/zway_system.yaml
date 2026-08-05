@@ -26,11 +26,17 @@ intervals:
 # examples/waveplus_bridge_system.yaml, just batched across many small
 # Z-Wave values instead of one bridge's full JSON payload. Install
 # thc_zWay.js (https://github.com/Drolla/thc/tree/master/modules/thc_zWay)
-# on the zWay server itself before running this example.
+# on the zWay server itself before running this example. Devices on a
+# different physical controller should NOT share these connection params:
+# they need their own base_url and would otherwise be silently,
+# incorrectly assumed to share one controller's batched fetch.
 modules:
   zway:
     update: zwave
-    <<: !include common/zway_controller_params.yaml
+    base_url: http://192.168.1.21:8083
+    user: admin
+    password: admin
+    cache_time: 30s
 
 devices:
   # A whole device built from zway's fibaro-fgs222 device_profile (see
