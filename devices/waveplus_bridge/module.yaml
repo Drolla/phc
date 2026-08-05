@@ -74,14 +74,14 @@ endpoints:
     writable: false
     type: int
     unit: "Bq/m3"
-    description: Short-term (up to ~24h) average radon concentration, Bq/m3
+    description: Radon avg, short-term (24h), Bq/m3
     field: radon_st
   - key: radon_lt
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
-    description: Long-term (up to ~1 year) average radon concentration, Bq/m3
+    description: Radon avg, long-term (1 year) , Bq/m3
     field: radon_lt
   - key: co2
     readable: true
