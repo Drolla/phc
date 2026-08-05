@@ -9,8 +9,8 @@
 # actually reorders as they come due. Three tasks exercising every "mode"
 # the portal shows: a repeating time-driven task (blink, watch its due
 # reset every 5s), a condition-driven task (report_motion, always shows
-# "cond"), and a one-shot task (say_hello, shows "never" once it has
-# fired).
+# "cond"), and a one-shot task (say_hello, disappears from the task queue
+# once it has fired -- it removes itself).
 
 heartbeat: 1s
 
