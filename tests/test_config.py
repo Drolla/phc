@@ -2743,6 +2743,4 @@ def _restore_phc_logger_levels():
 
 @pytest.mark.parametrize("example_path", sorted(_EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
 def test_load_system_examples_load_without_error(example_path, _restore_phc_logger_levels):
-    # Non-recursive glob: examples/common/ holds !include fragments, not
-    # standalone runnable systems, so it's naturally excluded here.
     load_system(example_path)
