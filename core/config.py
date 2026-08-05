@@ -1063,25 +1063,25 @@ def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
                  task_specs: dict[str, dict] | None = None) -> Task:
     """Build one `tasks:` YAML entry (or a `create_task`/script action's
     nested spec, or a `task_specs:` entry once instantiated by a
-    `template:` reference) into a Task. Requires exactly one of `condition`
-    or `time` to determine how the task fires, and exactly one of
-    `action`/`actions`. `min_interval` (optional, default 0: no cooldown)
-    is parsed the same way as `repeat` -- see Task's class docstring."""
+    `template:` reference) into a Task. See docs/configuration.md#tasks
+    for the `condition`/`time`/`repeat`/`min_interval` semantics and the
+    due_time defaulting matrix."""
     tag = entry["tag"]
-    repeat_spec = entry.get("repeat", 0)
-    repeat_seconds = parse_duration(repeat_spec) if repeat_spec else 0.0
+    repeat_spec = entry.get("repeat")
+    repeat_seconds = parse_duration(repeat_spec) if repeat_spec is not None else None
     min_interval_spec = entry.get("min_interval", 0)
     min_interval = parse_duration(min_interval_spec) if min_interval_spec else 0.0
 
     condition = _build_condition(entry.get("condition"), flat, tag, sticky_endpoints)
 
-    if condition is not None:
-        due_time = float("-inf")
+    time_spec = entry.get("time")
+    if time_spec is None:
+        if repeat_seconds is None and condition is not None:
+            due_time = None
+        else:
+            due_time = parse_time("+0s", repeat=repeat_seconds if repeat_seconds else None)
     else:
-        time_spec = entry.get("time")
-        if time_spec is None:
-            raise ConfigError(f"task {tag!r}: 'time' is required unless a 'condition' is given")
-        due_time = parse_time(str(time_spec), repeat=repeat_seconds or None)
+        due_time = parse_time(str(time_spec), repeat=repeat_seconds if repeat_seconds else None)
 
     has_action = "action" in entry
     has_actions = "actions" in entry

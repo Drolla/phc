@@ -128,42 +128,27 @@ class Scheduler:
             await asyncio.gather(*(self._fetch_one(q) for q in roots))
 
         # Pass 2: log the countdown, then run due tasks against the state/events
-        # committed by the PREVIOUS tick's update_state(). Writes issued by task
-        # actions (set() -> transmit()) are collected here and flushed
-        # concurrently below, instead of each one blocking inline.
+        # committed by the PREVIOUS tick's update_state() (see
+        # docs/configuration.md#tasks-and-the-heartbeat-a-one-tick-lag).
+        # Writes issued by task actions (set() -> transmit()) are collected
+        # here and flushed concurrently below, instead of each one blocking
+        # inline.
         self._log_task_countdown(now)
         token = _write_collector.set([])
         try:
             # Snapshot the list: a create_task/kill_task action firing this
             # tick mutates self._tasks in place (see core.task.register_task/
-            # kill_tasks) -- iterating that same live list would risk
-            # "list changed size during iteration" and non-deterministic
-            # same-tick-vs-next-tick firing for the newly spawned/removed
-            # task. A once-per-tick snapshot means such mutations only take
-            # effect starting the next tick, consistent with tasks only ever
-            # observing state committed by the PREVIOUS tick (see Task's
-            # class docstring).
-            spent = []
+            # kill_tasks) -- iterating that same live list would risk "list
+            # changed size during iteration" and non-deterministic same-
+            # tick-vs-next-tick firing for the newly spawned/removed task.
             for task in list(self._tasks):
-                if task.due(now):
-                    try:
-                        fired = task.run(now, self._devices)
-                        if fired:
-                            logger.info("task %s executed", task.tag)
-                    except Exception:
-                        logger.exception("task %s failed", task.tag)
-                    finally:
-                        task.mark_run(now)
-                    if task.spent:
-                        spent.append(task)
-            # Drop tasks that just fired their one and only run (time-driven,
-            # repeat<=0) -- mark_run() already parked them at due_time=inf, so
-            # this is cleanup, not scheduling; removed after the loop (not
-            # in-place during it) for the same reason the loop iterates a
-            # snapshot: a same-tick create_task/kill_task action may also be
-            # mutating self._tasks.
-            for task in spent:
-                if task in self._tasks:
+                try:
+                    fired = task.run(now, self._devices)
+                    if fired:
+                        logger.info("task %s executed", task.tag)
+                except Exception:
+                    logger.exception("task %s failed", task.tag)
+                if task.finished:  # Task never touches its own list -- see Task's class docstring
                     self._tasks.remove(task)
                     logger.info("task %s removed (one-shot, fired)", task.tag)
         finally:
@@ -236,15 +221,16 @@ class Scheduler:
 
     def _log_task_countdown(self, now: float):
         """At DEBUG level, log an in-place status line of seconds-until-due
-        for every task."""
+        for every task. A task with no due_time schedule (condition-only,
+        or neither condition nor time given) shows 0 -- it's due every
+        tick, gated only by its condition if any (see Task.run()'s check
+        order). A due-time-gated task shows its countdown."""
         if not logger.isEnabledFor(logging.DEBUG):
             return
         parts = []
         for task in self._tasks:
-            if task.condition is not None:
+            if task.due_time is None:
                 seconds = 0
-            elif task.due_time == float("inf"):
-                seconds = -1
             else:
                 seconds = max(0, int(task.due_time - now))
             parts.append(f"{seconds}:{task.tag}")
