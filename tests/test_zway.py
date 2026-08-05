@@ -221,6 +221,44 @@ def test_zway_reports_none_on_http_error():
         server.shutdown()
 
 
+def test_zway_decodes_double_json_encoded_get_response():
+    # A real Razberry/zWay controller's /JS/Run/ returns Get()'s result
+    # pre-stringified by thc_zWay.js, then JSON-encodes THAT string for the
+    # HTTP body -- so the wire payload is a JSON string containing the
+    # array's JSON text (e.g. '"[0,0,100]"'), not a plain JSON array. This
+    # was only discovered by testing against real hardware; _serve()'s
+    # default get_response path sends a plain array, so this test overrides
+    # _send_json's encoding directly to reproduce the real shape.
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.server.get_hits += 1
+            idents = _parse_get_args(self.path)
+            payload = [0, 0, 100][:len(idents)]
+            body = json.dumps(json.dumps(payload)).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.get_hits = 0
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        sensor = _device(base_url, "sensor", endpoints=_sensor_endpoints())
+        scheduler = Scheduler({"sensor": sensor})
+        scheduler.tick(now=0.0)
+        scheduler.close()
+        assert sensor.get("state") == 0
+        assert sensor.get("battery") == 0
+    finally:
+        server.shutdown()
+
+
 def test_zway_reports_none_on_short_response_array():
     server, base_url = _serve(get_response=[])   # sensor expects 2 values, gets 0
     try:

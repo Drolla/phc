@@ -196,6 +196,21 @@ class ZWayDevice(Device):
         same-length JSON array (total failure, no partial trust)."""
         args = json.dumps([[group, address] for group, address in idents], separators=(",", ":"))
         raw = await self._js_run(f"Get({args})")
+        # thc_zWay.js's Get() result comes back double-JSON-encoded: /JS/Run/
+        # wraps whatever the script returns in its own JSON encoding, and
+        # Get() itself already returns its array pre-stringified -- so the
+        # HTTP body is a JSON *string* containing the array's JSON text
+        # (e.g. the wire body is '"[0,0,100]"', which response.json() above
+        # decodes to the Python str '[0,0,100]', not a list). Observed
+        # against a real Razberry/zWay controller; undocumented. Un-wrap
+        # once when that's what we got; a plain list is still accepted too,
+        # in case some zWay/thc_zWay.js version returns it unwrapped.
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except json.JSONDecodeError:
+                raise ValueError(
+                    f"zway: malformed Get() response for {self._base_url}: {raw!r}") from None
         if not isinstance(raw, list) or len(raw) != len(idents):
             raise ValueError(f"zway: malformed/short Get() response for {self._base_url}")
         return dict(zip(idents, raw))
