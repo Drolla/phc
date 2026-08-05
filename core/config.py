@@ -86,7 +86,7 @@ def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
         raise ConfigError(f"!include: circular include: {chain}")
     _include_stack.append(include_path)
     try:
-        with open(include_path, "r") as f:
+        with open(include_path, "r", encoding="utf-8") as f:
             return yaml.load(f, Loader=_IncludeLoader)
     finally:
         _include_stack.pop()
@@ -261,7 +261,7 @@ def _load_module_descriptor(module_name: str) -> ModuleDescriptor:
     module_yaml_path = _DEVICES_DIR / module_name / "module.yaml"
     if not module_yaml_path.exists():
         raise ConfigError(f"module {module_name!r} has no module.yaml at {module_yaml_path}")
-    with open(module_yaml_path, "r") as f:
+    with open(module_yaml_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     descriptor = ModuleDescriptor(module_name, raw)
     _module_descriptors[module_name] = descriptor
@@ -438,7 +438,7 @@ def _load_extension_descriptor(name: str) -> ExtensionDescriptor:
     extension_yaml_path = _EXTENSIONS_DIR / name / "extension.yaml"
     if not extension_yaml_path.exists():
         raise ConfigError(f"extension {name!r} has no extension.yaml at {extension_yaml_path}")
-    with open(extension_yaml_path, "r") as f:
+    with open(extension_yaml_path, "r", encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     descriptor = ExtensionDescriptor(name, raw)
     _extension_descriptors[name] = descriptor
@@ -1277,7 +1277,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     destination's `levels:` -- see core.logging_setup.configure_logging.
     """
     _include_stack.clear()
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         raw = yaml.load(f, Loader=_IncludeLoader) or {}
 
     if "log_levels" in raw:
