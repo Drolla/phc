@@ -213,7 +213,10 @@ class ZWayDevice(Device):
                     f"zway: malformed Get() response for {self._base_url}: {raw!r}") from None
         if not isinstance(raw, list) or len(raw) != len(idents):
             raise ValueError(f"zway: malformed/short Get() response for {self._base_url}")
-        return dict(zip(idents, raw))
+        # zWay reports a node with no value yet (unresponsive/asleep) as ""
+        # rather than null. Normalize to None so it's indistinguishable from
+        # any other fetch failure (see receive_async).
+        return {ident: (value if value != "" else None) for ident, value in zip(idents, raw)}
 
     # ---------- TagReader one-time configure ----------
 
