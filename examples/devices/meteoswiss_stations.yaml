@@ -1,0 +1,42 @@
+# Shared device list: a sample of MeteoSwiss automatic weather stations
+# (one per city). See the full list at
+# https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
+# and swap in whichever stations you actually want to track.
+#
+# Devices only -- no modules:/tasks:/intervals: here. update: is a literal
+# duration rather than an intervals: name, since this file can't assume the
+# including config defines one. All five devices poll the same published CSV
+# (data_url is `scope: module` in devices/meteoswiss/module.yaml -- one
+# shared value for every station, not per device), so an including config
+# that also sets modules.meteoswiss.cache_time gets them coalesced into a
+# single shared HTTP fetch per cache window.
+devices:
+  - id: meteo-bern
+    module: meteoswiss
+    name: Bern Weather
+    update: 10m
+    station: BER
+
+  - id: meteo-zurich
+    module: meteoswiss
+    name: Zurich Weather
+    update: 10m
+    station: KLO
+
+  - id: meteo-geneva
+    module: meteoswiss
+    name: Geneva Weather
+    update: 10m
+    station: GVE
+
+  - id: meteo-basel
+    module: meteoswiss
+    name: Basel Weather
+    update: 10m
+    station: BAS
+
+  - id: meteo-lugano
+    module: meteoswiss
+    name: Lugano Weather
+    update: 10m
+    station: LUG

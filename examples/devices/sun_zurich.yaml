@@ -1,0 +1,16 @@
+# Shared device list: sun position for Zurich, reused as a feed for
+# random_light windows or as a plain read-only sensor across examples that
+# demonstrate some other feature, rather than the sun module itself (see
+# examples/sun_and_weather.yaml for that).
+#
+# Devices only -- no modules:/tasks:/intervals: here. update: is a literal
+# duration rather than an intervals: name, since this file can't assume the
+# including config defines one.
+devices:
+  - id: sun_zurich
+    module: sun
+    name: Sun (Zurich)
+    update: 1h
+    latitude: 47.3769
+    longitude: 8.5417
+    timezone: Europe/Zurich

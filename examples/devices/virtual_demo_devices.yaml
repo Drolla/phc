@@ -1,0 +1,61 @@
+# Shared device list: a handful of generic virtual lights/switches with no
+# real hardware behind them, reused as filler devices across examples that
+# demonstrate some other feature (logging, the web UI, the debug portal,
+# ...) and just need a few devices to show it on -- not a device module
+# feature in their own right (see examples/virtual_system.yaml for that).
+#
+# Devices only -- no modules:/tasks:/intervals: here, so an including file
+# stays free to define its own. update: is a literal duration on every
+# device below rather than an intervals: name, since this file can't assume
+# the including config defines one.
+devices:
+  - id: living_light
+    module: virtual
+    name: Living Room Light
+    update: 5s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: desk_lamp
+    module: virtual
+    name: Desk Lamp
+    update: 5s
+    endpoints:
+      - key: power
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+      - key: brightness
+        writable: true
+        type: int
+        min: 0
+        max: 100
+        unit: "%"
+        default: 0
+
+  - id: kitchen_light
+    module: virtual
+    name: Kitchen Light
+    update: 5s
+    endpoints:
+      - key: state
+        writable: true
+        type: int
+        values: { 0: "off", 1: "on" }
+        default: 0
+
+  - id: fan
+    module: virtual
+    name: Ceiling Fan
+    update: 5s
+    endpoints:
+      - key: speed
+        writable: true
+        type: int
+        values: { 0: "off", 1: "low", 2: "high" }
+        default: 0
