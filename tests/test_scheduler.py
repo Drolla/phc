@@ -65,7 +65,7 @@ def test_end_to_end_virtual_system_example():
     system = load_system(EXAMPLE)
     scheduler = Scheduler(system.scheduled_devices(), heartbeat=system.heartbeat)
 
-    living_light = system.devices["living_light"]
+    living_light = system.devices["lights.living_light"]
     assert living_light.get() == 0
     assert living_light.get_text() == "off"
 
@@ -86,7 +86,7 @@ def test_end_to_end_nested_desk_lamp():
     system = load_system(EXAMPLE)
     scheduler = Scheduler(system.scheduled_devices(), heartbeat=system.heartbeat)
 
-    desk_lamp = system.devices["house.desk_lamp"]
+    desk_lamp = system.devices["lights.desk_lamp"]
     desk_lamp.set(75, name="brightness")
     scheduler.tick(now=0.0)
 
@@ -164,11 +164,11 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     assert system.devices["alarm"].get() == 1
     assert system.devices["siren"].get() == 1
     # kind:random_light, force:1 (surv_intrusion's second-to-last action)
-    # forces BOTH lights on as a deterrent -- porch_light is never touched
-    # by the script action itself, so this specifically exercises the
-    # random_light extension's force override.
-    assert system.devices["hallway_light"].get() == 1
-    assert system.devices["porch_light"].get() == 1
+    # forces BOTH lights on as a deterrent -- lights.kitchen_light is never
+    # touched by the script action itself, so this specifically exercises
+    # the random_light extension's force override.
+    assert system.devices["lights.living_light"].get() == 1
+    assert system.devices["lights.kitchen_light"].get() == 1
 
     system.devices["surveillance"].set(0)
     for _ in range(3):
@@ -178,10 +178,10 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     assert (spawned_tags | spawned_on_arm).isdisjoint({task.tag for task in system.tasks})
     assert system.devices["alarm"].get() == 0
     assert system.devices["siren"].get() == 0
-    assert system.devices["hallway_light"].get() == 0
+    assert system.devices["lights.living_light"].get() == 0
     # Only reachable via surveillance_disable's kind:random_light,
-    # force:0 action -- the script action never mentions porch_light.
-    assert system.devices["porch_light"].get() == 0
+    # force:0 action -- the script action never mentions lights.kitchen_light.
+    assert system.devices["lights.kitchen_light"].get() == 0
 
 
 def test_end_to_end_surveillance_example_all_lights_override(task_log):
@@ -203,8 +203,8 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
         scheduler.tick(now=t)
     assert "all lights on" in task_log.text
     assert system.devices["siren"].get() == 0
-    assert system.devices["hallway_light"].get() == 1
-    assert system.devices["porch_light"].get() == 1
+    assert system.devices["lights.living_light"].get() == 1
+    assert system.devices["lights.kitchen_light"].get() == 1
 
     system.devices["all_lights"].set(0)
     for _ in range(3):
@@ -212,8 +212,8 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
         scheduler.tick(now=t)
     assert "all lights off" in task_log.text
     assert system.devices["siren"].get() == 0
-    assert system.devices["hallway_light"].get() == 0
-    assert system.devices["porch_light"].get() == 0
+    assert system.devices["lights.living_light"].get() == 0
+    assert system.devices["lights.kitchen_light"].get() == 0
 
 
 def test_scheduler_runs_blink_task_and_reschedules():

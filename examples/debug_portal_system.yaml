@@ -20,11 +20,16 @@ log:
       default: INFO
       debug_portal: DEBUG
 
-intervals:
-  fast: 3s
-
+# lights.living_light is the shared filler device from
+# examples/devices/virtual_demo_devices.yaml; sun_zurich is
+# examples/devices/sun_zurich.yaml. This example is about the debug portal,
+# not any one device module, so it just needs a few devices with different
+# poll cadences to show the poll queue reordering (see the header comment
+# above). house.motion1 stays local -- it demonstrates the
+# condition-driven "report_motion" task below, nested under a host device.
 devices:
-  - !include common/living_light_device.yaml
+  - !include devices/virtual_demo_devices.yaml
+  - !include devices/sun_zurich.yaml
 
   - id: house
     module: host
@@ -40,14 +45,6 @@ devices:
             type: bool
             default: false
 
-  - id: sun_zurich
-    module: sun
-    name: Sun (Zurich)
-    update: 30s
-    latitude: 47.3769
-    longitude: 8.5417
-    timezone: Europe/Zurich
-
 extensions:
   debug_portal:
     debug:
@@ -60,7 +57,7 @@ tasks:
     description: "Toggle the living room light every 5s"
     time: "+1s"
     repeat: 5s
-    action: { kind: toggle, device: "living_light.state" }
+    action: { kind: toggle, device: "lights.living_light.state" }
 
   - tag: report_motion
     description: "Log whenever hallway motion changes"
@@ -70,4 +67,4 @@ tasks:
   - tag: say_hello
     description: "Fires once, shortly after startup"
     time: "+2s"
-    action: { kind: log, device: "living_light", message: "hello from say_hello" }
+    action: { kind: log, device: "lights.living_light", message: "hello from say_hello" }

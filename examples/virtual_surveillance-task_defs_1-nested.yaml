@@ -61,7 +61,7 @@ tasks:
                 tag: surv_light_off
                 time: "+45m"
                 actions:
-                  - { kind: set, device: "hallway_light.state", value: 0 }
+                  - { kind: set, device: "lights.living_light.state", value: 0 }
                   - { kind: set, device: "alarm.state", value: 0 }
                   - { kind: random_light, instance: "random_light.house", force: 0 }
             - {kind: random_light, instance: "random_light.house", force: 1}
@@ -79,7 +79,7 @@ tasks:
     actions:
       - {kind: log, device: "surveillance.armed", message: "surveillance disabled"}
       - {kind: set, device: "siren.state", value: 0}
-      - {kind: set, device: "hallway_light.state", value: 0}
+      - {kind: set, device: "lights.living_light.state", value: 0}
       - {kind: set, device: "alarm.state", value: 0}
       - {kind: kill_task, tags: ["surv_*"]}
       - {kind: random_light, instance: "random_light.house", force: 0}

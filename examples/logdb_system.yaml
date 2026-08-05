@@ -5,61 +5,34 @@ log:
     levels:
       default: INFO
 
-intervals:
-  fast: 3s
-
+# lights.living_light/lights.desk_lamp/lights.kitchen_light/fan are the
+# shared filler devices from examples/devices/virtual_demo_devices.yaml --
+# this example is about logdb, not the virtual module, so it just needs a
+# few devices to log, not a device-module walkthrough of its own (see
+# examples/virtual_system.yaml for that). lights.desk_lamp/brightness's
+# log_aggregation: min (see that file) demonstrates a logdb-specific
+# feature.
 devices:
-  # log_aggregation defaults to "max" -- a brief "on" pulse between two log
-  # samples is still captured (see the logdb extension below).
-  - !include common/living_light_device.yaml
-
-  - id: house
-    module: host
-    name: Whole House
-    children:
-      - !include common/kitchen_device.yaml
-
-      - id: hallway_light
-        module: virtual
-        update: fast
-        endpoints:
-          - key: state
-            writable: true
-            type: int
-            default: 0
-
-      - id: desk_lamp
-        module: virtual
-        update: fast
-        endpoints:
-          - key: power
-            writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
-            log_aggregation: max
-          - key: brightness
-            writable: true
-            type: int
-            unit: "%"
-            default: 0
-            # brightness dips are as interesting as spikes, so track the
-            # minimum seen between log samples instead of the default max.
-            log_aggregation: min
+  - !include devices/virtual_demo_devices.yaml
 
 # Two independently-scheduled logdb instances: a frequent one covering
-# everything under house/ plus the living room light, and a slower one
-# demonstrating a second, separately-configured CSV file.
+# every shared device, and a slower one demonstrating a second,
+# separately-configured CSV file.
 extensions:
   logdb:
     house_log:
-      selectors: ["house.*/*", "living_light/state"]
+      selectors: ["*/*"]
       csv_path: "logs/house_log.csv"
       max_records: 50000
       full_vector_interval: 50
+      # log_aggregation defaults to "max" -- a brief "on" pulse between two
+      # log samples is still captured. lights.desk_lamp/brightness
+      # overrides this to "min" instead (see
+      # devices/virtual_demo_devices.yaml), since brightness dips are as
+      # interesting as spikes.
 
     living_room_log:
-      selectors: ["living_light/*"]
+      selectors: ["lights.living_light/*"]
       csv_path: "logs/living_room_log.csv"
       max_records: 5000
 
@@ -83,7 +56,7 @@ extensions:
                 - kind: graph
                   id: desk_lamp_history
                   logdb_instance: "logdb.house_log"
-                  selectors: ["house.desk_lamp/*"]
+                  selectors: ["lights.desk_lamp/*"]
                   title: "Desk Lamp"
                   window: 6h
                   decimation:
@@ -97,10 +70,10 @@ tasks:
     description: "Toggle the light every 10s"
     time: +1s
     repeat: 10s
-    action: { kind: toggle, device: "living_light.state" }
+    action: { kind: toggle, device: "lights.living_light.state" }
 
   - tag: log_house
-    description: "Log the whole house's state every 30s"
+    description: "Log every shared device's state every 30s"
     time: +5s
     repeat: 30s
     action: { kind: log_db, instance: "logdb.house_log" }

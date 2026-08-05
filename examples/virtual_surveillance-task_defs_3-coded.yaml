@@ -46,7 +46,7 @@ task_specs:
           create_task({'tag': 'surv_siren_off', 'time': '+3m',
                        'action': {'kind': 'set', 'device': 'siren.state', 'value': 0}})
           create_task({'tag': 'surv_light_off', 'time': '+45m', 'actions': [
-              {'kind': 'set', 'device': 'hallway_light.state', 'value': 0},
+              {'kind': 'set', 'device': 'lights.living_light.state', 'value': 0},
               {'kind': 'set', 'device': 'alarm.state', 'value': 0},
               {'kind': 'random_light', 'instance': 'random_light.house', 'force': 0},
           ]})
@@ -85,7 +85,7 @@ tasks:
         code: |
           log('surveillance disabled')
           set_state('siren.state', 0)
-          set_state('hallway_light.state', 0)
+          set_state('lights.living_light.state', 0)
           set_state('alarm.state', 0)
           kill_task('surv_*')
       - {kind: random_light, instance: "random_light.house", force: 0}

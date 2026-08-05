@@ -22,7 +22,10 @@ log:
 # surveillance/armed is the arm/disarm control; hallway_motion/state and
 # cellar_motion/state are the intrusion sensors; all_lights/state is an
 # independent manual on/off override. Toggle these directly to exercise the
-# tasks that watch them.
+# tasks that watch them. lights.living_light/lights.kitchen_light/siren are
+# the shared filler devices from
+# examples/devices/virtual_demo_devices.yaml, standing in for the hallway
+# light/porch light/siren this walkthrough's tasks actually act on.
 devices:
   - id: surveillance
     module: virtual
@@ -57,36 +60,6 @@ devices:
         type: int
         values: { 0: "clear", 1: "detected" }
 
-  - id: siren
-    module: virtual
-    name: Siren
-    endpoints:
-      - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
-
-  - id: hallway_light
-    module: virtual
-    name: Hallway light
-    endpoints:
-      - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
-
-  - id: porch_light
-    module: virtual
-    name: Porch light
-    endpoints:
-      - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
-
   - id: alarm
     module: virtual
     name: Alarm active flag
@@ -108,13 +81,13 @@ devices:
         type: int
         values: { 0: "off", 1: "on" }
 
-  - id: sun_zurich
-    module: sun
-    name: Sun (Zurich)
-    update: 1h
-    latitude: 47.3769
-    longitude: 8.5417
-    timezone: Europe/Zurich
+  # lights.living_light stands in for the hallway light, lights.kitchen_light
+  # for the porch light, and siren for this house's siren -- see
+  # examples/devices/virtual_demo_devices.yaml.
+  - !include devices/virtual_demo_devices.yaml
+
+  # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
+  - !include devices/sun_zurich.yaml
 
 # Randomizes the hallway/porch lights and ends an alert mail (with an
 # email-to-SMS gateway address alongside an ordinary mailbox) when an intrusion
@@ -134,15 +107,17 @@ extensions:
     house:
       sun_device: "sun_zurich"
       lights:
-        # hallway_light sets neither windows/min_interval/probability_on of
-        # its own -- it inherits extensions/random_light/extension.yaml's
-        # own default windows (a fixed evening cutoff, sunset-relative
-        # start; a fixed morning start, sunrise-relative end), demonstrating
-        # the extension-default -> instance -> per-light cascade.
-        - device: "hallway_light.state"
+        # lights.living_light (standing in for the hallway light) sets
+        # neither windows/min_interval/probability_on of its own -- it
+        # inherits extensions/random_light/extension.yaml's own default
+        # windows (a fixed evening cutoff, sunset-relative start; a fixed
+        # morning start, sunrise-relative end), demonstrating the
+        # extension-default -> instance -> per-light cascade.
+        - device: "lights.living_light.state"
           default: true
-        # porch_light overrides all three per-light instead.
-        - device: "porch_light.state"
+        # lights.kitchen_light (standing in for the porch light) overrides
+        # all three per-light instead.
+        - device: "lights.kitchen_light.state"
           windows:
             - { start: "20:00", end: "23:00" }
           min_interval: 25m
@@ -164,4 +139,13 @@ extensions:
             - id: lights
               title: Lights
               collapsed: false
-              selectors: ["hallway_light/*", "porch_light/*", "all_lights/*"]
+              selectors: ["lights.living_light/*", "lights.kitchen_light/*", "all_lights/*"]
+
+  # A live view of this whole system's scheduler/task queue and endpoint
+  # state, alongside web_ui above -- see examples/debug_portal_system.yaml
+  # for a narrower walkthrough.
+  debug_portal:
+    debug:
+      port: 8081
+      # host: 127.0.0.1   -- already the default (loopback only)
+      # selectors: ["*"]  -- already the default (every endpoint)

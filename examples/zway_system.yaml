@@ -15,7 +15,6 @@ log:
 
 intervals:
   zwave: 30s
-  zwave_meteo: 5m
 
 # All five devices below share one Razberry/zWay controller, so its
 # connection params and update interval are set once here -- rather than
@@ -26,85 +25,24 @@ intervals:
 # examples/waveplus_bridge_system.yaml, just batched across many small
 # Z-Wave values instead of one bridge's full JSON payload. Install
 # thc_zWay.js (https://github.com/Drolla/thc/tree/master/modules/thc_zWay)
-# on the zWay server itself before running this example.
+# on the zWay server itself before running this example. Devices on a
+# different physical controller should NOT share these connection params:
+# they need their own base_url and would otherwise be silently,
+# incorrectly assumed to share one controller's batched fetch.
 modules:
   zway:
     update: zwave
-    <<: !include common/zway_controller_params.yaml
+    base_url: http://192.168.1.21:8083
+    user: admin
+    password: admin
+    cache_time: 30s
 
+# The shared zway device set from examples/devices/zway_devices.yaml.
+# weather_station's own update: (see that file) overrides modules.zway's
+# zwave default below, since this sensor reports far less often than a
+# switch/motion sensor.
 devices:
-  # A whole device built from zway's fibaro-fgs222 device_profile (see
-  # devices/zway/module.yaml): node: 7 fills in both relays' {node}
-  # templates ("7.1"/"7.2"). The device's own `endpoints:` then names each
-  # relay by key -- a device_profile only ever supplies the mechanics
-  # (command_group/address/type/...), never a human label.
-  - id: light_corridor
-    module: zway
-    name: Corridor Light Switch
-    device_profile: fibaro-fgs222
-    node: 7
-    endpoints:
-      - { key: sw1, name: "Corridor Light" }
-      - { key: sw2, name: "Closet Light" }
-
-  # everspring-pir_sensor: node: 12 fills in both endpoints' {node}
-  # templates (state -> "12", battery -> "12"). This particular unit's
-  # wiring reports inverted polarity (0 while triggered, 1 while clear) --
-  # read_transform corrects the raw reading before it's stored, so `state`
-  # still comes out 0/"clear" or 1/"motion" per the profile's `values:`
-  # mapping (devices/zway/module.yaml), rather than needing every consumer
-  # to know this one sensor is backwards. See core.endpoint's
-  # read_transform/write_transform (docs/concepts.md).
-  - id: sensor_garage
-    module: zway
-    name: Garage Motion Sensor
-    device_profile: everspring-pir_sensor
-    node: 12
-    endpoints:
-      - { key: state, read_transform: "1 - value" }
-
-  # everspring-st814 (temperature/humidity), whose `hum` and `temp`
-  # endpoints are then each tweaked by one field: this unit's humidity
-  # sensor is wired to a non-standard sub-instance, so its `address` is
-  # overridden while `command_group` (from the profile) is kept --
-  # demonstrating the overlay-by-key merge (see
-  # core.config._overlay_endpoint_spec) rather than a wholesale replace.
-  # `temp` keeps its profile-derived address but adds a read_transform to
-  # apply this unit's known -1.5C calibration offset. `battery` is left
-  # exactly as the profile provides it.
-  - id: sensor_workshop
-    module: zway
-    name: Workshop Multisensor
-    device_profile: everspring-st814
-    node: 15
-    endpoints:
-      - key: hum
-        address: "15.1.5"
-      - key: temp
-        read_transform: "value - 1.5"
-
-  # benext-tag_reader: a device with a TagReader endpoint needs its own
-  # `node` param set (for the one-time Configure_TagReader call -- see
-  # devices/zway/device.py), which this device already has for its {node}
-  # templates anyway. Node 22's own SwitchBinary write path (its ack LED/
-  # lock feedback) comes along as the profile's `ack` endpoint.
-  - id: tag_reader_front
-    module: zway
-    name: Front Door Tag Reader
-    device_profile: benext-tag_reader
-    node: 22
-
-  # A whole POPP Z-Weather outdoor sensor (product 005206) built entirely
-  # from zway's popp-z-weather device_profile: node: 30 fills in all seven
-  # endpoints' {node} templates in one go (temp/hum/lum/pres/dew/vel/
-  # battery). update: zwave_meteo overrides modules.zway's zwave default,
-  # since this sensor reports far less often than a switch/motion sensor.
-  - id: weather_station
-    module: zway
-    name: Outdoor Weather Station
-    update: zwave_meteo
-    device_profile: popp-z-weather
-    node: 30
+  - !include devices/zway_devices.yaml
 
 tasks:
   - tag: garage_motion_light

@@ -9,10 +9,10 @@
 # files and gitignored for privacy -- see fusion18/README.md). Ties
 # together:
 #   - zway            -- physical Z-Wave devices behind a Razberry/zWay
-#                         controller (corridor_light/hallway_motion/
-#                         front_door_tag/siren below share one controller, so
-#                         their status reads coalesce into a single fetch --
-#                         see examples/zway_system.yaml)
+#                         controller (light_corridor/sensor_garage/
+#                         tag_reader_front/siren below share one controller,
+#                         so their status reads coalesce into a single
+#                         fetch -- see examples/zway_system.yaml)
 #   - waveplus_bridge -- an Airthings Wave Plus air-quality sensor
 #   - meteoswiss      -- an outdoor MeteoSwiss weather station
 #   - sun             -- sun position, feeding random_light's sunset/sunrise
@@ -46,20 +46,34 @@ intervals:
 
 modules:
   meteoswiss:
+    update: weather
     cache_time: 5m
   # Every zway device below shares one controller, so its connection
   # params and update interval are set once here rather than repeated on
   # each device -- see examples/zway_system.yaml for the same pattern.
+  # Devices on a different physical controller should NOT share these:
+  # they need their own base_url and would otherwise be silently,
+  # incorrectly assumed to share one controller's batched fetch.
   zway:
     update: zwave
-    <<: !include common/zway_controller_params.yaml
+    base_url: http://192.168.1.21:8083
+    user: admin
+    password: admin
+    cache_time: 30s
 
 devices:
   - id: house
     module: host
     name: House
     children:
-      - id: corridor_light
+      # id/device_profile/node below match examples/devices/zway_devices.yaml
+      # (light_corridor/sensor_garage/tag_reader_front) -- not a literal
+      # !include, since sensor_garage's name here ("Hallway Motion Sensor")
+      # differs from that shared file's own ("Garage Motion Sensor"), a
+      # per-example label that a plain list splice can't override. siren
+      # isn't part of that shared set (no real product behind it in this
+      # fictional house), so it's fully local.
+      - id: light_corridor
         module: zway
         name: Corridor Light
         device_profile: fibaro-fgs222
@@ -67,13 +81,13 @@ devices:
         endpoints:
           - { key: sw1, name: "Corridor Light" }
 
-      - id: hallway_motion
+      - id: sensor_garage
         module: zway
         name: Hallway Motion Sensor
         device_profile: everspring-pir_sensor
         node: 12
 
-      - id: front_door_tag
+      - id: tag_reader_front
         module: zway
         name: Front Door Tag Reader
         device_profile: benext-tag_reader
@@ -132,23 +146,18 @@ devices:
             values: { 0: "clear", 1: "active" }
             default: 0
 
+  # The shared MeteoSwiss station list from
+  # examples/devices/meteoswiss_stations.yaml; only meteo-bern is
+  # referenced below. modules.meteoswiss.update above supplies the
+  # cadence, since the shared devices set none of their own.
   - id: weather
     module: host
     name: Weather
     children:
-      - id: bern
-        module: meteoswiss
-        name: Bern Weather
-        update: weather
-        station: BER
+      - !include devices/meteoswiss_stations.yaml
 
-  - id: sun_zurich
-    module: sun
-    name: Sun (Zurich)
-    update: 1h
-    latitude: 47.3769
-    longitude: 8.5417
-    timezone: Europe/Zurich
+  # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
+  - !include devices/sun_zurich.yaml
 
 extensions:
   mail_alert:
@@ -165,9 +174,9 @@ extensions:
     house:
       sun_device: "sun_zurich"
       lights:
-        # corridor_light inherits this instance's own default windows
+        # light_corridor inherits this instance's own default windows
         # (sunset-relative evening cutoff, sunrise-relative morning start).
-        - device: "house.corridor_light.sw1"
+        - device: "house.light_corridor.sw1"
           default: true
         # porch_light overrides all three per-light instead.
         - device: "house.porch_light.state"
@@ -207,13 +216,13 @@ extensions:
               selectors:
                 - "house.surveillance/*"
                 - "house.alarm/*"
-                - "house.hallway_motion/state"
+                - "house.sensor_garage/state"
                 - "house.siren/*"
-                - "house.front_door_tag/*"
+                - "house.tag_reader_front/*"
             - id: lights
               title: Lights
               collapsed: false
-              selectors: ["house.corridor_light/*", "house.porch_light/*"]
+              selectors: ["house.light_corridor/*", "house.porch_light/*"]
             - id: battery
               title: Battery
               collapsed: true
@@ -249,7 +258,7 @@ extensions:
                   selectors:
                     - "house.surveillance/*"
                     - "house.alarm/*"
-                    - "house.corridor_light/sw1"
+                    - "house.light_corridor/sw1"
                     - "house.porch_light/state"
                     - "house.siren/state"
                   window: 24h
@@ -284,13 +293,13 @@ tasks:
 
   - tag: report_low_battery
     description: "Log the hallway motion sensor's battery level whenever it changes"
-    condition: { device: "house.hallway_motion.battery", changed: true }
-    action: { kind: log, device: "house.hallway_motion", message: "hallway motion sensor battery changed to {text}" }
+    condition: { device: "house.sensor_garage.battery", changed: true }
+    action: { kind: log, device: "house.sensor_garage", message: "hallway motion sensor battery changed to {text}" }
 
   - tag: report_bern_temperature
     description: "Log whenever the Bern temperature reading changes"
-    condition: { device: "weather.bern.temperature", changed: true }
-    action: { kind: log, device: "weather.bern", message: "Bern temperature changed to {state}" }
+    condition: { device: "weather.meteo-bern.temperature", changed: true }
+    action: { kind: log, device: "weather.meteo-bern", message: "Bern temperature changed to {state}" }
 
   - tag: surveillance_enable
     description: "Arming resets the alarm flag and forces lights off before random control takes over"
@@ -317,7 +326,7 @@ tasks:
         code: |
           log('surveillance disabled')
           set_state('house.siren.state', 0)
-          set_state('house.corridor_light.sw1', 0)
+          set_state('house.light_corridor.sw1', 0)
           set_state('house.alarm.state', 0)
           kill_task('surv_*')
       - kind: random_light
@@ -336,7 +345,7 @@ tasks:
   - tag: surveillance_intrusion
     description: "Motion while armed raises the alarm, at most once per 5 minutes"
     condition:
-      refs: { armed: "house.surveillance.armed", motion: "house.hallway_motion.state" }
+      refs: { armed: "house.surveillance.armed", motion: "house.sensor_garage.state" }
       expr: "armed.state == 1 and motion.changed and motion.state == 1"
     min_interval: 5m
     actions:
@@ -354,7 +363,7 @@ tasks:
               'tag': 'surv_light_off',
               'time': '+45m',
               'actions': [
-                  { 'kind': 'set', 'device': 'house.corridor_light.sw1', 'value': 0 },
+                  { 'kind': 'set', 'device': 'house.light_corridor.sw1', 'value': 0 },
                   { 'kind': 'set', 'device': 'house.alarm.state', 'value': 0 },
                   { 'kind': 'random_light', 'instance': 'random_light.house', 'force': 0 },
               ],

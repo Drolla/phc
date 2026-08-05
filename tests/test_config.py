@@ -2570,6 +2570,84 @@ devices: !include a.yaml
         load_system(system_yaml)
 
 
+def test_load_system_include_splices_a_list_valued_target_into_tasks(tmp_path):
+    """A `- !include <path>` list item whose target file is itself a YAML
+    sequence (e.g. several tasks merged into one topic file) is spliced
+    into the surrounding tasks: list -- core.config._flatten_list_entries
+    -- rather than nested as one list-of-lists element, so it composes
+    with an ordinary literal task item in the same list."""
+    (tmp_path / "extra_tasks.yaml").write_text("""
+- tag: b
+  time: "+2s"
+  action: { kind: toggle, device: "living_light.state" }
+- tag: c
+  time: "+3s"
+  action: { kind: toggle, device: "living_light.state" }
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: a
+    time: "+1s"
+    action: { kind: toggle, device: "living_light.state" }
+  - !include extra_tasks.yaml
+""")
+    system = load_system(system_yaml)
+    assert [t.tag for t in system.tasks] == ["a", "b", "c"]
+
+
+def test_load_system_include_splices_a_list_valued_target_into_devices(tmp_path):
+    (tmp_path / "extra_devices.yaml").write_text("""
+- id: porch_light
+  module: virtual
+  endpoints: [{ key: state, writable: true }]
+- id: hallway_light
+  module: virtual
+  endpoints: [{ key: state, writable: true }]
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true }]
+  - !include extra_devices.yaml
+""")
+    system = load_system(system_yaml)
+    assert set(system.devices) == {"living_light", "porch_light", "hallway_light"}
+
+
+def test_load_system_include_splices_a_list_valued_target_into_children(tmp_path):
+    (tmp_path / "extra_children.yaml").write_text("""
+- id: b
+  module: virtual
+  endpoints: [{ key: state, writable: true }]
+- id: c
+  module: virtual
+  endpoints: [{ key: state, writable: true }]
+""")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: house
+    module: host
+    children:
+      - id: a
+        module: virtual
+        endpoints: [{ key: state, writable: true }]
+      - !include extra_children.yaml
+""")
+    system = load_system(system_yaml)
+    assert set(system.devices) == {"house", "house.a", "house.b", "house.c"}
+
+
 # ---------- <<: !include (merge-key) ----------
 
 def test_load_system_merge_include_extends_a_mapping(tmp_path):
@@ -2743,6 +2821,4 @@ def _restore_phc_logger_levels():
 
 @pytest.mark.parametrize("example_path", sorted(_EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
 def test_load_system_examples_load_without_error(example_path, _restore_phc_logger_levels):
-    # Non-recursive glob: examples/common/ holds !include fragments, not
-    # standalone runnable systems, so it's naturally excluded here.
     load_system(example_path)
