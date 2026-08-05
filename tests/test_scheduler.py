@@ -269,11 +269,12 @@ def test_scheduler_removes_one_shot_task_after_it_fires():
     repeating = Task("repeating", due_time=1.0, repeat=3.0,
                       actions=[ToggleAction(device_id="living_light", endpoint_key="state")])
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    conditional = Task("conditional", due_time=float("-inf"), condition=condition,
+    conditional = Task("conditional", condition=condition,
                         actions=[LogAction(device_id="living_light", endpoint_key="state",
                                             message="changed")])
+    tasks: list[Task] = [one_shot, repeating, conditional]
 
-    scheduler = Scheduler({"living_light": light}, tasks=[one_shot, repeating, conditional])
+    scheduler = Scheduler({"living_light": light}, tasks=tasks)
 
     scheduler.tick(now=1.0)
     assert one_shot not in scheduler._tasks
@@ -294,7 +295,7 @@ def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
                            update_interval=1.0)
 
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    task = Task("report", due_time=float("-inf"), condition=condition,
+    task = Task("report", condition=condition,
                 actions=[LogAction(device_id="living_light", endpoint_key="state",
                                     message="living_light changed to {state}")])
 
@@ -340,7 +341,7 @@ def test_scheduler_runs_condition_task_for_nested_device(task_log):
     flat = {"house.desk_lamp": lamp, "house": house}
 
     condition = Condition(device_id="house.desk_lamp", endpoint_key="power", changed=True)
-    task = Task("report", due_time=float("-inf"), condition=condition,
+    task = Task("report", condition=condition,
                 actions=[LogAction(device_id="house.desk_lamp", endpoint_key="power",
                                     message="desk_lamp power changed to {state}")])
 
@@ -379,7 +380,7 @@ def test_scheduler_create_task_action_spawns_task_that_later_fires():
         "time": "+1s",
         "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
-    trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
+    trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
     tasks.append(trigger)
 
@@ -426,7 +427,7 @@ def test_scheduler_create_task_template_spawns_task_that_later_fires():
     }
     tasks: list[Task] = []
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
-    trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
+    trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(template="clear_alert", flat=flat, tasks=tasks,
                                                task_specs=task_specs)])
     tasks.append(trigger)
@@ -486,7 +487,7 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
         "time": "+1s",
         "action": {"kind": "set", "device": "living_light.state", "value": "off"},
     }
-    trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
+    trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
     tasks.append(trigger)
 
@@ -531,7 +532,7 @@ def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
         "condition": {"device": "living_light.state", "changed": False},
         "action": {"kind": "log", "device": "living_light.state", "message": "clear_alert ran"},
     }
-    trigger = Task("raise_alert", due_time=float("-inf"), condition=condition,
+    trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
     tasks.append(trigger)
 
@@ -568,10 +569,9 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
         "'action': {'kind': 'log', 'device': 'living_light.state', 'message': 'spawned ran'}})\n"
         "kill_task('victim')"
     )
-    spawner = Task("spawner", due_time=float("-inf"), condition=trigger_condition,
+    spawner = Task("spawner", condition=trigger_condition,
                     actions=[ScriptAction(code=code, task_tag="spawner", flat=flat, tasks=tasks)])
-    victim = Task("victim", due_time=float("-inf"),
-                   condition=Condition(device_id="living_light", endpoint_key="state"),
+    victim = Task("victim", condition=Condition(device_id="living_light", endpoint_key="state"),
                    actions=[LogAction(device_id="living_light", endpoint_key="state", message="victim ran")])
     # "spawner" ordered before "victim": within the same tick, spawner's
     # kill_task('victim') mutates the LIVE list, but this tick's pass 2 loop

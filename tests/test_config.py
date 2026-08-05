@@ -1,6 +1,7 @@
 """Tests for core.config: system YAML loading, param/endpoint merging, and validation."""
 
 import logging
+import time
 from pathlib import Path
 
 import pytest
@@ -1884,7 +1885,11 @@ tasks:
         load_system(system_yaml)
 
 
-def test_load_system_task_missing_time_and_condition_raises(tmp_path):
+def test_load_system_task_missing_time_and_condition_is_due_every_tick(tmp_path):
+    """`condition` and `time` are independent, optional knobs (see
+    docs/configuration.md#tasks's due_time defaulting matrix): a task with
+    neither is legal, defaults due_time to "now" (fires on the next
+    heartbeat), and (repeat omitted -> one-shot) fires exactly once."""
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
@@ -1893,11 +1898,38 @@ devices:
     module: virtual
     endpoints: [{ key: state, writable: true, default: "off" }]
 tasks:
-  - tag: bad
+  - tag: unconditional
     action: { kind: toggle, device: "living_light.state" }
 """)
-    with pytest.raises(ConfigError):
-        load_system(system_yaml)
+    system = load_system(system_yaml)
+    task = next(t for t in system.tasks if t.tag == "unconditional")
+    assert task.due_time is not None
+    assert task.due_time <= time.time()
+    assert task.condition is None
+    assert task.repeat is None
+
+
+def test_load_system_task_repeat_without_time_defaults_to_now(tmp_path):
+    """`time` is always optional (see docs/configuration.md#tasks's
+    matrix): a `repeat:`-only task defaults due_time to "now", the anchor
+    `repeat` then rolls forward from on each later fire."""
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: hourly
+    repeat: 1h
+    action: { kind: toggle, device: "living_light.state" }
+""")
+    system = load_system(system_yaml)
+    task = next(t for t in system.tasks if t.tag == "hourly")
+    assert task.due_time is not None
+    assert task.due_time <= time.time()
+    assert task.repeat == 3600.0
 
 
 def test_load_system_duplicate_task_tags_raise(tmp_path):

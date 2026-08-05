@@ -160,8 +160,13 @@ def test_time_driven_task_due_in_and_repeat():
     assert row["repeat"] == 86400.0
 
 
-def test_one_shot_task_due_time_exhausted_shows_never():
-    task = Task("once", due_time=float("inf"), repeat=0.0, actions=[])
+def test_one_shot_task_with_exhausted_due_time_shows_never():
+    """A one-shot task (repeat=None) that already fired and was marked
+    `done` (see Task's class docstring) would normally already be removed
+    from the live task list by the Scheduler by the time a snapshot is
+    taken -- this only exercises _describe_task's own due_time=inf
+    handling directly."""
+    task = Task("once", due_time=float("inf"), repeat=None, actions=[])
     system = FakeSystem(tasks=[task])
     snapshot = build_snapshot(system, {}, [], tick=1, now=100.0, period=1.0)
     row = snapshot["tasks"][0]
@@ -172,7 +177,7 @@ def test_one_shot_task_due_time_exhausted_shows_never():
 
 def test_condition_driven_task_has_no_due_in():
     condition = Condition(device_id="d", endpoint_key="k", changed=True)
-    task = Task("watch", due_time=float("-inf"), condition=condition, actions=[])
+    task = Task("watch", condition=condition, actions=[])
     system = FakeSystem(tasks=[task])
     snapshot = build_snapshot(system, {}, [], tick=1, now=100.0, period=1.0)
     row = snapshot["tasks"][0]
@@ -181,9 +186,19 @@ def test_condition_driven_task_has_no_due_in():
     assert row["repeat"] is None
 
 
+def test_condition_and_time_task_shows_combined_mode():
+    condition = Condition(device_id="d", endpoint_key="k", changed=True)
+    task = Task("night_check", due_time=103.0, repeat=86400.0, condition=condition, actions=[])
+    system = FakeSystem(tasks=[task])
+    snapshot = build_snapshot(system, {}, [], tick=1, now=100.0, period=1.0)
+    row = snapshot["tasks"][0]
+    assert row["mode"] == "cond+time"
+    assert row["due_in"] == 3.0
+
+
 def test_task_cooldown_reflects_min_interval_and_last_fired():
-    task = Task("debounced", due_time=100.0, min_interval=10.0, actions=[])
-    task.run(97.0, {})  # last_fired = 97.0
+    task = Task("debounced", due_time=97.0, repeat=1.0, min_interval=10.0, actions=[])
+    task.run(97.0, {})  # due (97.0 >= due_time 97.0); last_fired = 97.0
     system = FakeSystem(tasks=[task])
     snapshot = build_snapshot(system, {}, [], tick=1, now=100.0, period=1.0)
     assert snapshot["tasks"][0]["cooldown"] == 7.0
@@ -191,9 +206,9 @@ def test_task_cooldown_reflects_min_interval_and_last_fired():
 
 def test_tasks_sorted_soonest_time_then_condition_then_never():
     soon = Task("soon", due_time=100.4, actions=[])
-    condition_task = Task("cond_task", due_time=float("-inf"),
-                           condition=Condition(device_id="d", endpoint_key="k"), actions=[])
-    never = Task("never", due_time=float("inf"), actions=[])
+    condition_task = Task("cond_task", condition=Condition(device_id="d", endpoint_key="k"),
+                           actions=[])
+    never = Task("never", due_time=float("inf"), repeat=None, actions=[])
     system = FakeSystem(tasks=[never, condition_task, soon])
     snapshot = build_snapshot(system, {}, [], tick=1, now=100.0, period=1.0)
     assert [t["tag"] for t in snapshot["tasks"]] == ["soon", "cond_task", "never"]
