@@ -95,6 +95,21 @@ def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
 _IncludeLoader.add_constructor("!include", _include_constructor)
 
 
+def _flatten_list_entries(raw_entries: list) -> list:
+    """Splice a `- !include <path>` item whose target resolves to a list
+    into the surrounding list, instead of nesting it as one list-of-lists
+    element. See docs/configuration.md#splitting-configuration-across-files.
+    Used by every top-level/nested list this module builds: `devices:`,
+    a host device's `children:`, `task_specs:`, `tasks:`."""
+    flat = []
+    for entry in raw_entries:
+        if isinstance(entry, list):
+            flat.extend(entry)
+        else:
+            flat.append(entry)
+    return flat
+
+
 # Keys recognized on an endpoint spec, at every stage before a module's own
 # `endpoint_parameters:` names are folded into Endpoint.params (see
 # _merge_endpoints). `params:` itself is deliberately absent -- a protocol
@@ -919,7 +934,7 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     children = [
         _build_device(child_entry, intervals_map, qualified_id, flat, modules_config,
                       module_config_cache, effective_module_cache)
-        for child_entry in entry.get("children", [])
+        for child_entry in _flatten_list_entries(entry.get("children", []))
     ]
 
     device = device_cls(
@@ -1306,7 +1321,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     roots = [
         _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache,
                       effective_module_cache)
-        for entry in raw.get("devices", [])
+        for entry in _flatten_list_entries(raw.get("devices", []))
     ]
 
     # Every device's update_interval is resolved by now, so this is the
@@ -1334,7 +1349,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     # duplicate-tag check happens eagerly, to catch a copy-paste mistake at
     # load time rather than only once some template is actually used.
     task_specs: dict[str, dict] = {}
-    for entry in raw.get("task_specs", []):
+    for entry in _flatten_list_entries(raw.get("task_specs", [])):
         spec_tag = entry["tag"]
         if spec_tag in task_specs:
             raise ConfigError(f"task_specs: duplicate tag {spec_tag!r}")
@@ -1342,7 +1357,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
 
     tasks: list[Task] = []
     sticky_endpoints: set = set()
-    for entry in raw.get("tasks", []):
+    for entry in _flatten_list_entries(raw.get("tasks", [])):
         tasks.append(_build_task(entry, flat, tasks, extensions_registry, sticky_endpoints, task_specs))
     if sticky_endpoints:
         tick_hooks.append(_make_sticky_tick_hook(sticky_endpoints))
