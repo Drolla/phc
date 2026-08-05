@@ -71,11 +71,11 @@ endpoint's own value in isolation, not against the wider device tree.
 
 ## Conditions
 
-A task fires either on a schedule (`time`/`repeat`) or when its
-`condition` holds — and a `condition` can be written two ways: the
-`{device, changed, value}` shorthand, for gating on one endpoint, or
-`expr:`, a general boolean expression, for anything involving more than
-one device or richer logic.
+A task's schedule (`time`/`repeat`) and its `condition` are independent
+gates — see [Tasks](configuration.md#tasks) for how they combine — and a
+`condition` can be written two ways: the `{device, changed, value}`
+shorthand, for gating on one endpoint, or `expr:`, a general boolean
+expression, for anything involving more than one device or richer logic.
 
 ### The `{device, changed, value}` shorthand
 

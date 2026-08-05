@@ -79,11 +79,19 @@ plain JSON `null` (not a repr'd `"None"`) when nothing fired that tick, so
 string comparison against a magic value.
 
 Task rows mirror `core.scheduler.Scheduler._log_task_countdown`'s own
-due-time classification (condition-driven / exhausted / counting down),
-as structured `{mode, due_in, repeat, cooldown}` fields rather than a
-single debug log line. `_task_sort_key` orders soonest numeric `due_in`
-first, then `mode: cond` tasks (always re-evaluated, not a countdown),
-then exhausted one-shot tasks last.
+due-time classification, as structured `{mode, due_in, repeat, cooldown}`
+fields rather than a single debug log line. `condition` and `time`/
+`repeat` are independent gates on `core.task.Task` (see its class
+docstring), so `mode` is `"cond"` (condition only, no `time:`), `"time"`
+(`time:`/`repeat:` only), or `"cond+time"` (both given). `_task_sort_key`
+orders soonest numeric `due_in` first, then condition-gated tasks with no
+countdown (`mode` `cond`/`cond+time`, always re-evaluated), then tasks
+with no countdown and no condition to re-arm them last. A one-shot task
+(`repeat:` omitted) becomes `finished` the tick it fires; the Scheduler
+removes a finished task from the live task list right after
+(`core.task.Task` never touches the task list itself -- see its class
+docstring), so it simply disappears from the snapshot rather than
+lingering in an "exhausted" (`due_time=+inf`) state.
 
 ## Frontend: server-rendered skeleton, client-patched cells
 

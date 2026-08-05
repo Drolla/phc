@@ -13,10 +13,13 @@ their state, all on a fixed-heartbeat scheduler.
   subclass) plus a `devices/<name>/module.yaml` describing its parameters
   and endpoints declaratively. Modules are discovered automatically at
   startup.
-- **Task** — an automation triggered either by a schedule (`time`/`repeat`)
-  or by a device endpoint changing (`condition`), performing one or more
-  **actions** (`set`, `toggle`, `log`, `create_task`, `kill_task`, `script`,
-  ...), with an optional `min_interval` retrigger cooldown.
+- **Task** — an automation gated by a schedule (`time`/`repeat`), by a
+  device endpoint changing (`condition`), by both together (e.g. "fire at
+  22:00, but only if X"), or by neither (due every tick) — performing one
+  or more **actions** (`set`, `toggle`, `log`, `create_task`, `kill_task`,
+  `script`, ...), with an optional `min_interval` retrigger cooldown. See
+  [Tasks](configuration.md#tasks) for `repeat`'s one-shot/permanent/
+  repeating modes.
 - **Scheduler** — drives each device's fetch on its own interval and
   evaluates tasks once per heartbeat tick, running device I/O concurrently.
 
