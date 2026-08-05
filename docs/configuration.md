@@ -51,6 +51,28 @@ whole-device fragments pulled in via the plain `!include` form above -- see
 any example file under [`examples/`](../examples/) that references them for
 real usage.
 
+A `- !include <relative-path>` list item whose target file is itself a YAML
+sequence is *spliced* into the surrounding list rather than nested as one
+list-of-lists element -- so a whole topic file of several entries (e.g.
+several related tasks merged into one file) composes with an ordinary
+literal item in the same list, at every place a list of entries is built:
+`devices:`, a `host` device's `children:`, `task_specs:`, and `tasks:`.
+
+```yaml
+# radon_tasks.yaml -- a plain list of several tasks
+- tag: radon_control
+  ...
+- tag: radon_alert
+  ...
+```
+
+```yaml
+tasks:
+  - tag: log_history          # an ordinary literal task, unaffected
+    ...
+  - !include radon_tasks.yaml # spliced in as two tasks, not one nested list
+```
+
 ## Modules and shared configuration
 
 A `module.yaml` declares each parameter's `scope` (default `device`) and
