@@ -15,94 +15,57 @@ log:
       scheduler: DEBUG
       # tasks: INFO
 
-intervals:
-  fast: 3s
-
-# A household-specific fixture (not a real product, so it doesn't belong in
-# devices/virtual/module.yaml's own, generic module.yaml) can be defined
-# once here and reused across devices via device_profile: -- see "Endpoint
-# and device profiles" in README.md.
-modules:
-  virtual:
-    device_profiles:
-      siren:
-        endpoints:
-          - key: state
-            writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
-
+# lights.living_light/lights.kitchen_light/lights.desk_lamp/siren/... are
+# the shared filler devices from examples/devices/virtual_demo_devices.yaml
+# -- desk_lamp's brightness endpoint has a history: (see that file)
+# demonstrating value history/fractile() below. See
+# examples/logdb_system.yaml/full_house_system.yaml for the same shared
+# devices used elsewhere.
 devices:
-  - id: living_light
-    module: virtual
-    name: Living Room Light
-    update: fast
-    endpoints:
-      - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+  - !include devices/virtual_demo_devices.yaml
 
-  - id: house
-    module: host
-    name: Whole House
-    children:
-      - id: kitchen
-        module: host
-        name: Kitchen
-        children:
-          - id: kitchen_light
-            module: virtual
-            update: 5s
-            endpoints:
-              - key: state
-                writable: true
-                type: int
-                values: { 0: "off", 1: "on" }
-                default: 0
+# Both extensions run side by side, each on its own port: web_ui at
+# http://127.0.0.1:8080/ (widgets for the shared devices above) and
+# debug_portal at http://127.0.0.1:8081/ (a live view of this system's
+# scheduler/task queue and endpoint state) -- see
+# examples/web_ui_system.yaml/examples/debug_portal_system.yaml for a
+# narrower walkthrough of each on its own.
+extensions:
+  web_ui:
+    demo:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: home
+          title: Home
+          sections:
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["lights.living_light/*", "lights.kitchen_light/*", "lights.desk_lamp/*"]
+            - id: other
+              title: Other
+              collapsed: false
+              selectors: ["thermostat/*", "siren/*", "fan/*"]
 
-      - id: desk_lamp
-        module: virtual
-        update: fast
-        endpoints:
-          - key: power
-            writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
-          - key: brightness
-            writable: true
-            type: int
-            unit: "%"
-            default: 0
-            # size: 5, no explicit interval -- samples once per poll (the
-            # device's own `update: fast` = 3s), see "Value history &
-            # fractiles" in docs/scripting.md.
-            history: 5
-
-      - id: siren_hallway
-        module: virtual
-        name: Hallway Siren
-        device_profile: siren
-
-      - id: siren_garage
-        module: virtual
-        name: Garage Siren
-        device_profile: siren
+  debug_portal:
+    debug:
+      port: 8081
+      # host: 127.0.0.1   -- already the default (loopback only)
+      # selectors: ["*"]  -- already the default (every endpoint)
 
 tasks:
   - tag: blink
     description: "Toggle the light every 5s"
     time: +1s
     repeat: 10s
-    action: { kind: toggle, device: "living_light.state" }
+    action: { kind: toggle, device: "lights.living_light.state" }
 
   - tag: report
     description: "Log whenever the light changes"
-    condition: { device: "living_light.state", changed: true }
-    action: { kind: log, device: "living_light.state", message: "living_light changed to {text}" }
+    condition: { device: "lights.living_light.state", changed: true }
+    action: { kind: log, device: "lights.living_light.state", message: "living_light changed to {text}" }
 
   - tag: vary_brightness
     description: "Alternate the desk lamp's brightness, to give history: something to smooth"
@@ -110,8 +73,8 @@ tasks:
     repeat: 3s
     action:
       kind: set
-      device: "house.desk_lamp.brightness"
-      expr: "0 if state('house.desk_lamp.brightness') else 80"
+      device: "lights.desk_lamp.brightness"
+      expr: "0 if state('lights.desk_lamp.brightness') else 80"
 
   - tag: report_brightness_trend
     description: "Log the median of the last 5 brightness samples (see history:, above)"
@@ -120,4 +83,4 @@ tasks:
     action:
       kind: script
       code: |
-        log(f"desk_lamp brightness median: {median('house.desk_lamp.brightness')}")
+        log(f"desk_lamp brightness median: {median('lights.desk_lamp.brightness')}")

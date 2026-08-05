@@ -3,40 +3,42 @@
 # https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
 # and swap in whichever stations you actually want to track.
 #
-# Devices only -- no modules:/tasks:/intervals: here. update: is a literal
-# duration rather than an intervals: name, since this file can't assume the
-# including config defines one. All five devices poll the same published CSV
-# (data_url is `scope: module` in devices/meteoswiss/module.yaml -- one
-# shared value for every station, not per device), so an including config
-# that also sets modules.meteoswiss.cache_time gets them coalesced into a
-# single shared HTTP fetch per cache window.
-devices:
-  - id: meteo-bern
-    module: meteoswiss
-    name: Bern Weather
-    update: 10m
-    station: BER
+# A bare list, not a devices:-keyed mapping: a consuming config includes it
+# as one `devices:` list item (`- !include devices/meteoswiss_stations.yaml`)
+# alongside its own extra devices, and the loader splices this file's
+# entries into the surrounding list rather than nesting them -- see
+# docs/configuration.md#splitting-configuration-across-files. No modules:/
+# tasks:/intervals: here -- deliberately no update: on any device below
+# either, since an including config is expected to set modules.meteoswiss.
+# update itself (a device's own update: would otherwise take precedence
+# over modules.meteoswiss.update and silently defeat that shared setting --
+# see docs/configuration.md#modules-and-shared-configuration). All five
+# devices poll the same published CSV (data_url is `scope: module` in
+# devices/meteoswiss/module.yaml -- one shared value for every station, not
+# per device), so an including config that also sets
+# modules.meteoswiss.cache_time gets them coalesced into a single shared
+# HTTP fetch per cache window.
+- id: meteo-bern
+  module: meteoswiss
+  name: Bern Weather
+  station: BER
 
-  - id: meteo-zurich
-    module: meteoswiss
-    name: Zurich Weather
-    update: 10m
-    station: KLO
+- id: meteo-zurich
+  module: meteoswiss
+  name: Zurich Weather
+  station: KLO
 
-  - id: meteo-geneva
-    module: meteoswiss
-    name: Geneva Weather
-    update: 10m
-    station: GVE
+- id: meteo-geneva
+  module: meteoswiss
+  name: Geneva Weather
+  station: GVE
 
-  - id: meteo-basel
-    module: meteoswiss
-    name: Basel Weather
-    update: 10m
-    station: BAS
+- id: meteo-basel
+  module: meteoswiss
+  name: Basel Weather
+  station: BAS
 
-  - id: meteo-lugano
-    module: meteoswiss
-    name: Lugano Weather
-    update: 10m
-    station: LUG
+- id: meteo-lugano
+  module: meteoswiss
+  name: Lugano Weather
+  station: LUG

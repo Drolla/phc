@@ -20,35 +20,11 @@ modules:
     update: weather
     cache_time: 5m
 
-# Station codes below are a sample of MeteoSwiss automatic weather stations
-# (one per city); see the full list at
-# https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
-# and swap in whichever stations you actually want to track.
+# The shared station list from examples/devices/meteoswiss_stations.yaml --
+# see that file for the full list of MeteoSwiss automatic weather stations
+# to swap in instead.
 devices:
-  - id: meteo-bern
-    module: meteoswiss
-    name: Bern Weather
-    station: BER
-
-  - id: meteo-zurich
-    module: meteoswiss
-    name: Zurich Weather
-    station: KLO
-
-  - id: meteo-geneva
-    module: meteoswiss
-    name: Geneva Weather
-    station: GVE
-
-  - id: meteo-basel
-    module: meteoswiss
-    name: Basel Weather
-    station: BAS
-
-  - id: meteo-lugano
-    module: meteoswiss
-    name: Lugano Weather
-    station: LUG
+  - !include devices/meteoswiss_stations.yaml
 
 tasks:
   - tag: report_bern

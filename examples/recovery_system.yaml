@@ -5,33 +5,16 @@ log:
     levels:
       default: INFO
 
+# lights.desk_lamp/thermostat are the shared filler devices from
+# examples/devices/virtual_demo_devices.yaml -- this example is about crash
+# recovery, not the virtual module, so it just needs a couple of writable
+# devices to persist/restore, not a device-module walkthrough of its own
+# (see examples/virtual_system.yaml for that).
 devices:
-  - id: house
-    module: host
-    name: Whole House
-    children:
-      - id: desk_lamp
-        module: virtual
-        update: 1s
-        endpoints:
-          - key: power
-            writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
+  - !include devices/virtual_demo_devices.yaml
 
-      - id: thermostat
-        module: virtual
-        update: 1s
-        endpoints:
-          - key: setpoint
-            writable: true
-            type: float
-            unit: "C"
-            default: 18.0
-
-# Persists desk_lamp/power and thermostat/setpoint to a small YAML file,
-# restoring them automatically the next time PHC starts (e.g. after a
+# Persists lights.desk_lamp/power and thermostat/setpoint to a small YAML
+# file, restoring them automatically the next time PHC starts (e.g. after a
 # crash) instead of falling back to their `default:` above.
 #
 # Try it: run this example, let the two "warm_up_*" tasks below turn the
@@ -42,16 +25,16 @@ devices:
 extensions:
   recovery:
     critical_state:
-      selectors: ["house.desk_lamp/power", "house.thermostat/setpoint"]
+      selectors: ["lights.desk_lamp/power", "thermostat/setpoint"]
       path: "state/recovery.yaml"
 
 tasks:
   - tag: warm_up_lamp
     description: "Turn the lamp on shortly after startup"
     time: "+5s"
-    action: { kind: set, device: "house.desk_lamp.power", value: 1 }
+    action: { kind: set, device: "lights.desk_lamp.power", value: 1 }
 
   - tag: warm_up_thermostat
     description: "Raise the setpoint shortly after startup"
     time: "+5s"
-    action: { kind: set, device: "house.thermostat.setpoint", value: 21.5 }
+    action: { kind: set, device: "thermostat.setpoint", value: 21.5 }

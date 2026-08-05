@@ -19,59 +19,22 @@ log:
       default: INFO
       web_ui: DEBUG
 
+# lights.kitchen_light/lights.desk_lamp/fan are the shared filler devices
+# from examples/devices/virtual_demo_devices.yaml (kitchen_light is
+# bool-typed, specifically to exercise the toggle widget below); sun_zurich
+# is examples/devices/sun_zurich.yaml. This example is about the web UI,
+# not any one device module, so it just needs a few devices to render
+# widgets for.
 devices:
-  - id: house
-    module: host
-    name: House
-    children:
-      - id: living_light
-        module: virtual
-        name: Living Room Light
-        update: 5s
-        endpoints:
-          - key: state
-            writable: true
-            type: bool
-            default: false
-
-      - id: desk_lamp
-        module: virtual
-        name: Desk Lamp
-        update: 5s
-        endpoints:
-          - key: brightness
-            writable: true
-            type: int
-            min: 0
-            max: 100
-            unit: "%"
-            default: 0
-
-      - id: fan
-        module: virtual
-        name: Ceiling Fan
-        update: 5s
-        endpoints:
-          - key: speed
-            writable: true
-            type: int
-            values: { 0: "off", 1: "low", 2: "high" }
-            default: 0
-
-  - id: sun_zurich
-    module: sun
-    name: Sun (Zurich)
-    update: 1m
-    latitude: 47.3769
-    longitude: 8.5417
-    timezone: Europe/Zurich
+  - !include devices/virtual_demo_devices.yaml
+  - !include devices/sun_zurich.yaml
 
 extensions:
   # Feeds the "History" graph panel below -- see the log_db task at the
   # bottom of this file for what actually samples it.
   logdb:
     demo_log:
-      selectors: ["house.desk_lamp/brightness", "sun_zurich/elevation"]
+      selectors: ["lights.desk_lamp/brightness", "sun_zurich/elevation"]
       csv_path: "logs/web_ui_demo_log.csv"
       max_records: 5000
 
@@ -87,11 +50,11 @@ extensions:
             - id: lights
               title: Lights
               collapsed: false
-              selectors: ["house.living_light/*", "house.desk_lamp/*"]
+              selectors: ["lights.kitchen_light/*", "lights.desk_lamp/*"]
             - id: fan
               title: Fan
               collapsed: true
-              selectors: ["house.fan/*"]
+              selectors: ["fan/*"]
         - id: sensors
           title: Sensors
           sections:
@@ -106,7 +69,7 @@ extensions:
                 - kind: graph
                   id: demo_history
                   logdb_instance: "logdb.demo_log"
-                  selectors: ["house.desk_lamp/brightness", "sun_zurich/elevation"]
+                  selectors: ["lights.desk_lamp/brightness", "sun_zurich/elevation"]
                   title: "Desk Lamp Brightness & Sun Elevation"
                   window: 1h
                   decimation:
@@ -117,7 +80,7 @@ extensions:
 
 tasks:
   - tag: log_demo
-    description: "Sample desk_lamp/brightness and sun_zurich/elevation for the History graph panel"
+    description: "Sample lights.desk_lamp/brightness and sun_zurich/elevation for the History graph panel"
     time: +2s
     repeat: 10s
     action: { kind: log_db, instance: "logdb.demo_log" }

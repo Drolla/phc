@@ -6,7 +6,6 @@ log:
       default: INFO
 
 intervals:
-  sun: 1m
   weather: 10m
 
 # None of the modules below need any real or virtual hardware: sun is pure
@@ -22,16 +21,16 @@ modules:
     update: weather
     cache_time: 5m
 
-# sun and open_meteo take latitude/longitude directly on the device, so swap
-# in whatever location you actually want to track.
+# sun_zurich is the shared sun-position device (examples/devices/
+# sun_zurich.yaml); meteo-bern (used by report_weather below, alongside
+# four sibling stations from examples/devices/meteoswiss_stations.yaml) is
+# the shared MeteoSwiss station list. zurich-weather stays local -- it's
+# this example's own open_meteo device, demonstrating that module
+# specifically. sun and open_meteo take latitude/longitude directly on the
+# device, so swap in whatever location you actually want to track.
 devices:
-  - id: sun_zurich
-    module: sun
-    name: Sun (Zurich)
-    update: sun
-    latitude: 47.3769
-    longitude: 8.5417
-    timezone: Europe/Zurich
+  - !include devices/sun_zurich.yaml
+  - !include devices/meteoswiss_stations.yaml
 
   - id: zurich-weather
     module: open_meteo
@@ -39,11 +38,6 @@ devices:
     update: weather
     latitude: 47.3769
     longitude: 8.5417
-
-  - id: meteo-bern
-    module: meteoswiss
-    name: Bern Weather
-    station: BER
 
 tasks:
   - tag: report_sunset

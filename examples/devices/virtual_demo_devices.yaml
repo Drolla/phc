@@ -1,61 +1,100 @@
-# Shared device list: a handful of generic virtual lights/switches with no
-# real hardware behind them, reused as filler devices across examples that
-# demonstrate some other feature (logging, the web UI, the debug portal,
-# ...) and just need a few devices to show it on -- not a device module
-# feature in their own right (see examples/virtual_system.yaml for that).
+# Shared device list: a handful of generic virtual lights/switches/sensors
+# with no real hardware behind them, reused as filler devices across
+# examples that demonstrate some other feature (logging, the web UI, the
+# debug portal, crash recovery, value history, a surveillance/alarm state
+# machine, ...) and just need a few devices to show it on -- not a device
+# module feature in their own right.
 #
-# Devices only -- no modules:/tasks:/intervals: here, so an including file
-# stays free to define its own. update: is a literal duration on every
-# device below rather than an intervals: name, since this file can't assume
-# the including config defines one.
-devices:
-  - id: living_light
-    module: virtual
-    name: Living Room Light
-    update: 5s
-    endpoints:
-      - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+# A bare list, not a devices:-keyed mapping: a consuming config includes it
+# as one `devices:` list item (`- !include devices/virtual_demo_devices.yaml`)
+# alongside its own extra devices, and the loader splices this file's
+# entries into the surrounding list rather than nesting them -- see
+# docs/configuration.md#splitting-configuration-across-files. No modules:/
+# tasks:/intervals: here, so an including file stays free to define its own.
+# No device below sets its own update: either -- they all poll at the
+# system's default cadence (every heartbeat tick).
+#
+# The three lights (living_light/desk_lamp/kitchen_light) are grouped
+# under a `lights` host device, so every consumer addresses them as
+# lights.living_light/lights.desk_lamp/lights.kitchen_light. thermostat/
+# siren/fan aren't lights, so they stay top-level siblings of lights.
+- id: lights
+  module: host
+  name: Lights
+  children:
+    - id: living_light
+      module: virtual
+      name: Living Room Light
+      endpoints:
+        - key: state
+          writable: true
+          type: int
+          values: { 0: "off", 1: "on" }
+          default: 0
 
-  - id: desk_lamp
-    module: virtual
-    name: Desk Lamp
-    update: 5s
-    endpoints:
-      - key: power
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
-      - key: brightness
-        writable: true
-        type: int
-        min: 0
-        max: 100
-        unit: "%"
-        default: 0
+    - id: desk_lamp
+      module: virtual
+      name: Desk Lamp
+      endpoints:
+        - key: power
+          writable: true
+          type: int
+          values: { 0: "off", 1: "on" }
+          default: 0
+        - key: brightness
+          writable: true
+          type: int
+          min: 0
+          max: 100
+          unit: "%"
+          default: 0
+          # log_aggregation: min tracks brightness dips for a logdb
+          # consumer (see examples/logdb_system.yaml); history: 5
+          # independently feeds fractile()/median() queries (see
+          # examples/virtual_system.yaml and docs/scripting.md's "Value
+          # history & fractiles").
+          log_aggregation: min
+          history: 5
 
-  - id: kitchen_light
-    module: virtual
-    name: Kitchen Light
-    update: 5s
-    endpoints:
-      - key: state
-        writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+    # Typed bool rather than int+values -- for an example that
+    # specifically wants to exercise a bool-typed endpoint's UI widget (a
+    # toggle) rather than an int-with-values dropdown (see living_light
+    # above for that shape).
+    - id: kitchen_light
+      module: virtual
+      name: Kitchen Light
+      endpoints:
+        - key: state
+          writable: true
+          type: bool
+          default: false
 
-  - id: fan
-    module: virtual
-    name: Ceiling Fan
-    update: 5s
-    endpoints:
-      - key: speed
-        writable: true
-        type: int
-        values: { 0: "off", 1: "low", 2: "high" }
-        default: 0
+- id: thermostat
+  module: virtual
+  name: Thermostat
+  endpoints:
+    - key: setpoint
+      writable: true
+      type: float
+      unit: "C"
+      default: 18.0
+
+- id: siren
+  module: virtual
+  name: Siren
+  endpoints:
+    - key: state
+      writable: true
+      type: int
+      values: { 0: "off", 1: "on" }
+      default: 0
+
+- id: fan
+  module: virtual
+  name: Ceiling Fan
+  endpoints:
+    - key: speed
+      writable: true
+      type: int
+      values: { 0: "off", 1: "low", 2: "high" }
+      default: 0
