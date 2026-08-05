@@ -71,6 +71,7 @@ tasks:
               'description': 'While armed and not alarmed, randomize the hallway/porch lights',
               'time': '+5s',
               'repeat': '1m',
+              'condition': { 'device': 'alarm.state', 'value': 0 },
               'action': { 'kind': 'random_light', 'instance': 'random_light.house' },
           })
           create_task({'template': 'surv_intrusion'})
