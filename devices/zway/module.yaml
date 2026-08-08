@@ -45,13 +45,13 @@ parameters:
     description: Login password, paired with `user`.
   - name: cache_time
     override: allowed
-    default: "30s"
+    default: "1s"
     description: >
       How long a fetched batched status response may be reused before
       re-fetching (e.g. "30s", "1m" -- any value parse_duration accepts).
-      All devices sharing base_url share one cached fetch per poll. Set the
-      same value and `update` interval on every device behind one controller
-      to maximize batching into a single HTTP request.
+      All devices sharing base_url are fetched together and share this
+      cache, so a task reading several of their endpoints within one
+      cache_time window triggers only a single request.
   - name: request_timeout
     override: allowed
     default: "10s"

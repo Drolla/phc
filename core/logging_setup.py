@@ -19,7 +19,21 @@ class _InPlaceLineState:
         self.is_open = False
 
 
-class InPlaceLineHandler(logging.Handler):
+class _BrokenPipeSilentMixin:
+    """Suppresses logging's default handleError() traceback dump for a
+    broken output stream (e.g. Ctrl-C while stdout is piped to a process
+    that has already exited -- Windows raises OSError EINVAL on the next
+    write/flush, not BrokenPipeError). Nothing can be done about a stream
+    that's gone, and a shutdown-time record failing to print isn't worth
+    the noise; any other handler error still surfaces normally."""
+
+    def handleError(self, record):
+        if sys.exc_info()[0] in (BrokenPipeError, OSError):
+            return
+        super().handleError(record)
+
+
+class InPlaceLineHandler(_BrokenPipeSilentMixin, logging.Handler):
     """Writes each record as '\\r' + message, with no trailing newline, so
     repeated calls overwrite the same terminal line instead of scrolling.
     Used for the scheduler's live per-tick task countdown -- a status line
@@ -44,7 +58,7 @@ class InPlaceLineHandler(logging.Handler):
             self.handleError(record)
 
 
-class NewlineSafeStreamHandler(logging.StreamHandler):
+class NewlineSafeStreamHandler(_BrokenPipeSilentMixin, logging.StreamHandler):
     """A normal, newline-terminated StreamHandler that -- before emitting
     each record -- closes any pending in-place line (see
     InPlaceLineHandler) with a bare newline first, so the new record
