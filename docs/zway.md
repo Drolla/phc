@@ -1,10 +1,15 @@
 # Razberry/zWay Z-Wave integration
 
 [`devices/zway/`](../devices/zway/) controls Z-Wave devices through a
-Razberry/zWay controller, via `thc_zWay.js`
-(https://github.com/Drolla/thc/tree/master/modules/thc_zWay), a small helper
-script ported from the earlier THC project that you install on the zWay
-server yourself (PHC does not push it there). One `zway` device is one
+Razberry/zWay controller, via
+[`thc_zWay.js`](../devices/zway/thc_zWay.js), a small helper script from
+the earlier THC project
+(https://github.com/Drolla/thc/tree/master/modules/thc_zWay). Copy
+`thc_zWay.js` into the zWay server's automation folder yourself (PHC does
+not upload the file there); PHC then loads it into the running zWay
+server automatically the first time it's needed, retrying on every later
+poll if the controller isn't reachable yet — no separate startup wait is
+required in your system config. One `zway` device is one
 physical Z-Wave node; give it whatever endpoints that node needs (a switch's
 `state`, a sensor's `battery`, ...), each naming its own zWay identifier via
 `command_group` and `address`, written as an ordinary top-level field on

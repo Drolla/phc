@@ -1,6 +1,7 @@
 description: >
   One physical Z-Wave node's values on a Razberry/zWay controller,
-  read/written via zWay.js (installed on the zWay server, not pushed by PHC).
+  read/written via thc_zWay.js (installed in the zWay server's automation
+  folder by you, then loaded there automatically by PHC on first use).
   Define endpoints with `command_group` (SwitchBinary, SwitchMultilevel,
   SwitchMultiBinary, SensorBinary, SensorMultilevel, Battery, TagReader) and
   `address` (opaque "node.instance[.datarecord]" string, e.g. "20.1").

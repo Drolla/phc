@@ -1,5 +1,5 @@
 """ZWayDevice: one physical Z-Wave node's values, read/written via a
-Razberry/zWay controller's zWay.js helper script over HTTP."""
+Razberry/zWay controller's thc_zWay.js helper script over HTTP."""
 
 import asyncio
 import json
@@ -46,14 +46,26 @@ _throttled_values: dict[str, dict[tuple[str, str], tuple[float, object]]] = {}
 _session_cookies: dict[str, str] = {}   # base_url -> Cookie header value
 _session_lock = asyncio.Lock()
 _configured_tag_readers: set[tuple[str, str]] = set()   # (base_url, node) already configured
+_helper_loaded: set[str] = set()   # base_urls confirmed to have thc_zWay.js loaded
+_helper_lock = asyncio.Lock()
+
+# Marker identifier Get_IndexArray() is probed with to check thc_zWay.js is
+# loaded on the zWay server, and its expected reply -- see
+# ZWayDevice._ensure_helper_loaded. The value itself is arbitrary, chosen to
+# be unlikely to collide with a real Z-Wave node/instance/datarecord
+# combination.
+_HELPER_PROBE_IDENT = "257.1"
+_HELPER_PROBE_RESPONSE = [257, 1, 0]
 
 
 @register_module("zway")
 class ZWayDevice(Device):
     """One physical Z-Wave node's values (e.g. a switch's state, sensor
     reading, battery level), read/written via Get/Set commands to a
-    Razberry/zWay controller (using zWay.js, installed on the controller).
-    Each endpoint maps to a zWay identifier: `command_group` (one of
+    Razberry/zWay controller, using thc_zWay.js (see _ensure_helper_loaded
+    -- installed in the zWay server's automation folder by the user, then
+    loaded there automatically on first use). Each endpoint maps to a zWay
+    identifier: `command_group` (one of
     SwitchBinary/SwitchMultilevel/SwitchMultiBinary/SensorBinary/
     SensorMultilevel/Battery/TagReader) and `address` (an opaque
     "node.instance[.datarecord]" string, passed verbatim). A device with a
@@ -98,13 +110,19 @@ class ZWayDevice(Device):
         self._tag_reader_node: str | None = str(node) if has_tag_reader and node is not None else None
 
     async def receive_async(self) -> dict:
-        """Configure any unconfigured TagReader nodes, fetch batched values,
-        return {endpoint_key: value} for this device's endpoints (None on
-        any failure, like other weather/sensor modules)."""
+        """Ensure thc_zWay.js is loaded on the controller, configure any
+        unconfigured TagReader nodes, fetch batched values, return
+        {endpoint_key: value} for this device's endpoints (None on any
+        failure, like other weather/sensor modules -- logged at ERROR here,
+        since core.scheduler only logs a bare "fetch failed" for an
+        unhandled exception, not one caught and turned into empty values)."""
+        if not await self._ensure_helper_loaded():
+            return {key: None for key in self._idents}
         await self._ensure_tag_readers_configured()
         try:
             values = await self._get_values()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+            logger.error("%s: fetch failed: %s", self._base_url, exc)
             values = {}
         return {key: values.get(ident) for key, ident in self._idents.items()}
 
@@ -113,6 +131,8 @@ class ZWayDevice(Device):
         are sporadic, not periodic). A successful write clears the shared
         read cache so the next poll reflects it immediately. Failed writes
         are silently ignored; the next poll reports the real state."""
+        if not await self._ensure_helper_loaded():
+            return
         for key, value in state.items():
             ident = self._idents.get(key)
             if ident is None:
@@ -121,7 +141,8 @@ class ZWayDevice(Device):
             expr = f'Set([["{command_group}","{address}"]],{json.dumps(value)})'
             try:
                 await self._js_run(expr)
-            except (aiohttp.ClientError, asyncio.TimeoutError):
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                logger.error("%s: write failed for %s: %s", self._base_url, key, exc)
                 continue
             _response_cache.pop(self._base_url, None)
 
@@ -220,6 +241,49 @@ class ZWayDevice(Device):
         # rather than null. Normalize to None so it's indistinguishable from
         # any other fetch failure (see receive_async).
         return {ident: (value if value != "" else None) for ident, value in zip(idents, raw)}
+
+    # ---------- helper script (thc_zWay.js) one-time load ----------
+
+    async def _ensure_helper_loaded(self) -> bool:
+        """Confirm thc_zWay.js is loaded on this base_url's zWay server,
+        loading it via executeFile() first if a Get_IndexArray() probe
+        shows it's missing (ported from THC's thc_zWay.tcl Init). Returns
+        False if the controller is unreachable or the file isn't present
+        in its automation folder -- callers treat that like any other
+        fetch/write failure, so it's simply retried on the next poll
+        instead of blocking startup (see _ensure_tag_readers_configured)."""
+        if self._base_url in _helper_loaded:
+            return True
+        async with _helper_lock:
+            if self._base_url in _helper_loaded:
+                return True
+            if await self._probe_helper():
+                _helper_loaded.add(self._base_url)
+                return True
+            try:
+                await self._js_run('executeFile("thc_zWay.js")')
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                logger.error("%s: could not reach zWay server to load thc_zWay.js: %s",
+                             self._base_url, exc)
+                return False
+            if not await self._probe_helper():
+                logger.error(
+                    "%s: thc_zWay.js did not load -- is it in the zWay automation folder?",
+                    self._base_url)
+                return False
+            logger.info("%s: loaded thc_zWay.js", self._base_url)
+            _helper_loaded.add(self._base_url)
+            return True
+
+    async def _probe_helper(self) -> bool:
+        """True if Get_IndexArray() responds as expected, i.e. thc_zWay.js
+        is already loaded. False on any HTTP failure or mismatched reply
+        (script not loaded, or not loaded yet)."""
+        try:
+            result = await self._js_run(f"Get_IndexArray({_HELPER_PROBE_IDENT})")
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            return False
+        return result == _HELPER_PROBE_RESPONSE
 
     # ---------- TagReader one-time configure ----------
 
