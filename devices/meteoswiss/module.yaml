@@ -3,7 +3,7 @@ description: >
   (temperature, humidity, pressure, wind, precipitation). One device per
   station -- set `station` to the station's abbreviation.
 
-update: "10m"
+update: "1m"
 
 parameters:
   - name: data_url
