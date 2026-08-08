@@ -3,6 +3,7 @@ Razberry/zWay controller's zWay.js helper script over HTTP."""
 
 import asyncio
 import json
+import logging
 import time
 from urllib.parse import quote
 
@@ -11,6 +12,8 @@ import aiohttp
 from core.device import Device
 from core.intervals import parse_duration
 from core.registry import register_module
+
+logger = logging.getLogger("phc.zway")
 
 # Devices sharing a base_url register their endpoints' (command_group, address)
 # identifiers here during setup(). Before the first fetch, the registry is
@@ -236,6 +239,7 @@ class ZWayDevice(Device):
         except (aiohttp.ClientError, asyncio.TimeoutError):
             return
         _configured_tag_readers.add(key)
+        logger.info("tag reader registered for node %s on %s", node, self._base_url)
 
     # ---------- HTTP + session/auth ----------
 
@@ -245,10 +249,15 @@ class ZWayDevice(Device):
         Opens a fresh aiohttp.ClientSession per request (not reused as a
         module-level session) to avoid lifecycle issues across Scheduler
         instances. Only the extracted cookie string is cached, preserving
-        correctness (survives session cookie jar reset) without lifecycle debt."""
+        correctness (survives session cookie jar reset) without lifecycle debt.
+
+        The one call site for every physical-device interaction (Get/Set/
+        Configure_TagReader alike), so it's logged here at DEBUG rather than
+        at each of its callers."""
         url = f"{self._base_url}/JS/Run/{quote(expr, safe='')}"
         timeout = aiohttp.ClientTimeout(total=self._request_timeout)
         for attempt in range(2):
+            logger.debug("%s (%s): %s", self._base_url, attempt, expr)
             cookie = await self._ensure_cookie()
             headers = {"Cookie": cookie} if cookie else {}
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -257,7 +266,10 @@ class ZWayDevice(Device):
                         _session_cookies.pop(self._base_url, None)
                         continue
                     response.raise_for_status()
-                    return await response.json(content_type=None)
+                    result = await response.json(content_type=None)
+                    logger.debug("%s (%s): -> %r", self._base_url, attempt, result)
+                    return result
+        logger.info("%s: -> login expired/rejected", self._base_url)
         raise aiohttp.ClientError(f"zway: login expired/rejected for {self._base_url}")
 
     async def _ensure_cookie(self) -> str | None:
@@ -289,4 +301,5 @@ class ZWayDevice(Device):
                 if not cookie:
                     raise aiohttp.ClientError(
                         f"zway: login did not return a session cookie for {self._base_url}")
+                logger.info("session established for %s (user %s)", self._base_url, self._user)
                 return cookie.split(";", 1)[0]
