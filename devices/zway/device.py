@@ -100,11 +100,14 @@ class ZWayDevice(Device):
     async def receive_async(self) -> dict:
         """Configure any unconfigured TagReader nodes, fetch batched values,
         return {endpoint_key: value} for this device's endpoints (None on
-        any failure, like other weather/sensor modules)."""
+        any failure, like other weather/sensor modules -- logged at ERROR
+        here, since core.scheduler only logs a bare "fetch failed" for an
+        unhandled exception, not one caught and turned into empty values)."""
         await self._ensure_tag_readers_configured()
         try:
             values = await self._get_values()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+            logger.error("%s: fetch failed: %s", self._base_url, exc)
             values = {}
         return {key: values.get(ident) for key, ident in self._idents.items()}
 
@@ -121,7 +124,8 @@ class ZWayDevice(Device):
             expr = f'Set([["{command_group}","{address}"]],{json.dumps(value)})'
             try:
                 await self._js_run(expr)
-            except (aiohttp.ClientError, asyncio.TimeoutError):
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                logger.error("%s: write failed for %s: %s", self._base_url, key, exc)
                 continue
             _response_cache.pop(self._base_url, None)
 
