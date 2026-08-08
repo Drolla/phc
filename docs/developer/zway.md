@@ -40,6 +40,17 @@ auth state, keyed by `base_url`:
   sync/no-I/O) into the first `receive_async()`, and tracked per
   `(base_url, node)` pair so it only runs once. Only recorded on success,
   so a transient failure retries on the next poll.
+- **`thc_zWay.js` one-time load** (`_helper_loaded`, `_helper_lock`,
+  `_ensure_helper_loaded`/`_probe_helper`) — every `receive_async()`/
+  `transmit_async()` first probes with the marker call
+  `Get_IndexArray(257.1)` (expected reply `[257, 1, 0]`), and if that
+  fails, loads the script with `executeFile("thc_zWay.js")` (which only
+  works if a copy already sits in the zWay server's automation folder —
+  PHC never uploads file content) and probes once more. Ported from THC's
+  `thc_zWay.tcl` `Init`, but without its blocking retry loop: only
+  recorded in `_helper_loaded` on success, so an offline controller is
+  simply retried on the next poll — the same idiom as
+  `_configured_tag_readers` above.
 
 ## Profile library notes
 
