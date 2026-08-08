@@ -14,7 +14,7 @@ log:
       default: WARNING
 
 intervals:
-  zwave: 30s
+  zwave: 1s
 
 # All five devices below share one Razberry/zWay controller, so its
 # connection params and update interval are set once here -- rather than
@@ -35,7 +35,6 @@ modules:
     base_url: http://192.168.1.21:8083
     user: admin
     password: admin
-    cache_time: 30s
 
 # The shared zway device set from examples/devices/zway_devices.yaml.
 # weather_station's own update: (see that file) overrides modules.zway's

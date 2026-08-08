@@ -40,7 +40,7 @@ log:
       default: INFO
 
 intervals:
-  zwave: 30s
+  zwave: 1s
   weather: 10m
   radon: 1m
 
@@ -59,7 +59,6 @@ modules:
     base_url: http://192.168.1.21:8083
     user: admin
     password: admin
-    cache_time: 30s
 
 devices:
   - id: house
