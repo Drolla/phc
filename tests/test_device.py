@@ -1,5 +1,7 @@
 """Tests for core.device: the Device base class (get/set, fetch, tree recursion)."""
 
+import asyncio
+
 import pytest
 
 from core.device import Device
@@ -19,6 +21,23 @@ class EchoDevice(Device):
         return pending
 
     def transmit(self, state):
+        self._pending.update(state)
+
+
+class AsyncOnlyEchoDevice(Device):
+    """Test double for a native-async device (e.g. devices.zway.ZWayDevice):
+    overrides transmit_async() directly and never implements the synchronous
+    transmit() at all, per core.device.Device's class docstring guidance for
+    a device whose I/O is genuinely async-friendly."""
+
+    def setup(self):
+        self._pending = {}
+
+    async def receive_async(self):
+        pending, self._pending = self._pending, {}
+        return pending
+
+    async def transmit_async(self, state):
         self._pending.update(state)
 
 
@@ -283,3 +302,69 @@ def test_read_and_write_transform_round_trip_through_fetch_and_set():
     device.update_state()
 
     assert device.get() == 18.5   # write_transform then read_transform cancel out
+
+
+# ---------- native-async devices (set_text/set vs. set_text_async/set_async) ----------
+
+def test_set_text_is_silently_dropped_on_a_native_async_device():
+    """Outside a tick, set_text()'s immediate-write path only ever calls the
+    synchronous transmit() (see Device._emit()). A device that overrides
+    transmit_async() directly instead -- like devices.zway.ZWayDevice --
+    never implements transmit(), so the write is silently swallowed. This
+    pins down that known limitation (the reason extensions.web_ui's write
+    endpoint uses set_text_async() instead, see the next test)."""
+    ep = Endpoint("state", writable=True, value_type="int", values={0: "off", 1: "on"})
+    device = AsyncOnlyEchoDevice("light", endpoints=[ep])
+
+    device.set_text("on")
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get() is None
+
+
+def test_set_text_async_reaches_a_native_async_device():
+    ep = Endpoint("state", writable=True, value_type="int", values={0: "off", 1: "on"})
+    device = AsyncOnlyEchoDevice("light", endpoints=[ep])
+
+    asyncio.run(device.set_text_async("on"))
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get() == 1
+    assert device.get_text() == "on"
+
+
+def test_set_text_async_by_name_and_multi_endpoint_dict():
+    power = Endpoint("power", writable=True, value_type="int", values={0: "off", 1: "on"})
+    brightness = Endpoint("brightness", writable=True, value_type="int", unit="%")
+    device = AsyncOnlyEchoDevice("lamp", endpoints=[power, brightness])
+
+    async def write_both():
+        await device.set_text_async("on", name="power")
+        await device.set_text_async("80", name="brightness")
+
+    asyncio.run(write_both())
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get_text("power") == "on"
+    assert device.get("brightness") == 80
+
+
+def test_set_text_async_applies_write_transform_after_from_text():
+    ep = Endpoint("temp", writable=True, value_type="float", write_transform="value + 1.5")
+    device = AsyncOnlyEchoDevice("d", endpoints=[ep])
+
+    asyncio.run(device.set_text_async("18.5"))
+    fetch_sync(device)
+    device.update_state()
+
+    assert device.get() == 20.0
+
+
+def test_set_text_async_on_readonly_endpoint_raises():
+    ep = Endpoint("temp", writable=False, value_type="float")
+    device = AsyncOnlyEchoDevice("d", endpoints=[ep])
+    with pytest.raises(AttributeError):
+        asyncio.run(device.set_text_async("21.0"))
