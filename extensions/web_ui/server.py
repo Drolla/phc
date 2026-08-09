@@ -6,7 +6,6 @@ loop); extension.py's WebUiInstance.on_start()/on_stop() own the actual
 AppRunner/TCPSite lifecycle, driven by core.scheduler.Scheduler's
 start_hooks/stop_hooks."""
 
-import asyncio
 import logging
 import math
 from pathlib import Path
@@ -204,15 +203,13 @@ async def handle_graph_data(request: web.Request) -> web.Response:
 
 
 async def handle_api_set(request: web.Request) -> web.Response:
-    """Form-encoded body (device, endpoint, text) -> device.set_text(text,
-    name=endpoint), off-loaded onto the loop's default executor (the
-    Scheduler's own bounded thread pool) so a slow/blocking transmit()
-    can't stall the shared event loop. Deliberately returns no body/markup:
-    Device.set()'s own docstring is explicit that a write isn't observable
-    via get() until the NEXT scheduler tick's fetch()/update_state() --
-    rendering "updated" markup here would show stale state or a fabricated
-    optimistic value. The widget's own polling (GET /widget/...) picks up
-    the real committed value on its next refresh instead."""
+    """Form-encoded body (device, endpoint, text) -> device.set_text_async(
+    text, name=endpoint). set_text_async(), not the sync set_text(), is
+    required outside a scheduler tick to actually reach a native-async
+    device like devices.zway.ZWayDevice -- see Device._emit()'s docstring.
+    Deliberately returns no body/markup: a write isn't observable via get()
+    until the NEXT tick's fetch()/update_state() (see Device.set()), so the
+    widget's own polling picks up the real value instead."""
     devices = request.app[DEVICES]
     data = await request.post()
     device_id, endpoint_key, text = data.get("device"), data.get("endpoint"), data.get("text")
@@ -231,7 +228,7 @@ async def handle_api_set(request: web.Request) -> web.Response:
 
     logger.debug("web_ui set %s/%s = %r", device_id, endpoint_key, text)
     try:
-        await asyncio.to_thread(device.set_text, text, endpoint_key)
+        await device.set_text_async(text, endpoint_key)
     except (ValueError, TypeError) as exc:
         logger.debug("web_ui set %s/%s failed: %s", device_id, endpoint_key, exc)
         raise web.HTTPBadRequest(text=str(exc))
