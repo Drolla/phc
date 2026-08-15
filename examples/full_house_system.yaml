@@ -58,9 +58,9 @@ modules:
   # incorrectly assumed to share one controller's batched fetch.
   zway:
     update: zwave
-    base_url: http://192.168.1.21:8083
-    user: admin
-    password: admin
+    base_url: <URL>
+    user: <UserName>
+    password: <Password>
 
 devices:
   - id: house
@@ -104,7 +104,7 @@ devices:
         module: waveplus_bridge
         name: Cellar Air Quality
         update: radon
-        base_url: http://192.168.1.26:80/data
+        base_url: <URL>
         sensor_id: cellar
         cache_time: 60s
         data_validity_time: 5m
