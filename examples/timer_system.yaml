@@ -33,6 +33,9 @@ extensions:
       path: "state/timer_demo.yaml"
       selectors: ["lights.*/*", "thermostat/*", "fan/*"]
       catch_up: 5m
+  debug_portal:
+    debug:
+      port: 8081
 
   web_ui:
     demo:
