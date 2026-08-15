@@ -193,7 +193,7 @@ extensions:
   recovery:
     critical_state:
       selectors: ["house.surveillance/armed"]
-      path: "state/full_house_recovery.yaml"
+      path: "logs/full_house_recovery.yaml"
 
   # User-programmable timers (created/edited from the web UI's "Timers"
   # section below), scoped to the house's writable, individually-meaningful
@@ -206,7 +206,7 @@ extensions:
         - "house.siren/state"
         - "house.alarm/state"
         - "house.surveillance/armed"
-      path: "state/full_house_timers.yaml"
+      path: "logs/full_house_timers.yaml"
 
   logdb:
     full_history:

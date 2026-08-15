@@ -24,15 +24,11 @@ env/
 .idea/
 .vscode/
 
-# Generated logs (e.g. logdb CSV output, or a log: file destination
-# written next to whichever system YAML configured it)
+# Generated logs (e.g. logdb CSV output, extensions.recovery's persisted
+# endpoint values, extensions.timer's user-edited timers, or a log: file
+# destination written next to whichever system YAML configured it)
 logs/
 *.log
-
-# Generated recovery state (extensions.recovery's persisted endpoint
-# values -- e.g. examples/recovery_system.yaml's and
-# examples/full_house_system.yaml's own state/*.yaml)
-state/
 
 # Claude Code local settings
 .claude/settings.local.json
