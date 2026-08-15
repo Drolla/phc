@@ -26,6 +26,8 @@
 #   - recovery        -- persists house.surveillance.armed across a restart,
 #                         so an armed system doesn't silently disarm itself
 #                         after a crash (see examples/recovery_system.yaml)
+#   - timer           -- user-programmable timers, created/edited from the
+#                         web UI's "Timers" section (see examples/timer_system.yaml)
 #   - debug_portal    -- a live view of this whole system's scheduler/task
 #                         queue and endpoint state (see
 #                         examples/debug_portal_system.yaml)
@@ -193,6 +195,19 @@ extensions:
       selectors: ["house.surveillance/armed"]
       path: "state/full_house_recovery.yaml"
 
+  # User-programmable timers (created/edited from the web UI's "Timers"
+  # section below), scoped to the house's writable, individually-meaningful
+  # switches -- see examples/timer_system.yaml for a narrower walkthrough.
+  timer:
+    house:
+      selectors:
+        - "house.light_corridor/sw1"
+        - "house.porch_light/state"
+        - "house.siren/state"
+        - "house.alarm/state"
+        - "house.surveillance/armed"
+      path: "state/full_house_timers.yaml"
+
   logdb:
     full_history:
       selectors: ["house.*/*", "weather.*/*", "sun_zurich/*"]
@@ -222,6 +237,13 @@ extensions:
               title: Lights
               collapsed: false
               selectors: ["house.light_corridor/*", "house.porch_light/*"]
+            - id: timers
+              title: Timers
+              collapsed: false
+              panels:
+                - kind: timers
+                  id: house_timers
+                  timer_instance: "timer.house"
             - id: battery
               title: Battery
               collapsed: true
