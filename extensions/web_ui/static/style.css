@@ -49,11 +49,19 @@ header .nav-link:hover:not(.active) {
 
 /* Each device is now a grid item, so it needs to look like a self-contained
    card (previously this was conveyed by indentation + a left border,
-   which only reads correctly in a single vertical stack). */
-.device {
+   which only reads correctly in a single vertical stack). A light teal
+   wash (the same --bs-primary-bg-subtle/-border-subtle the accent color
+   is built from) replaces the plain white/neutral card so color reaches
+   the bulk of the page, not just borders and headers -- .graph-panel and
+   .timers-panel share the same card treatment below, since a section's
+   panels are all "cards" regardless of kind. */
+.device,
+.graph-panel,
+.timers-panel {
   padding: 0.75rem;
-  border: 1px solid var(--bs-border-color);
+  border: 1px solid var(--bs-primary-border-subtle);
   border-radius: var(--bs-border-radius);
+  background: var(--bs-primary-bg-subtle);
 }
 
 .device > h4 {
@@ -70,6 +78,9 @@ header .nav-link:hover:not(.active) {
   gap: 0.5rem;
 }
 
+/* Body-bg (not tertiary-bg) so each widget row reads as a neutral chip
+   sitting on top of its device card's teal wash, instead of blending into
+   it -- the same layering .timers-form uses against .timers-panel below. */
 .widget {
   display: flex;
   flex-wrap: wrap;
@@ -77,7 +88,7 @@ header .nav-link:hover:not(.active) {
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border-radius: var(--bs-border-radius);
-  background: var(--bs-tertiary-bg);
+  background: var(--bs-body-bg);
 }
 
 .widget-label {
@@ -194,11 +205,14 @@ input[type="range"].widget-input {
   white-space: nowrap;
 }
 
+/* Body-bg, not tertiary-bg, for the same reason as .widget above: this
+   form sits inside .timers-panel's now-teal-washed card and needs to read
+   as a distinct neutral surface rather than blend into it. */
 .timers-form {
   padding: 0.75rem;
   border: 1px solid var(--bs-border-color);
   border-radius: var(--bs-border-radius);
-  background: var(--bs-tertiary-bg);
+  background: var(--bs-body-bg);
 }
 
 .timers-form-row {
