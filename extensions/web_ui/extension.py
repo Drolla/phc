@@ -116,6 +116,13 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
         if duplicates:
             raise ConfigError(
                 f"web_ui instance {instance_key!r}: duplicate graph panel id(s): {sorted(duplicates)}")
+
+        timer_panel_ids = [panel.id for page in pages for section in page.sections
+                            for panel in section.panels if panel.kind == "timers"]
+        duplicates = {i for i in timer_panel_ids if timer_panel_ids.count(i) > 1}
+        if duplicates:
+            raise ConfigError(
+                f"web_ui instance {instance_key!r}: duplicate timers panel id(s): {sorted(duplicates)}")
     else:
         # No `pages:` at all: single-page shorthand off the top-level
         # `selectors:` param -- one always-expanded, untitled section

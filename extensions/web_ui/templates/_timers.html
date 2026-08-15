@@ -1,0 +1,126 @@
+{#
+  render_timers_panel: renders ONE "timers" panel's full content -- the
+  current timer table plus an add/edit form -- addressed by panel.id. Like
+  render_widget (_macros.html), this is the ONLY place timers panel markup
+  is generated: the full-page render and every poll/CRUD response
+  (templates/_timers_only.html) call it with identical data, so there is
+  never a "first paint" vs. "refreshed fragment" markup mismatch.
+
+  panel.error (set when extensions/web_ui/server.py's
+  _describe_timers_panel can't resolve panel.timer_instance) short-circuits
+  to an inline message instead of the table/form.
+
+  The whole panel polls its own fragment (GET /timers/<id>) on
+  refresh_interval, skipped while focus is anywhere inside it (editing the
+  form, or about to click a row action) -- same skip-check idiom as
+  render_widget. A single add/edit form is reused for both: clicking a
+  row's "Edit" button (see static/timers.js) copies that row's data-*
+  attributes into the form instead of rendering a second, separate form.
+
+  The target <select>'s value control (value/toggle-less) is built
+  client-side by static/timers.js from the JSON blob embedded below,
+  mirroring extensions/web_ui/widgets.py's infer_widget_kind -- the browser
+  has no server round-trip to ask which widget kind a newly-selected
+  target needs.
+#}
+{% macro render_timers_panel(panel, refresh_interval) %}
+<div class="timers-panel" id="timers-panel-{{ panel.id }}"
+     hx-get="/timers/{{ panel.id }}"
+     hx-trigger="every {{ refresh_interval }}s [document.activeElement.closest('.timers-panel')!==this]"
+     hx-swap="outerHTML">
+  {% if panel.title %}<h4>{{ panel.title }}</h4>{% endif %}
+  {% if panel.error %}
+  <p class="timers-error">{{ panel.error }}</p>
+  {% else %}
+  <table class="timers-table">
+    <thead>
+      <tr>
+        <th>Target</th><th>Action</th><th>Time</th><th>Repeat</th>
+        <th>Description</th><th>Enabled</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in panel.timers %}
+      <tr class="timer-row"
+          data-id="{{ t.id }}" data-target="{{ t.target }}"
+          data-action="{{ t.action }}" data-value="{{ t.value if t.value is not none else '' }}"
+          data-time="{{ t.time_local }}" data-repeat="{{ t.repeat }}"
+          data-description="{{ t.description }}" data-enabled="{{ 'true' if t.enabled else 'false' }}">
+        <td>{{ t.target }}</td>
+        <td>{{ t.action }}{% if t.action == "set" %}: {{ t.value }}{% endif %}</td>
+        <td>{{ t.time_local | replace("T", " ") }}</td>
+        <td>{{ t.repeat or "once" }}</td>
+        <td>{{ t.description }}</td>
+        <td>
+          <input type="checkbox" class="form-check-input" {% if t.enabled %}checked{% endif %}
+                 hx-post="/api/timers/{{ panel.id }}/enable" hx-trigger="change"
+                 hx-target="#timers-panel-{{ panel.id }}" hx-swap="outerHTML"
+                 hx-vals="js:{id: '{{ t.id }}', enabled: String(event.target.checked)}">
+        </td>
+        <td class="timers-row-actions">
+          <button type="button" class="btn btn-sm btn-outline-secondary timer-edit-btn">Edit</button>
+          <button type="button" class="btn btn-sm btn-outline-danger"
+                  hx-post="/api/timers/{{ panel.id }}/delete"
+                  hx-target="#timers-panel-{{ panel.id }}" hx-swap="outerHTML"
+                  hx-vals="js:{id: '{{ t.id }}'}"
+                  hx-confirm="Delete this timer?">Delete</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7"><em>No timers defined yet.</em></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form class="timers-form" hx-post="/api/timers/{{ panel.id }}"
+        hx-target="#timers-panel-{{ panel.id }}" hx-swap="outerHTML">
+    <input type="hidden" name="id" class="timer-form-id" value="">
+    <div class="timers-form-row">
+      <label>Target
+        <select name="target" class="timer-form-target form-select" required>
+          {% for target in panel.targets %}
+          <option value="{{ target.device }}/{{ target.endpoint }}">{{ target.device }}/{{ target.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Action
+        <select name="action" class="timer-form-action form-select">
+          <option value="set">Set value</option>
+          <option value="toggle">Toggle</option>
+        </select>
+      </label>
+      <span class="timer-form-value-wrap"><label>Value
+        <input type="text" name="value" class="timer-form-value form-control">
+      </label></span>
+    </div>
+    <div class="timers-form-row">
+      <label>Time
+        <input type="datetime-local" name="time" class="timer-form-time form-control" required>
+      </label>
+      <label>Repeat
+        <input type="text" name="repeat" class="timer-form-repeat form-control"
+               list="timer-repeat-presets-{{ panel.id }}" placeholder="once">
+        <datalist id="timer-repeat-presets-{{ panel.id }}">
+          <option value="1h">
+          <option value="1D">
+          <option value="1W">
+        </datalist>
+      </label>
+      <label>Description
+        <input type="text" name="description" class="timer-form-description form-control" maxlength="200">
+      </label>
+    </div>
+    <div class="timers-form-row">
+      <label class="timer-form-enabled-label">
+        <input type="checkbox" name="enabled" value="true" class="timer-form-enabled form-check-input" checked>
+        Enabled
+      </label>
+      <button type="submit" class="btn btn-sm btn-primary">Save</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary timer-cancel-btn">Cancel</button>
+    </div>
+  </form>
+
+  <script type="application/json" class="timer-targets-data">{{ panel.targets | tojson }}</script>
+  {% endif %}
+</div>
+{% endmacro %}

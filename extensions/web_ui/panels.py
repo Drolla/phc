@@ -5,12 +5,14 @@ configure() (see extension.py) ever dispatches on panel kind; nothing in
 core needs to know panels exist.
 
 v1 ships DevicesPanel (the selector-matched device/endpoint subtree,
-rendered via extensions.web_ui.widgets) and GraphPanel (a time-series
-chart backed by a named extensions.logdb instance -- see
-extensions/web_ui/server.py's handle_graph_data and
-extensions/logdb/logdb.py's LogDb.get_decimated). A new panel kind is
-added the same way: subclass Panel, decorate with
-@register_panel_kind("..."), and add the matching branch to
+rendered via extensions.web_ui.widgets), GraphPanel (a time-series chart
+backed by a named extensions.logdb instance -- see extensions/web_ui/
+server.py's handle_graph_data and extensions/logdb/logdb.py's
+LogDb.get_decimated), and TimersPanel (a create/edit/delete UI backed by a
+named extensions.timer instance -- see extensions/web_ui/server.py's
+_describe_timers_panel and extensions/timer/extension.py's TimerInstance
+CRUD API). A new panel kind is added the same way: subclass Panel, decorate
+with @register_panel_kind("..."), and add the matching branch to
 templates/_macros.html's render_panel macro."""
 
 import logging
@@ -129,3 +131,28 @@ class GraphPanel(Panel):
             "window": self.window,
             "series_titles": self.series_titles,
         }
+
+
+@register_panel_kind("timers")
+class TimersPanel(Panel):
+    """A timer create/edit/delete UI, backed by a named extensions.timer
+    instance (`timer_instance`, e.g. "timer.house"). Like GraphPanel's
+    logdb_instance, the reference is *not* resolved here: extensions.timer's
+    own configure() may run before or after this web_ui instance (see
+    core.config._load_extensions), so resolution is deferred to request
+    time -- see extensions/web_ui/server.py's _describe_timers_panel. Unlike
+    a graph panel's history data (fetched separately by the browser, see
+    GraphPanel), a timers panel's target/timer lists are small enough to be
+    embedded directly in the page render, same as a DevicesPanel's widgets."""
+
+    kind = "timers"
+
+    def __init__(self, flat: dict[str, Device], id: str, timer_instance: str, title: str | None = None):
+        if not id:
+            raise ConfigError("web_ui timers panel: 'id' must not be empty")
+        self.id = id
+        self.timer_instance = timer_instance
+        self.title = title or id
+
+    def describe(self) -> dict:
+        return {"kind": self.kind, "id": self.id, "title": self.title}

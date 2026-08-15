@@ -130,6 +130,70 @@ input[type="range"].widget-input {
   height: 300px;
 }
 
+/* Timers panel: a management table plus an add/edit form, sharing the
+   same grid row a devices/graph panel would occupy -- span every column
+   like a graph panel (a table/form doesn't fit a fixed-width card any
+   more than a chart does). */
+.timers-panel {
+  grid-column: 1 / -1;
+  margin-bottom: 1.5rem;
+}
+
+.timers-panel > h4 {
+  margin-bottom: 0.5rem;
+}
+
+.timers-error {
+  color: var(--bs-danger);
+}
+
+.timers-table {
+  width: 100%;
+  margin-bottom: 1rem;
+  border-collapse: collapse;
+}
+
+.timers-table th,
+.timers-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--bs-border-color);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.timers-row-actions {
+  white-space: nowrap;
+}
+
+.timers-form {
+  padding: 0.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-tertiary-bg);
+}
+
+.timers-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.timers-form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.timer-form-enabled-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.4rem !important;
+}
+
 /* Teal accent color, replacing Bootstrap's default blue. Link colors need
    BOTH variable forms overridden: plain <a> tags use the rgb() triplet
    (--bs-link-color-rgb), while .nav-link's --bs-nav-link-color instead
