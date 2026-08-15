@@ -18,6 +18,10 @@
   --conn-on: #1a8a4a;
   --conn-off: #999999;
   --input-bg: #f4f4f4;
+  /* Same teal used by extensions/web_ui/static/style.css, for a
+     consistent accent identity across both UIs -- purely decorative, no
+     status meaning (unlike --changed-*/--conn-* above). */
+  --accent: #0d9488;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,6 +36,7 @@
     --conn-on: #4fd68a;
     --conn-off: #6b6f76;
     --input-bg: #1b1e23;
+    --accent: #2dd4bf;
   }
 }
 
@@ -53,7 +58,7 @@ body {
   gap: 1rem;
   flex-wrap: wrap;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--accent);
   position: sticky;
   top: 0;
   background: var(--bg);
@@ -74,6 +79,11 @@ body {
   padding: 0.15rem 0.4rem;
 }
 
+.statusbar .filter input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .statusbar button {
   font: inherit;
   background: var(--input-bg);
@@ -82,6 +92,11 @@ body {
   border-radius: 3px;
   padding: 0.15rem 0.6rem;
   cursor: pointer;
+}
+
+.statusbar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .conn-dot {
@@ -119,9 +134,11 @@ h2 {
   font-size: 0.85rem;
   font-weight: 600;
   margin: 0 0 0.35rem;
-  color: var(--muted);
+  padding-bottom: 0.2rem;
+  color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--border);
 }
 
 table {
