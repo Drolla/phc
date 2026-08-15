@@ -21,7 +21,7 @@ devices:
     module: waveplus_bridge
     name: Cellar Office Air Quality
     update: radon
-    base_url: <URL>
+    base_url: !placeholder <URL>
     sensor_id: cellar_office
     cache_time: 60s
     data_validity_time: 5m
@@ -30,7 +30,7 @@ devices:
     module: waveplus_bridge
     name: Cellar Room Air Quality
     update: radon
-    base_url: <URL>
+    base_url: !placeholder <URL>
     sensor_id: cellar_room
     cache_time: 60s
     data_validity_time: 5m
