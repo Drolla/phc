@@ -7,17 +7,26 @@
  * data-bs-theme attribute dance needed, since nothing here encodes theme
  * into an image/data-URI. */
 
+/* --border/--row-alt/--input-bg were plain grays before; they're now the
+   same three teal tones extensions/web_ui/static/style.css settled on for
+   its own card/row/control tiers (--bs-primary-border-subtle,
+   --widget-bg, --bs-primary-bg-subtle respectively) -- same hex values,
+   so both UIs read as one consistent identity, not two coincidentally
+   similar ones. --changed-... and --conn-... keep their own colors:
+   those carry status meaning, unlike the purely decorative --accent. */
 :root {
   --bg: #ffffff;
   --fg: #1a1a1a;
   --muted: #666666;
-  --border: #d8d8d8;
-  --row-alt: #f4f4f4;
+  --border: #9fe3da;
+  --row-alt: #a8e6dc;
   --changed-bg: #d6392f;
   --changed-fg: #ffffff;
   --conn-on: #1a8a4a;
   --conn-off: #999999;
-  --input-bg: #f4f4f4;
+  --input-bg: #cdf2ee;
+  --card-bg: #cdf2ee;
+  --accent: #0d9488;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,13 +34,15 @@
     --bg: #14161a;
     --fg: #e8e8e8;
     --muted: #9a9a9a;
-    --border: #33363c;
-    --row-alt: #1b1e23;
+    --border: #1d6a60;
+    --row-alt: #1f5c52;
     --changed-bg: #b3261e;
     --changed-fg: #ffffff;
     --conn-on: #4fd68a;
     --conn-off: #6b6f76;
-    --input-bg: #1b1e23;
+    --input-bg: #0f3d38;
+    --card-bg: #0f3d38;
+    --accent: #2dd4bf;
   }
 }
 
@@ -53,7 +64,7 @@ body {
   gap: 1rem;
   flex-wrap: wrap;
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--accent);
   position: sticky;
   top: 0;
   background: var(--bg);
@@ -74,6 +85,11 @@ body {
   padding: 0.15rem 0.4rem;
 }
 
+.statusbar .filter input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .statusbar button {
   font: inherit;
   background: var(--input-bg);
@@ -82,6 +98,11 @@ body {
   border-radius: 3px;
   padding: 0.15rem 0.6rem;
   cursor: pointer;
+}
+
+.statusbar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .conn-dot {
@@ -110,6 +131,17 @@ main {
   flex-wrap: wrap;
 }
 
+/* Card treatment matching extensions/web_ui/static/style.css's .device/
+   .graph-panel/.timers-panel: a teal-washed, bordered box per section,
+   instead of the tables sitting directly on the plain page background. */
+.queue,
+.endpoints {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card-bg);
+}
+
 .queue {
   flex: 1 1 320px;
   min-width: 280px;
@@ -119,9 +151,11 @@ h2 {
   font-size: 0.85rem;
   font-weight: 600;
   margin: 0 0 0.35rem;
-  color: var(--muted);
+  padding-bottom: 0.2rem;
+  color: var(--accent);
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--border);
 }
 
 table {

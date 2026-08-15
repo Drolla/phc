@@ -10,6 +10,25 @@ header.container, main.container {
   max-width: 100% !important;
 }
 
+/* Give the page header a faint accent identity instead of blending into
+   the body -- a plain bottom border, no background fill, so it stays
+   legible in both themes without a separate light/dark override. */
+header.container {
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--bs-primary);
+}
+
+/* Bootstrap's .nav-link has no built-in "active" treatment beyond color;
+   add a pill so the current page in multi-page nav reads at a glance. */
+header .nav-link.active {
+  background-color: var(--bs-primary-bg-subtle);
+  border-radius: var(--bs-border-radius);
+}
+header .nav-link:hover:not(.active) {
+  background-color: var(--bs-tertiary-bg);
+  border-radius: var(--bs-border-radius);
+}
+
 /* A section's top-level devices, and any device's own nested children, are
    both "a list of sibling device cards" -- lay both out as a responsive
    grid so cards reflow into as many columns as fit (no media query: the
@@ -30,11 +49,19 @@ header.container, main.container {
 
 /* Each device is now a grid item, so it needs to look like a self-contained
    card (previously this was conveyed by indentation + a left border,
-   which only reads correctly in a single vertical stack). */
-.device {
+   which only reads correctly in a single vertical stack). A light teal
+   wash (the same --bs-primary-bg-subtle/-border-subtle the accent color
+   is built from) replaces the plain white/neutral card so color reaches
+   the bulk of the page, not just borders and headers -- .graph-panel and
+   .timers-panel share the same card treatment below, since a section's
+   panels are all "cards" regardless of kind. */
+.device,
+.graph-panel,
+.timers-panel {
   padding: 0.75rem;
-  border: 1px solid var(--bs-border-color);
+  border: 1px solid var(--bs-primary-border-subtle);
   border-radius: var(--bs-border-radius);
+  background: var(--bs-primary-bg-subtle);
 }
 
 .device > h4 {
@@ -51,6 +78,13 @@ header.container, main.container {
   gap: 0.5rem;
 }
 
+/* --widget-bg (not body-bg) so each widget row reads as a distinct, still
+   colored layer on top of its device card's teal wash, rather than either
+   blending into the card or reverting to a flat white/gray chip -- see the
+   --widget-bg definition below for why it's a separate token from
+   --bs-primary-bg-subtle. .timers-form keeps plain body-bg: it's a form
+   full of inputs, not a set of already-colored widget rows, so it stays
+   the neutral surface those inputs sit on. */
 .widget {
   display: flex;
   flex-wrap: wrap;
@@ -58,7 +92,7 @@ header.container, main.container {
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border-radius: var(--bs-border-radius);
-  background: var(--bs-tertiary-bg);
+  background: var(--widget-bg);
 }
 
 .widget-label {
@@ -78,6 +112,23 @@ header.container, main.container {
 
 input[type="range"].widget-input {
   max-width: 10rem;
+}
+
+/* Bootstrap's form-select/form-control paint themselves with plain
+   --bs-body-bg (white/near-black) -- overriding --bs-border-color earlier
+   only colored their outline, leaving the fill itself looking white/gray
+   against the now-colored .widget row around it. Reuses
+   --bs-primary-bg-subtle (the same pale wash .device cards use) rather
+   than a third new token, so the layering reads card(pale) ->
+   row(saturated) -> control(pale) instead of introducing a fourth shade.
+   Scoped to the two widget-input kinds that render an actual filled box
+   (dropdown/number/text) -- input[type=range] has no fill to color (its
+   thumb/track are handled separately below), and the toggle's
+   .form-switch wrapper div would show as an unwanted colored rectangle
+   behind the switch pill if it picked this up too. */
+.widget-input.form-select,
+.widget-input.form-control {
+  background-color: var(--bs-primary-bg-subtle);
 }
 
 /* Bootstrap's .form-switch positions its <input> via padding-left plus a
@@ -107,6 +158,16 @@ input[type="range"].widget-input {
 
 .section {
   margin-bottom: 1rem;
+}
+
+/* Native <details>/<summary> has no styling of its own beyond the browser
+   default disclosure triangle -- give collapsible section headers the
+   same accent weight as the rest of the page's teal identity. */
+.section > summary {
+  padding: 0.25rem 0;
+  color: var(--bs-primary-text-emphasis);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* A graph panel shares .section-content's auto-fit grid with device cards
@@ -165,11 +226,14 @@ input[type="range"].widget-input {
   white-space: nowrap;
 }
 
+/* Body-bg, not tertiary-bg, for the same reason as .widget above: this
+   form sits inside .timers-panel's now-teal-washed card and needs to read
+   as a distinct neutral surface rather than blend into it. */
 .timers-form {
   padding: 0.75rem;
   border: 1px solid var(--bs-border-color);
   border-radius: var(--bs-border-radius);
-  background: var(--bs-tertiary-bg);
+  background: var(--bs-body-bg);
 }
 
 .timers-form-row {
@@ -198,28 +262,82 @@ input[type="range"].widget-input {
    BOTH variable forms overridden: plain <a> tags use the rgb() triplet
    (--bs-link-color-rgb), while .nav-link's --bs-nav-link-color instead
    inherits the separate scalar (--bs-link-color) -- Bootstrap sets both
-   independently, not one derived from the other. The checked-switch,
-   range-thumb, and focus-ring colors, however, are hardcoded literal hex
-   values inside bootstrap.min.css itself (not variable-driven in this
-   Bootstrap version) -- since this file loads after bootstrap.min.css,
-   these same-specificity selectors win by source order and override them
-   directly, no !important needed. Tint values (focus border / active
-   thumb) mirror Bootstrap's own ~50%/~70% white-mix ratios for its
-   default blue, applied to the same teal base (#0d9488). */
+   independently, not one derived from the other. --bs-primary (plus the
+   -rgb/-text-emphasis/-bg-subtle/-border-subtle variants Bootstrap derives
+   from it) is overridden the same way so .btn-primary and other
+   primary-styled components -- e.g. the timers panel's "Save" button --
+   pick up the accent too, without needing a one-off rule per component.
+   The checked-switch, range-thumb, and focus-ring colors, however, are
+   hardcoded literal hex values inside bootstrap.min.css itself (not
+   variable-driven in this Bootstrap version) -- since this file loads
+   after bootstrap.min.css, these same-specificity selectors win by source
+   order and override them directly, no !important needed. Tint values
+   (focus border / active thumb) mirror Bootstrap's own ~50%/~70%
+   white-mix ratios for its default blue, applied to the same teal base
+   (#0d9488). */
+/* --bs-border-color is overridden here too, on top of --bs-primary and
+   friends: it's what Bootstrap's form-control/form-select/form-check-input
+   borders (and this file's own .timers-table/.timers-form rules) all draw
+   from, so leaving it at Bootstrap's default gray would keep every input,
+   dropdown, and toggle-switch track looking flat and uncolored even after
+   their containing .widget row gets a tint (below). --widget-bg is a new,
+   project-only token (Bootstrap has no equivalent) for that row tint --
+   deliberately a *more* saturated teal than --bs-primary-bg-subtle, not a
+   paler one: a tint close to white/black reads as "still gray" against a
+   device card that's already a pale wash, so the widget row needs to be
+   the more colorful layer for the two to read as distinct on top of each
+   other. --bs-form-check-bg below reuses it so an unchecked toggle's
+   track picks up the same color instead of falling back to plain
+   --bs-body-bg. */
 :root,
 [data-bs-theme="light"] {
   --bs-link-color: #0d9488;
   --bs-link-color-rgb: 13, 148, 136;
   --bs-link-hover-color: #0b7a70;
   --bs-link-hover-color-rgb: 11, 122, 112;
+  --bs-primary: #0d9488;
+  --bs-primary-rgb: 13, 148, 136;
+  --bs-primary-text-emphasis: #0b7a70;
+  --bs-primary-bg-subtle: #cdf2ee;
+  --bs-primary-border-subtle: #9fe3da;
+  --bs-border-color: #9fe3da;
+  --widget-bg: #a8e6dc;
 }
 [data-bs-theme="dark"] {
   --bs-link-color: #2dd4bf;
   --bs-link-color-rgb: 45, 212, 191;
   --bs-link-hover-color: #5eead4;
   --bs-link-hover-color-rgb: 94, 234, 212;
+  --bs-primary: #2dd4bf;
+  --bs-primary-rgb: 45, 212, 191;
+  --bs-primary-text-emphasis: #5eead4;
+  --bs-primary-bg-subtle: #0f3d38;
+  --bs-primary-border-subtle: #15574f;
+  --bs-border-color: #1d6a60;
+  --widget-bg: #1f5c52;
+}
+.btn-primary {
+  --bs-btn-bg: var(--bs-primary);
+  --bs-btn-border-color: var(--bs-primary);
+  --bs-btn-hover-bg: var(--bs-link-hover-color);
+  --bs-btn-hover-border-color: var(--bs-link-hover-color);
+  --bs-btn-active-bg: var(--bs-link-hover-color);
+  --bs-btn-active-border-color: var(--bs-link-hover-color);
+  --bs-btn-disabled-bg: var(--bs-primary);
+  --bs-btn-disabled-border-color: var(--bs-primary);
+  --bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
 }
 
+/* Unchecked switches/checkboxes otherwise fill with plain --bs-body-bg
+   (white/near-black) -- var(--bs-form-check-bg) is the one Bootstrap hook
+   for that fill, so an "off" toggle doesn't look like a flat gray/white
+   pill even before it's checked. Same pale wash as the dropdown/number/
+   text controls above (not --widget-bg): a toggle sitting directly on its
+   --widget-bg row needs to contrast against that row, the same way those
+   controls do. */
+.form-check-input {
+  --bs-form-check-bg: var(--bs-primary-bg-subtle);
+}
 .form-check-input:checked {
   background-color: #0d9488;
   border-color: #0d9488;
