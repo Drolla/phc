@@ -22,7 +22,7 @@ description: >
   resolved automatically. Fully-explicit endpoint specs and profiles can mix
   on one device.
 
-update: "1m"
+update: "1s"
 
 parameters:
   - name: base_url
