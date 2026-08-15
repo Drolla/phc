@@ -40,6 +40,8 @@ log:
   - dest: stdout
     levels:
       default: INFO
+      # scheduler: DEBUG
+      # tasks: DEBUG
 
 intervals:
   zwave: 1s
@@ -87,6 +89,15 @@ devices:
         name: Hallway Motion Sensor
         device_profile: everspring-pir_sensor
         node: 12
+
+      # A second motion sensor on its own node -- lets
+      # surveillance_intrusion below combine two sources with refs:/expr
+      # instead of gating on a single sensor.
+      - id: sensor_cellar
+        module: zway
+        name: Cellar Motion Sensor
+        device_profile: everspring-pir_sensor
+        node: 13
 
       - id: tag_reader_front
         module: zway
@@ -231,6 +242,7 @@ extensions:
                 - "house.surveillance/*"
                 - "house.alarm/*"
                 - "house.sensor_garage/state"
+                - "house.sensor_cellar/state"
                 - "house.siren/*"
                 - "house.tag_reader_front/*"
             - id: lights
@@ -322,6 +334,19 @@ tasks:
     condition: { device: "weather.meteo-bern.temperature", changed: true }
     action: { kind: log, device: "weather.meteo-bern", message: "Bern temperature changed to {state}" }
 
+  - tag: surveillance_tag_reader
+    description: "Tag reader lock/unlock arms/disarms surveillance"
+    condition: { device: "house.tag_reader_front.state", changed: true }
+    action:
+      kind: script
+      code: |
+        event = state('house.tag_reader_front.state')
+        log(f'tag reader event: {event}')
+        if 'lock' in event:
+            set_state('house.surveillance.armed', 1)
+        elif 'unlock' in event:
+            set_state('house.surveillance.armed', 0)
+
   - tag: surveillance_enable
     description: "Arming resets the alarm flag and forces lights off before random control takes over"
     # The {device, changed, value} shorthand -- equivalent to (and shorter
@@ -364,31 +389,42 @@ tasks:
     action: { kind: random_light, instance: "random_light.house" }
 
   - tag: surveillance_intrusion
-    description: "Motion while armed raises the alarm, at most once per 5 minutes"
+    description: "Motion on either sensor while armed raises the alarm, at most once per 5 minutes"
+    # Two refs combined with an `or`, rather than one `{device, changed,
+    # value}` shorthand -- needed as soon as more than one device can
+    # trigger the same condition.
     condition:
-      refs: { armed: "house.surveillance.armed", motion: "house.sensor_garage.state" }
-      expr: "armed.state == 1 and motion.changed and motion.state == 1"
+      refs:
+        armed: "house.surveillance.armed"
+        motion_garage: "house.sensor_garage.state"
+        motion_cellar: "house.sensor_cellar.state"
+      expr: >-
+        armed.state == 1 and
+        ((motion_garage.changed and motion_garage.state == 1) or
+         (motion_cellar.changed and motion_cellar.state == 1))
     min_interval: 5m
+    # Declarative actions throughout (including the two create_task
+    # follow-ups below via kind: create_task/specs:) rather than a single
+    # kind: script action calling create_task() -- see
+    # surveillance_enable/_disable above for the script-based style on the
+    # same kind of follow-up work.
     actions:
-      - kind: script
-        code: |
-          log('intrusion detected')
-          set_state('house.alarm.state', 1)
-          set_state('house.siren.state', 255)
-          create_task({
-              'tag': 'surv_siren_off',
-              'time': '+3m',
-              'action': { 'kind': 'set', 'device': 'house.siren.state', 'value': 0 },
-          })
-          create_task({
-              'tag': 'surv_light_off',
-              'time': '+45m',
-              'actions': [
-                  { 'kind': 'set', 'device': 'house.light_corridor.sw1', 'value': 0 },
-                  { 'kind': 'set', 'device': 'house.alarm.state', 'value': 0 },
-                  { 'kind': 'random_light', 'instance': 'random_light.house', 'force': 0 },
-              ],
-          })
+      - { kind: log, device: "house.surveillance.armed", message: "intrusion detected" }
+      - { kind: set, device: "house.alarm.state", value: 1 }
+      - { kind: set, device: "house.siren.state", value: 255 }
+      - kind: create_task
+        specs:
+          tag: surv_siren_off
+          time: "+3m"
+          action: { kind: set, device: "house.siren.state", value: 0 }
+      - kind: create_task
+        specs:
+          tag: surv_light_off
+          time: "+45m"
+          actions:
+            - { kind: set, device: "house.light_corridor.sw1", value: 0 }
+            - { kind: set, device: "house.alarm.state", value: 0 }
+            - { kind: random_light, instance: "random_light.house", force: 0 }
       - kind: random_light
         instance: "random_light.house"
         force: 1
