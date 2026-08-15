@@ -19,14 +19,15 @@ state, all on a fixed-heartbeat scheduler.
   [conditions, scripted actions & sticky values](docs/scripting.md), and one
   page per extension/integration: [random light control](docs/random-light.md),
   [mail alerts](docs/mail-alert.md), [log database](docs/logdb.md),
-  [recovery](docs/recovery.md), [web UI](docs/web-ui.md),
-  [debug portal](docs/debug-portal.md), and the
+  [recovery](docs/recovery.md), [timer](docs/timer.md),
+  [web UI](docs/web-ui.md), [debug portal](docs/debug-portal.md), and the
   [Razberry/zWay Z-Wave integration](docs/zway.md). See also
   [installing PHC on a Raspberry Pi](docs/raspberry-pi-install.md).
 - **Developer guide** — [`docs/developer/`](docs/developer/):
   [writing a device module](docs/developer/writing-a-device-module.md), plus
   internals for [zway](docs/developer/zway.md), the
-  [web UI](docs/developer/web-ui.md), and the
+  [web UI](docs/developer/web-ui.md), the
+  [timer](docs/developer/timer.md), and the
   [debug portal](docs/developer/debug-portal.md).
 
 ## Concepts

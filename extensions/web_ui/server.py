@@ -1,6 +1,7 @@
 """aiohttp.web application for extensions.web_ui: server-rendered (Jinja2)
 device pages/sections/panels + a JSON read API + a write endpoint + a
-per-widget HTML fragment endpoint used by HTMX for polling refresh.
+per-widget HTML fragment endpoint used by HTMX for polling refresh, plus a
+timers-panel fragment/CRUD endpoint set (see _describe_timers_panel).
 build_app() only constructs the Application/routes (safe with no running
 loop); extension.py's WebUiInstance.on_start()/on_stop() own the actual
 AppRunner/TCPSite lifecycle, driven by core.scheduler.Scheduler's
@@ -8,6 +9,7 @@ start_hooks/stop_hooks."""
 
 import logging
 import math
+from datetime import datetime
 from pathlib import Path
 
 import jinja2
@@ -41,6 +43,14 @@ EXTENSIONS_REGISTRY = web.AppKey("phc_extensions_registry", dict)
 # isn't embedded in its page's own render; the page just points the browser
 # at this route, see handle_graph_data and extensions/web_ui/static/graph.js).
 GRAPH_PANELS_BY_ID = web.AppKey("phc_graph_panels_by_id", dict)
+# Every TimersPanel across all pages/sections, keyed by its own `id` --
+# addressed by GET /timers/{panel_id} (poll refresh) and the
+# /api/timers/{panel_id}[/delete|/enable] CRUD routes below. Unlike a graph
+# panel, a timers panel's data IS embedded in its page's own render (see
+# _describe_timers_panel) -- these routes only serve the re-rendered
+# fragment after a poll/mutation, mirroring handle_widget's role for a
+# single device endpoint.
+TIMER_PANELS_BY_ID = web.AppKey("phc_timer_panels_by_id", dict)
 
 
 @web.middleware
@@ -81,6 +91,11 @@ def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
         for page in pages for section in page.sections for panel in section.panels
         if panel.kind == "graph"
     }
+    app[TIMER_PANELS_BY_ID] = {
+        panel.id: panel
+        for page in pages for section in page.sections for panel in section.panels
+        if panel.kind == "timers"
+    }
     app[JINJA_ENV] = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(_TEMPLATES_DIR)),
         autoescape=jinja2.select_autoescape(["html"]),
@@ -92,6 +107,10 @@ def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
     app.router.add_get("/widget/{device}/{endpoint}", handle_widget)
     app.router.add_get("/api/graph/{graph_id}", handle_graph_data)
     app.router.add_post("/api/set", handle_api_set)
+    app.router.add_get("/timers/{panel_id}", handle_timers_fragment)
+    app.router.add_post("/api/timers/{panel_id}", handle_api_timers_set)
+    app.router.add_post("/api/timers/{panel_id}/delete", handle_api_timers_delete)
+    app.router.add_post("/api/timers/{panel_id}/enable", handle_api_timers_enable)
     app.router.add_static("/static/", _STATIC_DIR, name="static")
     return app
 
@@ -100,29 +119,77 @@ def _roots(devices: dict[str, Device]) -> list[Device]:
     return [device for qualified_id, device in devices.items() if "." not in qualified_id]
 
 
-def _render_panel_data(panel: Panel, devices: dict[str, Device]) -> dict:
+def _describe_timer(t) -> dict:
+    """One TimerDef (extensions.timer.timer.TimerDef), reshaped for the
+    "timers" panel template: adds `target` (the "device/endpoint" pair-key
+    convention shared with extensions.recovery/extensions.logdb, used as
+    the form's target <select> value) and `time_local` (a naive local
+    "YYYY-MM-DDTHHMM"-shaped string an <input type="datetime-local"> can be
+    pre-filled with, matching core.intervals' own naive-local time
+    convention -- see core/intervals.py's parse_time)."""
+    return {
+        "id": t.id,
+        "device": t.device,
+        "endpoint": t.endpoint,
+        "target": f"{t.device}/{t.endpoint}",
+        "action": t.action,
+        "value": t.value,
+        "time": t.time,
+        "time_local": datetime.fromtimestamp(t.time).strftime("%Y-%m-%dT%H:%M"),
+        "repeat": t.repeat or "",
+        "description": t.description,
+        "enabled": t.enabled,
+    }
+
+
+def _describe_timers_panel(panel, devices: dict[str, Device],
+                            extensions_registry: dict) -> tuple[dict, object | None]:
+    """Build a "timers" panel's template-ready data (targets + current
+    timer list), resolving `panel.timer_instance` against the live
+    EXTENSIONS_REGISTRY -- deferred to request/render time for the same
+    reason as GraphPanel's logdb_instance (see panels.TimersPanel). Returns
+    (data, instance): `data["error"]` is set instead of `targets`/`timers`
+    if the reference can't be resolved, and `instance` is None in that
+    case -- callers driving a CRUD mutation (not just rendering) use this
+    to 404 instead of proceeding."""
+    instance = extensions_registry.get(panel.timer_instance)
+    if instance is None or not hasattr(instance, "list_timers"):
+        return ({"kind": "timers", "id": panel.id, "title": panel.title,
+                  "error": f"unknown timer instance {panel.timer_instance!r}"}, None)
+    targets = [describe_endpoint(qid, devices[qid].endpoint(key)) for qid, key in instance.target_pairs]
+    timers = [_describe_timer(t) for t in instance.list_timers()]
+    return ({"kind": "timers", "id": panel.id, "title": panel.title,
+              "targets": targets, "timers": timers}, instance)
+
+
+def _render_panel_data(panel: Panel, devices: dict[str, Device], extensions_registry: dict) -> dict:
     """Panel.describe() gives the raw (kind, resolved-selection) shape from
-    configure()-time; this turns it into what the "devices" branch of
-    templates/_macros.html's render_panel macro actually needs -- a pruned
-    device tree scoped to the panel's own matched pairs. Any other kind's
-    describe() output (e.g. "graph") is already template-ready and passed
-    through unchanged -- only "devices" needs this device-tree pruning
-    step, since a graph panel's actual chart data is fetched separately by
-    the browser (see handle_graph_data), not embedded in the page render."""
+    configure()-time; this turns it into what each panel kind's own branch
+    of templates/_macros.html's render_panel macro actually needs. "devices"
+    gets a pruned device tree scoped to its own matched pairs. "timers" gets
+    its target/timer lists (see _describe_timers_panel) -- unlike a graph
+    panel's chart data (fetched separately by the browser, see
+    handle_graph_data), a timers panel's data is small enough to embed
+    directly, so it needs `extensions_registry` here at page-render time.
+    Any other kind's describe() output (e.g. "graph") is already
+    template-ready and passed through unchanged."""
     described = panel.describe()
     if described["kind"] == "devices":
         pairs = set(described["pairs"])
         tree = [d for d in (describe_device(root, pairs) for root in _roots(devices)) if d is not None]
         return {"kind": "devices", "devices": tree}
+    if described["kind"] == "timers":
+        data, _ = _describe_timers_panel(panel, devices, extensions_registry)
+        return data
     return described
 
 
-def _describe_section(section, devices: dict[str, Device]) -> dict:
+def _describe_section(section, devices: dict[str, Device], extensions_registry: dict) -> dict:
     return {
         "id": section.id,
         "title": section.title,
         "collapsed": section.collapsed,
-        "panels": [_render_panel_data(panel, devices) for panel in section.panels],
+        "panels": [_render_panel_data(panel, devices, extensions_registry) for panel in section.panels],
     }
 
 
@@ -137,7 +204,8 @@ async def handle_page(request: web.Request) -> web.Response:
     if page is None:
         raise web.HTTPNotFound(text=f"unknown page {page_id!r}")
     devices = request.app[DEVICES]
-    sections = [_describe_section(section, devices) for section in page.sections]
+    extensions_registry = request.app[EXTENSIONS_REGISTRY]
+    sections = [_describe_section(section, devices, extensions_registry) for section in page.sections]
     template = request.app[JINJA_ENV].get_template("page.html")
     html = template.render(pages=request.app[PAGES], page=page, sections=sections,
                             refresh_interval=request.app[REFRESH_INTERVAL])
@@ -234,3 +302,114 @@ async def handle_api_set(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text=str(exc))
     logger.debug("web_ui set %s/%s succeeded", device_id, endpoint_key)
     return web.Response(status=204)
+
+
+def _get_timers_panel(request: web.Request):
+    panel_id = request.match_info["panel_id"]
+    panel = request.app[TIMER_PANELS_BY_ID].get(panel_id)
+    if panel is None:
+        raise web.HTTPNotFound(text=f"unknown timers panel {panel_id!r}")
+    return panel
+
+
+def _timers_response(request: web.Request, panel) -> web.Response:
+    """Re-render one timers panel's fragment (table + form), the response
+    every timers route (poll and every CRUD mutation alike) returns --
+    unlike /api/set's empty 204, a timer write is extension state, already
+    committed and immediately readable, so there is no next-tick staleness
+    to avoid rendering (see handle_api_set's own docstring for that
+    contrast)."""
+    devices = request.app[DEVICES]
+    data, _ = _describe_timers_panel(panel, devices, request.app[EXTENSIONS_REGISTRY])
+    template = request.app[JINJA_ENV].get_template("_timers_only.html")
+    html = template.render(panel=data, refresh_interval=request.app[REFRESH_INTERVAL])
+    return web.Response(text=html, content_type="text/html")
+
+
+async def handle_timers_fragment(request: web.Request) -> web.Response:
+    """GET /timers/{panel_id}: the timers panel's own poll-refresh fragment,
+    mirroring handle_widget's role for a single device endpoint."""
+    return _timers_response(request, _get_timers_panel(request))
+
+
+def _resolve_timer_instance(request: web.Request, panel):
+    """Shared by every timers CRUD handler: 404 if `panel`'s
+    timer_instance can't be resolved (see _describe_timers_panel) --
+    otherwise return the live TimerInstance to mutate."""
+    devices = request.app[DEVICES]
+    _, instance = _describe_timers_panel(panel, devices, request.app[EXTENSIONS_REGISTRY])
+    if instance is None:
+        raise web.HTTPNotFound(text=f"unknown timer instance {panel.timer_instance!r}")
+    return instance
+
+
+def _parse_timer_form(data) -> dict:
+    """Extract one POSTed timer form (see templates/_timers.html's
+    render_timers_panel) into extensions.timer.extension.TimerInstance's
+    add_timer()/update_timer() kwargs. `target` is "device/endpoint" (the
+    same pair-key convention as extensions.recovery/extensions.logdb,
+    rpartition'd on the LAST "/" since a qualified device id never
+    contains one itself -- see core.task.resolve_endpoint_ref's analogous
+    last-dot split). A "value" field absent from the POST body (e.g. an
+    unchecked checkbox contributes nothing) becomes None, same as
+    action == "toggle" needing none."""
+    target = data.get("target", "")
+    device, _, endpoint = target.rpartition("/")
+    action = data.get("action", "set")
+    return {
+        "time_spec": data.get("time", ""),
+        "device": device,
+        "endpoint": endpoint,
+        "action": action,
+        "value": data.get("value") if action == "set" else None,
+        "repeat_spec": data.get("repeat") or None,
+        "description": data.get("description", ""),
+        "enabled": data.get("enabled") == "true",
+    }
+
+
+async def handle_api_timers_set(request: web.Request) -> web.Response:
+    """POST /api/timers/{panel_id}: create (no `id` field) or update
+    (`id` present) a timer. Form-encoded, same convention as /api/set."""
+    panel = _get_timers_panel(request)
+    instance = _resolve_timer_instance(request, panel)
+    data = await request.post()
+    fields = _parse_timer_form(data)
+    timer_id = data.get("id")
+    logger.debug("web_ui timers %s %s %s", panel.id, "update" if timer_id else "add", fields)
+    try:
+        if timer_id:
+            instance.update_timer(int(timer_id), **fields)
+        else:
+            instance.add_timer(**fields)
+    except (ValueError, TypeError) as exc:
+        raise web.HTTPBadRequest(text=str(exc))
+    return _timers_response(request, panel)
+
+
+async def handle_api_timers_delete(request: web.Request) -> web.Response:
+    """POST /api/timers/{panel_id}/delete: form field `id`."""
+    panel = _get_timers_panel(request)
+    instance = _resolve_timer_instance(request, panel)
+    data = await request.post()
+    logger.debug("web_ui timers %s delete id=%s", panel.id, data.get("id"))
+    try:
+        instance.delete_timer(int(data.get("id")))
+    except (ValueError, TypeError) as exc:
+        raise web.HTTPBadRequest(text=str(exc))
+    return _timers_response(request, panel)
+
+
+async def handle_api_timers_enable(request: web.Request) -> web.Response:
+    """POST /api/timers/{panel_id}/enable: form fields `id`, `enabled`
+    ("true"/"false") -- the row's own enabled checkbox, independent of the
+    add/edit form."""
+    panel = _get_timers_panel(request)
+    instance = _resolve_timer_instance(request, panel)
+    data = await request.post()
+    logger.debug("web_ui timers %s enable id=%s enabled=%s", panel.id, data.get("id"), data.get("enabled"))
+    try:
+        instance.set_enabled(int(data.get("id")), data.get("enabled") == "true")
+    except (ValueError, TypeError) as exc:
+        raise web.HTTPBadRequest(text=str(exc))
+    return _timers_response(request, panel)

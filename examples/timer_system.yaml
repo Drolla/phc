@@ -1,0 +1,56 @@
+# Demonstrates extensions/timer: run with
+#   python phc.py --config examples/timer_system.yaml
+# then open http://127.0.0.1:8080/ in a browser and use the "Timers" panel
+# to create a one-shot timer a minute or two out, targeting e.g.
+# lights.desk_lamp/power. Watch it fire (the widget in the "Lights" section
+# above flips once the next scheduler tick picks it up), then disappear
+# from the timer list. Try a repeating timer too (e.g. repeat "1h") and
+# watch its listed trigger time roll forward each time it fires.
+#
+# Timers are only ever created/edited through the web UI -- there is no
+# `timers:` list in the system YAML -- so state/timer_demo.yaml starts out
+# empty and fills in as you use the panel. Stop PHC and start it again to
+# see pending timers restored from that file.
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+      timer: DEBUG
+
+# lights.desk_lamp/thermostat are the shared filler devices from
+# examples/devices/virtual_demo_devices.yaml -- this example is about the
+# timer extension, not any one device module, so it just needs a few
+# writable endpoints to target.
+devices:
+  - !include devices/virtual_demo_devices.yaml
+
+extensions:
+  timer:
+    house:
+      path: "state/timer_demo.yaml"
+      selectors: ["lights.*/*", "thermostat/*", "fan/*"]
+      catch_up: 5m
+
+  web_ui:
+    demo:
+      host: 127.0.0.1
+      port: 8080
+      refresh_interval: 2s
+      pages:
+        - id: home
+          title: Home
+          sections:
+            - id: lights
+              title: Lights
+              collapsed: false
+              selectors: ["lights.*/*", "thermostat/*", "fan/*"]
+            - id: timers
+              title: Timers
+              collapsed: false
+              panels:
+                - kind: timers
+                  id: house_timers
+                  timer_instance: "timer.house"

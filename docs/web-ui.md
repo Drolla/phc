@@ -95,9 +95,41 @@ pannable via the range selector. `decimation` (optional) is a list of
 in groups of `factor`, bounding how much history data is shipped to the
 browser as it grows.
 
+`kind: timers` renders a create/edit/delete UI for user timers, backed by a
+named [`extensions/timer`](timer.md) instance:
+
+```yaml
+extensions:
+  timer:
+    house:
+      path: "state/timers.yaml"
+      selectors: ["house.*/*"]
+
+  web_ui:
+    home:
+      pages:
+        - id: overview
+          sections:
+            - id: timers
+              title: Timers
+              panels:
+                - kind: timers
+                  id: house_timers
+                  timer_instance: "timer.house"
+```
+
+`id` (required, unique across this web_ui instance) addresses the panel's
+own poll/CRUD routes. `timer_instance` (required) is resolved lazily, at
+request time, same as `kind: graph`'s `logdb_instance` — it may be declared
+either before or after this `web_ui:` instance. `title` defaults to `id`.
+Only endpoints matched by that timer instance's own `selectors` can be
+picked as a timer's target.
+
 There is no authentication — bind `host` to a trusted interface only
 (defaults to `127.0.0.1`, loopback-only). See
 [`examples/web_ui_system.yaml`](../examples/web_ui_system.yaml) for a
-complete runnable example, and
+complete runnable example,
 [`examples/logdb_system.yaml`](../examples/logdb_system.yaml) for `kind:
-graph` paired with the `logdb` instance it charts.
+graph` paired with the `logdb` instance it charts, and
+[`examples/timer_system.yaml`](../examples/timer_system.yaml) for `kind:
+timers` paired with the `timer` instance it manages.

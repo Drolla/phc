@@ -90,15 +90,18 @@
 </article>
 {% endmacro %}
 
+{% from "_timers.html" import render_timers_panel %}
+
 {#
   render_panel: dispatches on panel.kind. "devices" renders its pruned tree
   inline; "graph" renders an empty container that extensions/web_ui/
   static/graph.js fills in client-side, after fetching
   /api/graph/{{ panel.id }} (its data isn't embedded in the page render --
-  see extensions/web_ui/server.py's handle_graph_data). A further
-  non-device-tied panel kind is added here as its own
-  {% elif panel.kind == "..." %} branch -- see extensions/web_ui/panels.py
-  for the matching Python-side registry.
+  see extensions/web_ui/server.py's handle_graph_data). "timers" delegates
+  to render_timers_panel (templates/_timers.html), whose data IS embedded
+  directly (see _describe_timers_panel). A further non-device-tied panel
+  kind is added here as its own {% elif panel.kind == "..." %} branch --
+  see extensions/web_ui/panels.py for the matching Python-side registry.
 #}
 {% macro render_panel(panel, refresh_interval) %}
 {% if panel.kind == "devices" %}
@@ -108,6 +111,8 @@
     {% if panel.title %}<h4>{{ panel.title }}</h4>{% endif %}
     <div class="graph-canvas"></div>
   </div>
+{% elif panel.kind == "timers" %}
+  {{ render_timers_panel(panel, refresh_interval) }}
 {% endif %}
 {% endmacro %}
 

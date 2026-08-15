@@ -80,6 +80,16 @@ parameters:
       groups of `factor`, bounding how much history data is shipped to the
       browser; omitted or empty means no decimation.
 
+      A `kind: timers` panel renders a create/edit/delete UI for user
+      timers, backed by a named extensions.timer instance: {kind: timers,
+      id, timer_instance, title}. `id` (required) must be unique across
+      every timers panel in this web_ui instance. `timer_instance`
+      (required, e.g. "timer.house") is resolved lazily, at request time,
+      so it may be configured either before or after this web_ui instance.
+      `title` defaults to `id`. Only endpoints matched by that timer
+      instance's own `selectors` (see extensions/timer/extension.yaml) can
+      be picked as a timer's target.
+
   - name: refresh_interval
     override: allowed
     default: "2s"
