@@ -99,12 +99,23 @@ class Device:
         await asyncio.to_thread(self.transmit, state)
 
     def _emit(self, state: dict) -> None:
-        """Route a write from set(): if a tick's write collector is active,
-        defer the write so the Scheduler can flush all of the tick's writes
-        concurrently; otherwise transmit immediately (direct/standalone use)."""
+        """Route a write from set(): defer into an active tick's write
+        collector, else transmit immediately via the synchronous transmit()
+        -- a no-op for a native-async device (overrides transmit_async()
+        directly, e.g. devices.zway.ZWayDevice); use set_text_async() for
+        those outside a tick instead."""
         collector = _write_collector.get()
         if collector is None:
             self.transmit(state)
+        else:
+            collector.append((self, state))
+
+    async def _emit_async(self, state: dict) -> None:
+        """_emit(), but awaits transmit_async() directly so it reaches a
+        native-async device's override too."""
+        collector = _write_collector.get()
+        if collector is None:
+            await self.transmit_async(state)
         else:
             collector.append((self, state))
 
@@ -236,28 +247,25 @@ class Device:
         result.update({cid: child.get_text() for cid, child in self.children.items()})
         return result
 
-    def set_text(self, text, name: str | None = None):
-        """Like set(), but `text` is formatted display text (see
-        Endpoint.from_text), translated to a raw value (from_text(), then
-        to_raw()) rather than a raw value."""
+    def _prepare_text_writes(self, text, name: str | None = None):
+        """Shared set_text()/set_text_async() logic, stopping short of
+        emitting: -> ({endpoint_key: raw_value}, [(child_device, text)])."""
         if name is not None:
             kind, target = self._resolve(name)
             if kind == "endpoint":
                 if not target.writable:
                     raise AttributeError(f"{self.qualified_id}: endpoint {name!r} is read-only")
-                self._emit({name: target.to_raw(target.from_text(text))})
-            else:
-                target.set_text(text)
-            return
+                return {name: target.to_raw(target.from_text(text))}, []
+            return {}, [(target, text)]
         if self.endpoints and len(self.endpoints) == 1 and not self.children:
             ep = next(iter(self.endpoints.values()))
             if not ep.writable:
                 raise AttributeError(f"{self.qualified_id}: endpoint {ep.key!r} is read-only")
-            self._emit({ep.key: ep.to_raw(ep.from_text(text))})
-            return
+            return {ep.key: ep.to_raw(ep.from_text(text))}, []
         if not isinstance(text, dict):
             raise TypeError(f"{self.qualified_id}: multi-endpoint/child device requires dict text")
         writes = {}
+        children = []
         for key, val in text.items():
             kind, target = self._resolve(key)
             if kind == "endpoint":
@@ -265,9 +273,25 @@ class Device:
                     raise AttributeError(f"{self.qualified_id}: endpoint {key!r} is read-only")
                 writes[key] = target.to_raw(target.from_text(val))
             else:
-                target.set_text(val)
+                children.append((target, val))
+        return writes, children
+
+    def set_text(self, text, name: str | None = None):
+        """Like set(), but `text` is formatted display text (see
+        Endpoint.from_text) rather than a raw value."""
+        writes, children = self._prepare_text_writes(text, name)
+        for child, val in children:
+            child.set_text(val)
         if writes:
             self._emit(writes)
+
+    async def set_text_async(self, text, name: str | None = None):
+        """set_text(), but via _emit_async() -- see its docstring."""
+        writes, children = self._prepare_text_writes(text, name)
+        for child, val in children:
+            await child.set_text_async(val)
+        if writes:
+            await self._emit_async(writes)
 
     def get_event(self, name: str | None = None):
         """Like get(), but returns each endpoint's change event (see

@@ -43,12 +43,15 @@ def _clear_module_state():
     zway_device._session_cookies.clear()
     zway_device._session_lock = asyncio.Lock()
     zway_device._configured_tag_readers.clear()
+    zway_device._helper_loaded.clear()
+    zway_device._helper_lock = asyncio.Lock()
     yield
     zway_device._identifiers.clear()
     zway_device._response_cache.clear()
     zway_device._throttled_values.clear()
     zway_device._session_cookies.clear()
     zway_device._configured_tag_readers.clear()
+    zway_device._helper_loaded.clear()
 
 
 def _parse_get_args(path: str) -> list:
@@ -60,16 +63,23 @@ def _parse_get_args(path: str) -> list:
 
 
 def _serve(*, login_ok: bool = True, get_response=None, get_status: int = 200,
-           require_cookie: str | None = None):
+           require_cookie: str | None = None, helper_preloaded: bool = True):
     """Start a throwaway local HTTP server faking a zWay controller running
     thc_zWay.js. `get_response` is either a fixed JSON-able value returned
     for every Get() call, or a callable(idents) -> JSON-able value computed
     from the requested identifier list (for order-preserving-decode
     checks). `require_cookie`, if set, means /JS/Run/... only succeeds when
     the request carries that exact Cookie header (else 401) -- used to
-    exercise the login/re-login flow. Returns (server, base_url); call
-    server.shutdown() when done. The server's `get_hits`/`login_hits`
-    attributes count requests, for cache/batching assertions.
+    exercise the login/re-login flow. `helper_preloaded` (default True)
+    means Get_IndexArray(257.1) already answers correctly, as if
+    thc_zWay.js were already loaded -- most tests aren't about the helper
+    load itself, so they don't want the extra probe request. Set it False
+    to simulate a fresh zWay server where the probe only starts succeeding
+    once executeFile("thc_zWay.js") has been hit (see
+    test_zway_loads_helper_script_when_not_yet_loaded). Returns (server,
+    base_url); call server.shutdown() when done. The server's
+    `get_hits`/`login_hits`/`helper_hits`/`execute_hits` attributes count
+    requests, for cache/batching/load assertions.
     """
     class Handler(http.server.BaseHTTPRequestHandler):
         def _send_json(self, status, payload):
@@ -99,6 +109,18 @@ def _serve(*, login_ok: bool = True, get_response=None, get_status: int = 200,
             if require_cookie is not None and self.headers.get("Cookie") != require_cookie:
                 self._send_json(401, {"error": "unauthorized"})
                 return
+            if "/JS/Run/Get_IndexArray(" in self.path:
+                self.server.helper_hits += 1
+                if self.server.helper_loaded:
+                    self._send_json(200, [257, 1, 0])
+                else:
+                    self._send_json(500, {"error": "Get_IndexArray is not defined"})
+                return
+            if "/JS/Run/executeFile(" in self.path:
+                self.server.execute_hits += 1
+                self.server.helper_loaded = True
+                self._send_json(200, None)
+                return
             if "/JS/Run/Configure_TagReader(" in self.path:
                 self.server.configure_hits += 1
                 self._send_json(get_status, [])
@@ -125,6 +147,9 @@ def _serve(*, login_ok: bool = True, get_response=None, get_status: int = 200,
     server.set_hits = 0
     server.login_hits = 0
     server.configure_hits = 0
+    server.helper_hits = 0
+    server.execute_hits = 0
+    server.helper_loaded = helper_preloaded
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
     return server, base_url
@@ -231,11 +256,22 @@ def test_zway_decodes_double_json_encoded_get_response():
     # _send_json's encoding directly to reproduce the real shape.
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
+            if "/JS/Run/Get_IndexArray(" in self.path:
+                self._send_json(200, [257, 1, 0])
+                return
             self.server.get_hits += 1
             idents = _parse_get_args(self.path)
             payload = [0, 0, 100][:len(idents)]
             body = json.dumps(json.dumps(payload)).encode("utf-8")
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _send_json(self, status, payload):
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -422,6 +458,100 @@ def test_zway_write_ignores_unknown_endpoint_key():
         server.shutdown()
 
 
+def test_zway_probes_helper_once_when_already_loaded():
+    server, base_url = _serve(get_response=[1], helper_preloaded=True)
+    try:
+        dev = _device(base_url, cache_time="50ms")
+        scheduler = Scheduler({"light": dev})
+        scheduler.tick(now=0.0)
+        time.sleep(0.1)   # past cache_time -- forces a second Get, but not a second probe
+        scheduler.tick(now=1.0)
+        scheduler.close()
+        assert server.helper_hits == 1
+        assert server.execute_hits == 0
+        assert server.get_hits == 2
+        assert dev.get("state") == 1
+    finally:
+        server.shutdown()
+
+
+def test_zway_loads_helper_script_when_not_yet_loaded():
+    server, base_url = _serve(get_response=[1], helper_preloaded=False)
+    try:
+        dev = _device(base_url)
+        scheduler = Scheduler({"light": dev})
+        scheduler.tick(now=0.0)
+        scheduler.close()
+        # First probe fails (not loaded yet) -> executeFile -> second probe succeeds.
+        assert server.helper_hits == 2
+        assert server.execute_hits == 1
+        assert dev.get("state") == 1
+    finally:
+        server.shutdown()
+
+
+def test_zway_helper_load_shared_across_sibling_devices():
+    server, base_url = _serve(get_response=lambda idents: [0] * len(idents), helper_preloaded=False)
+    try:
+        light = _device(base_url, "light")
+        sensor = _device(base_url, "sensor", endpoints=_sensor_endpoints())
+        scheduler = Scheduler({"light": light, "sensor": sensor})
+        scheduler.tick(now=0.0)
+        scheduler.close()
+        # One device's load attempt covers both -- not a separate probe/load per device.
+        assert server.execute_hits == 1
+    finally:
+        server.shutdown()
+
+
+def test_zway_reports_none_and_retries_when_controller_unreachable():
+    server, base_url = _serve(get_response=[1])
+    server.shutdown()   # close it immediately -- simulates zWay not up yet
+    server.server_close()
+    dev = _device(base_url)
+    scheduler = Scheduler({"light": dev})
+    scheduler.tick(now=0.0)
+    scheduler.close()
+    assert dev.get("state") is None
+
+
+def test_zway_recovers_once_controller_becomes_reachable():
+    # Start with the controller down (simulating "not up yet"), then bring
+    # a real server up on that exact port before the next poll -- the
+    # device must retry the helper-load probe rather than giving up
+    # permanently after the first failure.
+    down_server, base_url = _serve(get_response=[1], helper_preloaded=False)
+    port = down_server.server_address[1]
+    down_server.shutdown()
+    down_server.server_close()   # release the port so the real server below can bind it
+    dev = _device(base_url)
+    scheduler = Scheduler({"light": dev})
+    scheduler.tick(now=0.0)
+    assert dev.get("state") is None
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps([257, 1, 0]).encode("utf-8") if "/JS/Run/Get_IndexArray(" in self.path \
+                else json.dumps([1]).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        scheduler.tick(now=1.0)
+        scheduler.close()
+        assert dev.get("state") == 1
+    finally:
+        server.shutdown()
+
+
 def test_zway_configure_tag_reader_fires_once():
     server, base_url = _serve(get_response=[1])
     try:
@@ -490,6 +620,14 @@ def test_zway_relogs_in_on_expired_cookie():
                 self.send_response(401)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
+                return
+            if "/JS/Run/Get_IndexArray(" in self.path:
+                body = json.dumps([257, 1, 0]).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
             self.server.get_hits += 1
             idents = _parse_get_args(self.path)
