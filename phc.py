@@ -11,7 +11,9 @@ import logging
 import signal
 import sys
 
-from core.config import System, load_system
+import yaml
+
+from core.config import ConfigError, System, load_system
 from core.scheduler import Scheduler
 from extensions.debug_portal.extension import DebugPortalInstance
 from extensions.debug_portal.extension import configure as configure_debug_portal
@@ -92,7 +94,17 @@ def main(argv=None):
     if args.log_level is not None:
         log_levels_override["default"] = args.log_level
 
-    system = load_system(args.config, log_levels_override=log_levels_override)
+    # ConfigError covers invalid/inconsistent config content (see
+    # core.config); OSError covers a missing/unreadable --config path
+    # itself (FileNotFoundError, PermissionError, ...); yaml.YAMLError
+    # covers malformed YAML syntax. All three are user-facing "the config
+    # file is broken" problems, not internal bugs, so they're reported as a
+    # plain error message rather than a Python traceback -- anything else
+    # still raises normally.
+    try:
+        system = load_system(args.config, log_levels_override=log_levels_override)
+    except (ConfigError, OSError, yaml.YAMLError) as exc:
+        parser.error(str(exc))
 
     try:
         debug_portal_instance = _resolve_debug_portal_instance(

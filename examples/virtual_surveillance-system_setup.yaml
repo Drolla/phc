@@ -95,9 +95,9 @@ devices:
 extensions:
   mail_alert:
     house:
-      smtp_host: "smtp.example.com"
-      username: "alerts@example.com"
-      password: "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
+      smtp_host: !placeholder "smtp.example.com"
+      username: !placeholder "alerts@example.com"
+      password: !placeholder "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
       from: "alerts@example.com"
       to:
         - "someone@example.com"
