@@ -9,6 +9,7 @@ matching this suite's existing convention (see tests/conftest.py's
 fetch_sync)."""
 
 import asyncio
+import types
 
 import pytest
 from aiohttp import ClientSession
@@ -450,6 +451,211 @@ def test_get_api_graph_missing_values_serialize_as_null_not_literal_nan(tmp_path
             assert "NaN" not in raw_text
             body = await resp.json()
             assert body["rows"] == [[1.0, 1.0], [2.0, None]]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+# ---------- timers panel: GET /timers/{id}, POST /api/timers/{id}[/delete|/enable] ----------
+
+def _timer_registry(tmp_path, flat, selectors=("lamp/*", "dimmer/*"), instance_key="timer.house"):
+    """Build a real TimerInstance (mirrors _logdb_registry's own
+    construction) and bind it via a minimal stand-in for core.config.System
+    (TimerInstance.on_bind only ever reads .devices/.tasks/.extensions --
+    see tests/test_timer_extension.py's own FakeSystem), so the CRUD API
+    the timers routes drive is fully wired, not just configure()'d."""
+    from extensions.timer.extension import configure as configure_timer
+    params = {"path": str(tmp_path / "timers.yaml"), "selectors": list(selectors), "catch_up": "5m"}
+    instance = configure_timer(params, flat, instance_key)
+    registry = {instance_key: instance}
+    system = types.SimpleNamespace(devices=flat, tasks=[], extensions=registry)
+    instance.on_bind(system)
+    return registry
+
+
+def _timers_page_params(**panel_overrides):
+    panel = {"kind": "timers", "id": "house_timers", "timer_instance": "timer.house"}
+    panel.update(panel_overrides)
+    return _base_params(pages=[{"id": "a", "sections": [{"id": "s", "panels": [panel]}]}])
+
+
+async def _client_for_timers(extensions_registry, params=None, flat=None):
+    instance = configure(params or _timers_page_params(), flat if flat is not None else _flat(),
+                          "web_ui.demo", extensions_registry)
+    client = TestClient(TestServer(instance._app))
+    await client.start_server()
+    return client, instance
+
+
+def test_get_page_renders_timers_panel_with_empty_list(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.get("/page/a")
+            assert resp.status == 200
+            text = await resp.text()
+            assert 'id="timers-panel-house_timers"' in text
+            assert "No timers defined yet" in text
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_page_timers_panel_unresolvable_instance_shows_inline_error(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat, instance_key="timer.other")  # not "timer.house"
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.get("/page/a")
+            assert resp.status == 200  # page still renders -- see _describe_timers_panel
+            text = await resp.text()
+            assert "unknown timer instance" in text
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_timers_fragment_unknown_panel_404(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.get("/timers/nonexistent")
+            assert resp.status == 404
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_creates_and_lists_new_timer(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers", data={
+                "target": "lamp/state", "action": "set", "value": "true",
+                "time": "2099-01-01T00:00", "repeat": "", "description": "evening",
+                "enabled": "true",
+            })
+            assert resp.status == 200
+            text = await resp.text()
+            assert "evening" in text
+            assert registry["timer.house"].list_timers()[0].description == "evening"
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_invalid_value_bad_request(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers", data={
+                "target": "dimmer/level", "action": "set", "value": "not-a-number",
+                "time": "2099-01-01T00:00", "repeat": "", "description": "bad", "enabled": "true",
+            })
+            assert resp.status == 400
+            assert registry["timer.house"].list_timers() == []
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_target_outside_selectors_bad_request(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat, selectors=("lamp/*",))  # dimmer not included
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers", data={
+                "target": "dimmer/level", "action": "set", "value": "50",
+                "time": "2099-01-01T00:00", "repeat": "", "description": "x", "enabled": "true",
+            })
+            assert resp.status == 400
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_unresolvable_instance_404(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat, instance_key="timer.other")
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers", data={
+                "target": "lamp/state", "action": "set", "value": "true",
+                "time": "2099-01-01T00:00", "repeat": "", "description": "x", "enabled": "true",
+            })
+            assert resp.status == 404
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_with_id_updates_existing_timer(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        instance = registry["timer.house"]
+        t = instance.add_timer(time_spec="2099-01-01T00:00", device="lamp", endpoint="state",
+                                action="set", value="true", description="original")
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers", data={
+                "id": str(t.id), "target": "lamp/state", "action": "set", "value": "false",
+                "time": "2099-01-01T00:00", "repeat": "", "description": "updated", "enabled": "true",
+            })
+            assert resp.status == 200
+            text = await resp.text()
+            assert "updated" in text and "original" not in text
+            assert len(instance.list_timers()) == 1  # replaced, not duplicated
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_delete_removes_timer(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        instance = registry["timer.house"]
+        t = instance.add_timer(time_spec="2099-01-01T00:00", device="lamp", endpoint="state",
+                                action="set", value="true", description="to delete")
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers/delete", data={"id": str(t.id)})
+            assert resp.status == 200
+            text = await resp.text()
+            assert "No timers defined yet" in text
+            assert instance.list_timers() == []
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_post_api_timers_enable_toggles_without_deleting(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _timer_registry(tmp_path, flat)
+        instance = registry["timer.house"]
+        t = instance.add_timer(time_spec="2099-01-01T00:00", device="lamp", endpoint="state",
+                                action="set", value="true", description="toggle me")
+        client, _ = await _client_for_timers(registry, flat=flat)
+        try:
+            resp = await client.post("/api/timers/house_timers/enable",
+                                      data={"id": str(t.id), "enabled": "false"})
+            assert resp.status == 200
+            text = await resp.text()
+            assert 'data-enabled="false"' in text
+            assert instance.get_timer(t.id).enabled is False
         finally:
             await client.close()
     asyncio.run(run())

@@ -1,12 +1,12 @@
 """Tests for extensions.web_ui.panels: the local (not core.registry) panel
-kind registry, DevicesPanel, and GraphPanel."""
+kind registry, DevicesPanel, GraphPanel, and TimersPanel."""
 
 import pytest
 
 from core.config import ConfigError
 from core.endpoint import Endpoint
 from devices.virtual.device import VirtualDevice
-from extensions.web_ui.panels import DevicesPanel, GraphPanel, get_panel_kind_class
+from extensions.web_ui.panels import DevicesPanel, GraphPanel, TimersPanel, get_panel_kind_class
 
 
 def test_get_panel_kind_class_returns_devices_panel_by_default():
@@ -131,3 +131,28 @@ def test_graph_panel_describe_shape_omits_internal_wiring():
     # see GraphPanel's own docstring.
     assert "logdb_instance" not in described
     assert "pairs" not in described
+
+
+def test_get_panel_kind_class_returns_timers_panel():
+    assert get_panel_kind_class("timers") is TimersPanel
+
+
+def test_timers_panel_requires_non_empty_id():
+    with pytest.raises(ConfigError):
+        TimersPanel({}, id="", timer_instance="timer.house")
+
+
+def test_timers_panel_defaults_title_to_id():
+    panel = TimersPanel({}, id="house_timers", timer_instance="timer.house")
+    assert panel.title == "house_timers"
+
+
+def test_timers_panel_describe_shape_omits_internal_wiring():
+    panel = TimersPanel({}, id="house_timers", timer_instance="timer.house", title="House Timers")
+
+    described = panel.describe()
+
+    assert described == {"kind": "timers", "id": "house_timers", "title": "House Timers"}
+    # timer_instance is internal wiring, resolved lazily at request time --
+    # see TimersPanel's own docstring.
+    assert "timer_instance" not in described
