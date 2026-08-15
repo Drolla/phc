@@ -7,18 +7,25 @@ own kind → class registry, local to this extension — `core/registry.py` is
 not involved, since only this extension's own `configure()` ever dispatches
 on panel kind. `Panel` is the base class (`describe()` returns the data
 `templates/_macros.html`'s `render_panel` macro needs); `DevicesPanel` (the
-selector-matched device/endpoint subtree) and `GraphPanel` (a time-series
-chart backed by a named `extensions/logdb` instance) are the two v1 kinds.
-Adding a new kind: subclass `Panel`, decorate with
-`@register_panel_kind("...")`, and add the matching branch to
-`templates/_macros.html`'s `render_panel` macro.
+selector-matched device/endpoint subtree), `GraphPanel` (a time-series
+chart backed by a named `extensions/logdb` instance), and `TimersPanel` (a
+create/edit/delete UI backed by a named `extensions/timer` instance — see
+[`docs/developer/timer.md`](timer.md)) are the three v1 kinds. Adding a new
+kind: subclass `Panel`, decorate with `@register_panel_kind("...")`, and
+add the matching branch to `templates/_macros.html`'s `render_panel` macro.
 
-`GraphPanel` deliberately does *not* resolve its `logdb_instance` reference
-at construction time — `extensions.web_ui`'s own `configure()` may run
-before that logdb instance has been configured, depending on the system
-YAML's own `extensions:` iteration order — so resolution is deferred to
-request time, in `server.py`'s `handle_graph_data` (an unresolvable
-instance surfaces as a 404 there, not a `ConfigError` at load time).
+`GraphPanel`/`TimersPanel` deliberately do *not* resolve their
+`logdb_instance`/`timer_instance` reference at construction time —
+`extensions.web_ui`'s own `configure()` may run before that other
+extension's instance has been configured, depending on the system YAML's
+own `extensions:` iteration order — so resolution is deferred to request
+time, in `server.py`'s `handle_graph_data`/`_describe_timers_panel` (an
+unresolvable instance surfaces as a 404, or an inline error for a page
+render, not a `ConfigError` at load time). Unlike a graph panel's chart
+data (fetched separately, client-side), a timers panel's target/timer
+lists are small enough to be embedded directly in the page render, like a
+`DevicesPanel`'s widgets — see `_render_panel_data`'s `extensions_registry`
+parameter.
 
 ## Widget-rendering architecture
 
@@ -71,6 +78,15 @@ executor (the Scheduler's own bounded thread pool) so a slow/blocking
 JSON-encoding a graph's rows — `json.dumps` would otherwise emit a literal
 `NaN` token, which isn't valid JSON and throws in the browser's
 `fetch().json()`.
+
+The timers routes (`GET /timers/{panel_id}`, `POST
+/api/timers/{panel_id}[/delete|/enable]`) all funnel through
+`_timers_response()`, which re-renders the whole panel fragment and returns
+it directly — unlike `handle_api_set`'s empty `204`, a timer CRUD write is
+extension state, already committed by the time the handler returns, so
+there's no next-tick staleness to avoid rendering. See
+[`docs/developer/timer.md`](timer.md) for the full writeup, including how
+`extensions/timer` itself turns a timer into a real `core.task.Task`.
 
 ## `extension.py`
 
