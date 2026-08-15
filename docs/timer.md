@@ -11,7 +11,7 @@ its own YAML file so it survives a restart.
 extensions:
   timer:
     house:
-      path: "state/timers.yaml"
+      path: "logs/timers.yaml"
       selectors: ["house.*/*"]
       catch_up: 5m
 
