@@ -127,7 +127,7 @@ def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_prese
     assert lamp.get_event("power") == 1
 
 
-def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log, monkeypatch):
+def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     """Round-trip the condition.expr/kind:script/min_interval/create_task/
     kind:kill_task example
     (examples/virtual_surveillance-task_defs_1-nested.yaml) through the
@@ -135,11 +135,6 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log, monkeypatc
     create_task actions), motion raises the alarm and schedules further
     timed follow-ups (once, thanks to min_interval), and disarming tears
     all of them back down."""
-    # The example's mail_alert block is deliberately !placeholder-tagged
-    # (see core.config._find_placeholders) -- this test exercises the
-    # scheduler/task flow, not a real mail send, so bypass the load-time
-    # guard rather than needing real SMTP credentials here.
-    monkeypatch.setattr("core.config._find_placeholders", lambda raw, path="": [])
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
 
@@ -189,14 +184,12 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log, monkeypatc
     assert system.devices["lights.kitchen_light"].get() == 0
 
 
-def test_end_to_end_surveillance_example_all_lights_override(task_log, monkeypatch):
+def test_end_to_end_surveillance_example_all_lights_override(task_log):
     """all_lights is independent of armed/alarm state: toggling it forces
     every random_light-managed light and silences the siren, regardless of
     whether surveillance is armed (see
     examples/virtual_surveillance-task_defs_1-nested.yaml's
     surveillance_all_lights_on/_off tasks)."""
-    # See test_end_to_end_surveillance_example_arm_intrude_disarm above.
-    monkeypatch.setattr("core.config._find_placeholders", lambda raw, path="": [])
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
 
