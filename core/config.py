@@ -95,6 +95,44 @@ def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
 _IncludeLoader.add_constructor("!include", _include_constructor)
 
 
+class _Placeholder(str):
+    """A scalar built from `!placeholder <example>` -- marks a value (a
+    credential, another system's URL, ...) that a system YAML's author must
+    replace with something real before the file is fit to run. Subclasses
+    str so the example text underneath still reads/compares like a normal
+    string to any code that isn't specifically checking for this type; see
+    _find_placeholders, which load_system() calls right after parsing, before
+    any of that code runs, so a leftover !placeholder always aborts the
+    load rather than silently reaching a device/extension as a literal
+    value like "<URL>"."""
+
+
+def _placeholder_constructor(loader: yaml.SafeLoader, node: yaml.Node) -> _Placeholder:
+    return _Placeholder(loader.construct_scalar(node))
+
+
+_IncludeLoader.add_constructor("!placeholder", _placeholder_constructor)
+
+
+def _find_placeholders(value, path: str = "") -> list[str]:
+    """Recursively collect a human-readable path (dotted for mapping keys,
+    bracketed for list entries -- using that entry's own `id`/`tag` when it
+    has one, since "devices[2]" is far less useful than
+    "devices[2].children['sensor_cellar']") for every `!placeholder` value
+    still nested anywhere in `value` (the raw, just-parsed config tree)."""
+    found = []
+    if isinstance(value, _Placeholder):
+        found.append(path)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            found.extend(_find_placeholders(item, f"{path}.{key}" if path else str(key)))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            label = item.get("id") or item.get("tag") if isinstance(item, dict) else None
+            found.extend(_find_placeholders(item, f"{path}[{label!r}]" if label else f"{path}[{index}]"))
+    return found
+
+
 def _flatten_list_entries(raw_entries: list) -> list:
     """Splice a `- !include <path>` item whose target resolves to a list
     into the surrounding list, instead of nesting it as one list-of-lists
@@ -1279,6 +1317,14 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     _include_stack.clear()
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.load(f, Loader=_IncludeLoader) or {}
+
+    placeholders = _find_placeholders(raw)
+    if placeholders:
+        listed = "\n".join(f"  - {p}" for p in placeholders)
+        raise ConfigError(
+            f"{path}: not runnable as-is -- it still has example "
+            f"!placeholder value(s) that must be replaced with real "
+            f"ones first:\n{listed}")
 
     if "log_levels" in raw:
         raise ConfigError(
