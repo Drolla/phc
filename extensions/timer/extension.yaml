@@ -1,0 +1,44 @@
+description: >
+  User-programmable timers: an extensions.timer.<instance> entry lets you
+  create, edit, and delete timers at runtime (from the timer panel in
+  extensions.web_ui -- see its `pages` parameter's `kind: timers` panel),
+  each one setting or toggling a target device endpoint at a given time,
+  optionally repeating. Every timer is persisted to a small YAML file and
+  restored automatically on the next startup -- a one-shot timer missed by
+  more than `catch_up` while PHC was stopped is dropped rather than fired
+  late; a repeating timer's next occurrence is always rolled forward to the
+  next future slot. Internally, each timer is an ordinary scheduled task
+  (see docs/configuration.md#tasks), so it fires on the normal heartbeat
+  and shows up in the debug portal's task list like any other.
+
+parameters:
+  - name: path
+    override: required
+    description: >
+      YAML timer-definitions file path, resolved relative to the current
+      working directory. Rewritten wholesale whenever a timer is added,
+      edited, deleted, enabled/disabled, or fires, and read once at
+      startup to restore every pending timer.
+
+  - name: selectors
+    override: allowed
+    default: ["*"]
+    description: >
+      List of "<device-glob>/<endpoint-glob>" selector patterns (glob
+      wildcards, e.g. "house.desk_lamp/power", "house.*/setpoint"), or bare
+      "*" for everything writable (the default). Only endpoints matched
+      here can be picked as a timer's target, in both the web UI and the
+      CRUD API. Every matched endpoint must be writable; a selector
+      matching a read-only endpoint, or matching nothing at all, is a
+      configuration error.
+
+  - name: catch_up
+    override: allowed
+    default: "5m"
+    description: >
+      Grace window (a duration string, e.g. "5m", "30s") for a one-shot
+      timer whose trigger time has already passed when PHC starts up. If
+      it was missed by less than this, it fires on the very first tick;
+      if missed by more, it is dropped (logged) rather than firing late.
+      Only affects one-shot timers -- a repeating timer's next occurrence
+      is always computed fresh at startup, never dropped.
