@@ -102,15 +102,16 @@ devices:
     name: Raspberry Pi
 ```
 
-Two directories referenced by extensions such as `recovery` and `logdb`
-(state/log file paths) are resolved relative to the current working
-directory PHC is started from, not the YAML file's location — the
-systemd unit below sets that explicitly with `WorkingDirectory=`, so a
-relative `path: "state/recovery.yaml"` or `csv_path: "logs/house_log.csv"`
-in your config lands under `/opt/phc/`:
+The directory referenced by extensions such as `timer`, `recovery`, and
+`logdb` (log file paths) is resolved relative to the current working
+directory PHC is started from, not the YAML file's location — the systemd
+unit below sets that explicitly with `WorkingDirectory=`, so a relative
+`path: "logs/timers.yaml"` (timer), `path: "logs/recovery.yaml"`
+(recovery), or `csv_path: "logs/house_log.csv"` (logdb) in your config
+lands under `/opt/phc/`:
 
 ```
-sudo -u phc mkdir -p /opt/phc/state /opt/phc/logs
+sudo -u phc mkdir -p /opt/phc/logs
 ```
 
 Validate the config actually loads before wiring up the service:

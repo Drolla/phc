@@ -20,13 +20,13 @@ devices:
 # Try it: run this example, let the two "warm_up_*" tasks below turn the
 # lamp on and raise the setpoint, then stop PHC abruptly (e.g. `kill -9`,
 # to simulate a crash rather than a graceful shutdown) -- inspect
-# state/recovery.yaml, then start PHC again and watch the startup log:
+# logs/recovery.yaml, then start PHC again and watch the startup log:
 # both endpoints come back to what they were, not their `default:`.
 extensions:
   recovery:
     critical_state:
       selectors: ["lights.desk_lamp/power", "thermostat/setpoint"]
-      path: "state/recovery.yaml"
+      path: "logs/recovery.yaml"
 
 tasks:
   - tag: warm_up_lamp

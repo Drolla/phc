@@ -17,7 +17,7 @@ extensions:
   recovery:
     critical_state:
       selectors: ["house.desk_lamp/power", "house.thermostat/setpoint"]
-      path: "state/recovery.yaml"
+      path: "logs/recovery.yaml"
 ```
 
 - `selectors` (required) — a list of `"<device-glob>/<endpoint-glob>"`

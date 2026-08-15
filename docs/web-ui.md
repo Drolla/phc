@@ -102,7 +102,7 @@ named [`extensions/timer`](timer.md) instance:
 extensions:
   timer:
     house:
-      path: "state/timers.yaml"
+      path: "logs/timers.yaml"
       selectors: ["house.*/*"]
 
   web_ui:

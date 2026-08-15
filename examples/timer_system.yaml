@@ -8,7 +8,7 @@
 # watch its listed trigger time roll forward each time it fires.
 #
 # Timers are only ever created/edited through the web UI -- there is no
-# `timers:` list in the system YAML -- so state/timer_demo.yaml starts out
+# `timers:` list in the system YAML -- so logs/timer_demo.yaml starts out
 # empty and fills in as you use the panel. Stop PHC and start it again to
 # see pending timers restored from that file.
 
@@ -30,7 +30,7 @@ devices:
 extensions:
   timer:
     house:
-      path: "state/timer_demo.yaml"
+      path: "logs/timer_demo.yaml"
       selectors: ["lights.*/*", "thermostat/*", "fan/*"]
       catch_up: 5m
   debug_portal:
