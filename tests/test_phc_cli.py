@@ -136,6 +136,38 @@ extensions:
         main(["--config", str(system_yaml), "--debug-portal-port", "8082"])
 
 
+def test_main_reports_config_error_without_traceback(tmp_path, capsys):
+    """A ConfigError (e.g. an unfilled !placeholder -- see
+    core.config._find_placeholders) must reach the user as a plain
+    argparse error message, not an uncaught Python traceback."""
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    base_url: !placeholder <URL>
+devices: []
+""")
+    with pytest.raises(SystemExit):
+        main(["--config", str(system_yaml)])
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_main_reports_missing_config_file_without_traceback(tmp_path, capsys):
+    missing = tmp_path / "does_not_exist.yaml"
+    with pytest.raises(SystemExit):
+        main(["--config", str(missing)])
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_main_reports_malformed_yaml_without_traceback(tmp_path, capsys):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("devices: [\n")  # unterminated flow sequence
+    with pytest.raises(SystemExit):
+        main(["--config", str(system_yaml)])
+    assert "Traceback" not in capsys.readouterr().err
+
+
 def test_main_wires_cli_debug_portal_without_yaml_entry(tmp_path, monkeypatch):
     """End-to-end through main() itself (not just _resolve_debug_portal_instance):
     proves --debug-portal-port reaches Scheduler construction without error

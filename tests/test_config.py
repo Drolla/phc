@@ -7,10 +7,11 @@ from pathlib import Path
 import pytest
 
 from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _build_effective_module,
-                          _collect_history_records, _expand_endpoint_specs, _load_extensions,
-                          _make_history_tick_hook, _merge_endpoints, _merge_extension_params,
-                          _merge_params, _parse_history_spec, _resolve_interval,
-                          _resolve_module_config, _substitute_endpoint_spec, load_system)
+                          _collect_history_records, _expand_endpoint_specs, _find_placeholders,
+                          _load_extensions, _make_history_tick_hook, _merge_endpoints,
+                          _merge_extension_params, _merge_params, _parse_history_spec,
+                          _Placeholder, _resolve_interval, _resolve_module_config,
+                          _substitute_endpoint_spec, load_system)
 from core.device import Device
 from core.endpoint import Endpoint
 
@@ -2798,6 +2799,78 @@ devices:
     assert system.devices["light"].params["user"] == "admin"
 
 
+# ---------- !placeholder ----------
+
+def test_find_placeholders_reports_dotted_path():
+    raw = {"modules": {"zway": {"base_url": "ok", "user": _Placeholder("<UserName>")}}}
+    assert _find_placeholders(raw) == ["modules.zway.user"]
+
+
+def test_find_placeholders_labels_list_entries_by_id():
+    raw = {"devices": [{"id": "house", "children": [
+        {"id": "sensor_cellar", "node": "13"},
+        {"id": "cellar_air", "base_url": _Placeholder("<URL>")},
+    ]}]}
+    assert _find_placeholders(raw) == ["devices['house'].children['cellar_air'].base_url"]
+
+
+def test_find_placeholders_labels_list_entries_by_tag_when_no_id():
+    raw = {"tasks": [{"tag": "report", "action": {"message": _Placeholder("<msg>")}}]}
+    assert _find_placeholders(raw) == ["tasks['report'].action.message"]
+
+
+def test_find_placeholders_falls_back_to_index_without_id_or_tag():
+    raw = {"to": ["ok@example.com", _Placeholder("<Recipient>")]}
+    assert _find_placeholders(raw) == ["to[1]"]
+
+
+def test_find_placeholders_none_when_absent():
+    assert _find_placeholders({"modules": {"zway": {"base_url": "http://real.example"}}}) == []
+
+
+def test_load_system_placeholder_raises(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    base_url: !placeholder <URL>
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_placeholder_via_include_raises(tmp_path):
+    # A !placeholder pulled in through !include must still block the load --
+    # the check runs on the fully-resolved raw tree, after every include has
+    # already been spliced in (see _include_constructor/load_system).
+    (tmp_path / "conn.yaml").write_text("base_url: !placeholder <URL>\n")
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+modules:
+  zway:
+    <<: !include conn.yaml
+devices: []
+""")
+    with pytest.raises(ConfigError):
+        load_system(system_yaml)
+
+
+def test_load_system_without_placeholder_loads_fine(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+heartbeat: 1s
+devices:
+  - id: light
+    module: virtual
+    endpoints: [{ key: state, writable: true, type: int, default: 0 }]
+""")
+    system = load_system(system_yaml)
+    assert "light" in system.devices
+
+
 @pytest.fixture
 def _restore_phc_logger_levels():
     # configure_logging() replaces the "phc" logger's level and handler
@@ -2821,4 +2894,17 @@ def _restore_phc_logger_levels():
 
 @pytest.mark.parametrize("example_path", sorted(_EXAMPLES_DIR.glob("*.yaml")), ids=lambda p: p.name)
 def test_load_system_examples_load_without_error(example_path, _restore_phc_logger_levels):
-    load_system(example_path)
+    # A handful of examples deliberately ship `!placeholder` values -- a
+    # credential/URL to another system with no sane default -- that must be
+    # filled in with something real before the file can run (including
+    # examples that only inherit one via `<<: !include`, e.g.
+    # virtual_surveillance-task_defs_*.yaml including
+    # virtual_surveillance-system_setup.yaml's mail_alert block). Detected
+    # from load_system()'s own error message rather than a hand-maintained
+    # filename list, so this stays correct as examples gain/lose
+    # placeholders; any other ConfigError still fails the test.
+    try:
+        load_system(example_path)
+    except ConfigError as exc:
+        if "!placeholder" not in str(exc):
+            raise

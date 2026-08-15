@@ -32,9 +32,9 @@ intervals:
 modules:
   zway:
     update: zwave
-    base_url: http://192.168.1.21:8083
-    user: admin
-    password: admin
+    base_url: !placeholder <URL>
+    user: !placeholder <UserName>
+    password: !placeholder <Password>
 
 # The shared zway device set from examples/devices/zway_devices.yaml.
 # weather_station's own update: (see that file) overrides modules.zway's

@@ -72,6 +72,31 @@ tasks:
   - !include radon_tasks.yaml # spliced in as two tasks, not one nested list
 ```
 
+## Placeholder values
+
+A value that has to be filled in with something real before a config can
+run -- a credential, another system's URL -- can be tagged
+`!placeholder <example>` instead of given a literal value:
+
+```yaml
+modules:
+  zway:
+    base_url: !placeholder <URL>
+    user: !placeholder <UserName>
+    password: !placeholder <Password>
+```
+
+`load_system` checks for `!placeholder` right after parsing, before
+building any device or extension, and refuses to start if it finds one
+anywhere in the config -- including one pulled in through `!include`/`<<:
+!include` -- listing every offending field by its path (e.g.
+`modules.zway.base_url`). This is how every example config that talks to
+real hardware or a real mail server ships: safe to read and copy, but not
+runnable until its placeholders are replaced with real values. Plain,
+un-tagged example text (e.g. `smtp_host: "smtp.example.com"`) is just
+illustrative and isn't checked -- use `!placeholder` for anything that
+must not be left as-is.
+
 ## Modules and shared configuration
 
 A `module.yaml` declares each parameter's `scope` (default `device`) and
