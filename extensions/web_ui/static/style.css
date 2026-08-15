@@ -78,9 +78,13 @@ header .nav-link:hover:not(.active) {
   gap: 0.5rem;
 }
 
-/* Body-bg (not tertiary-bg) so each widget row reads as a neutral chip
-   sitting on top of its device card's teal wash, instead of blending into
-   it -- the same layering .timers-form uses against .timers-panel below. */
+/* --widget-bg (not body-bg) so each widget row reads as a distinct, still
+   colored layer on top of its device card's teal wash, rather than either
+   blending into the card or reverting to a flat white/gray chip -- see the
+   --widget-bg definition below for why it's a separate token from
+   --bs-primary-bg-subtle. .timers-form keeps plain body-bg: it's a form
+   full of inputs, not a set of already-colored widget rows, so it stays
+   the neutral surface those inputs sit on. */
 .widget {
   display: flex;
   flex-wrap: wrap;
@@ -88,7 +92,7 @@ header .nav-link:hover:not(.active) {
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border-radius: var(--bs-border-radius);
-  background: var(--bs-body-bg);
+  background: var(--widget-bg);
 }
 
 .widget-label {
@@ -254,6 +258,20 @@ input[type="range"].widget-input {
    (focus border / active thumb) mirror Bootstrap's own ~50%/~70%
    white-mix ratios for its default blue, applied to the same teal base
    (#0d9488). */
+/* --bs-border-color is overridden here too, on top of --bs-primary and
+   friends: it's what Bootstrap's form-control/form-select/form-check-input
+   borders (and this file's own .timers-table/.timers-form rules) all draw
+   from, so leaving it at Bootstrap's default gray would keep every input,
+   dropdown, and toggle-switch track looking flat and uncolored even after
+   their containing .widget row gets a tint (below). --widget-bg is a new,
+   project-only token (Bootstrap has no equivalent) for that row tint --
+   deliberately a *more* saturated teal than --bs-primary-bg-subtle, not a
+   paler one: a tint close to white/black reads as "still gray" against a
+   device card that's already a pale wash, so the widget row needs to be
+   the more colorful layer for the two to read as distinct on top of each
+   other. --bs-form-check-bg below reuses it so an unchecked toggle's
+   track picks up the same color instead of falling back to plain
+   --bs-body-bg. */
 :root,
 [data-bs-theme="light"] {
   --bs-link-color: #0d9488;
@@ -265,6 +283,8 @@ input[type="range"].widget-input {
   --bs-primary-text-emphasis: #0b7a70;
   --bs-primary-bg-subtle: #cdf2ee;
   --bs-primary-border-subtle: #9fe3da;
+  --bs-border-color: #9fe3da;
+  --widget-bg: #a8e6dc;
 }
 [data-bs-theme="dark"] {
   --bs-link-color: #2dd4bf;
@@ -276,6 +296,8 @@ input[type="range"].widget-input {
   --bs-primary-text-emphasis: #5eead4;
   --bs-primary-bg-subtle: #0f3d38;
   --bs-primary-border-subtle: #15574f;
+  --bs-border-color: #1d6a60;
+  --widget-bg: #1f5c52;
 }
 .btn-primary {
   --bs-btn-bg: var(--bs-primary);
@@ -289,6 +311,13 @@ input[type="range"].widget-input {
   --bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
 }
 
+/* Unchecked switches/checkboxes otherwise fill with plain --bs-body-bg
+   (white/near-black) -- var(--bs-form-check-bg) is the one Bootstrap hook
+   for that fill, so an "off" toggle doesn't look like a flat gray/white
+   pill even before it's checked. */
+.form-check-input {
+  --bs-form-check-bg: var(--widget-bg);
+}
 .form-check-input:checked {
   background-color: #0d9488;
   border-color: #0d9488;
