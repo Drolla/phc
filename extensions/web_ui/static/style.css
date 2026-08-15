@@ -114,6 +114,23 @@ input[type="range"].widget-input {
   max-width: 10rem;
 }
 
+/* Bootstrap's form-select/form-control paint themselves with plain
+   --bs-body-bg (white/near-black) -- overriding --bs-border-color earlier
+   only colored their outline, leaving the fill itself looking white/gray
+   against the now-colored .widget row around it. Reuses
+   --bs-primary-bg-subtle (the same pale wash .device cards use) rather
+   than a third new token, so the layering reads card(pale) ->
+   row(saturated) -> control(pale) instead of introducing a fourth shade.
+   Scoped to the two widget-input kinds that render an actual filled box
+   (dropdown/number/text) -- input[type=range] has no fill to color (its
+   thumb/track are handled separately below), and the toggle's
+   .form-switch wrapper div would show as an unwanted colored rectangle
+   behind the switch pill if it picked this up too. */
+.widget-input.form-select,
+.widget-input.form-control {
+  background-color: var(--bs-primary-bg-subtle);
+}
+
 /* Bootstrap's .form-switch positions its <input> via padding-left plus a
    negative margin-left, assuming an adjacent <label> fills the rest of the
    block. This project's switch has no inline label (.widget-label already
@@ -314,9 +331,12 @@ input[type="range"].widget-input {
 /* Unchecked switches/checkboxes otherwise fill with plain --bs-body-bg
    (white/near-black) -- var(--bs-form-check-bg) is the one Bootstrap hook
    for that fill, so an "off" toggle doesn't look like a flat gray/white
-   pill even before it's checked. */
+   pill even before it's checked. Same pale wash as the dropdown/number/
+   text controls above (not --widget-bg): a toggle sitting directly on its
+   --widget-bg row needs to contrast against that row, the same way those
+   controls do. */
 .form-check-input {
-  --bs-form-check-bg: var(--widget-bg);
+  --bs-form-check-bg: var(--bs-primary-bg-subtle);
 }
 .form-check-input:checked {
   background-color: #0d9488;
