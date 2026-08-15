@@ -235,11 +235,19 @@ devices:
   - !include devices/sun_zurich.yaml
 
 extensions:
+  # smtp_host points at loopback with nothing listening -- like every
+  # other device in this file, there's no real service behind it, so the
+  # send fails fast (connection refused, not a 10s timeout) and is logged
+  # as a warning rather than surfaced back to the firing task (see
+  # extensions/mail_alert/extension.yaml) -- a harmless way to exercise
+  # surveillance_intrusion's mail_alert action without a real mail server.
+  # Point this at a real SMTP server (and drop the loopback comment above)
+  # to actually receive the alert.
   mail_alert:
     house:
-      smtp_host: !placeholder "smtp.example.com"
-      username: !placeholder "alerts@example.com"
-      password: !placeholder "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
+      smtp_host: "127.0.0.1"
+      username: "alerts@example.com"
+      password: "changeme"   # plain text -- see extensions/mail_alert/extension.yaml
       from: "alerts@example.com"
       to:
         - "someone@example.com"
