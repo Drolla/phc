@@ -8,7 +8,7 @@ from phc.core.endpoint import Endpoint
 from phc.core.scripting import compile_expression
 from phc.core.task import (
     Condition, CreateTaskAction, ExprCondition, KillTaskAction, LogAction, ScriptAction,
-    SetAction, Task, ToggleAction, _build_rule_namespace, kill_tasks, register_task,
+    SetAction, Task, TaskRegistry, ToggleAction, _build_rule_namespace,
     resolve_endpoint_ref,
 )
 from phc.devices.virtual.device import VirtualDevice
@@ -535,9 +535,11 @@ def test_condition_task_with_multiple_actions_all_run_only_when_condition_true(t
 # ---------- CreateTaskAction ----------
 
 def test_create_task_action_appends_new_task_to_list():
+    from phc.core.config import _build_task
+
     light = _light("off")
     flat = {"living_light": light}
-    tasks: list[Task] = []
+    tasks = TaskRegistry(build_task=_build_task, flat=flat)
     specs = {
         "tag": "clear_alert",
         "time": "+1s",
@@ -554,11 +556,13 @@ def test_create_task_action_appends_new_task_to_list():
 
 
 def test_create_task_action_replaces_existing_same_tag_task():
+    from phc.core.config import _build_task
+
     light = _light("off")
     flat = {"living_light": light}
     old_task = Task("clear_alert", due_time=1.0, repeat=0.0,
                      actions=[SetAction(device_id="living_light", endpoint_key="state", value="off")])
-    tasks: list[Task] = [old_task]
+    tasks = TaskRegistry([old_task], build_task=_build_task, flat=flat)
     specs = {
         "tag": "clear_alert",
         "time": "+1s",
@@ -573,49 +577,65 @@ def test_create_task_action_replaces_existing_same_tag_task():
     assert tasks[0].tag == "clear_alert"
 
 
-# ---------- register_task / kill_tasks ----------
+# ---------- TaskRegistry.create / TaskRegistry.kill ----------
 
-def test_register_task_threads_sticky_endpoints_into_dynamically_created_task():
+def test_create_threads_sticky_endpoints_into_dynamically_created_task():
+    from phc.core.config import _build_task
+
     light = _light("off")
     flat = {"living_light": light}
-    tasks: list[Task] = []
     sticky_endpoints: set = set()
+    tasks = TaskRegistry(build_task=_build_task, flat=flat, sticky_endpoints=sticky_endpoints)
     specs = {
         "tag": "watch",
         "condition": {"refs": {"s": "living_light.state"}, "expr": "s.changed"},
         "action": {"kind": "log", "device": "living_light.state", "message": "x"},
     }
 
-    register_task(specs, flat, tasks, {}, sticky_endpoints)
+    tasks.create(specs)
 
     assert tasks[0].tag == "watch"
     assert light.endpoint("state") in sticky_endpoints
 
 
-def test_kill_tasks_removes_multiple_matching_tags():
-    tasks = [Task("a", due_time=1.0, actions=[]), Task("b", due_time=1.0, actions=[]),
-              Task("c", due_time=1.0, actions=[])]
-    removed = kill_tasks(["a", "c"], tasks)
+def test_create_without_a_builder_raises_rather_than_failing_obscurely():
+    tasks = TaskRegistry()
+    with pytest.raises(ValueError, match="cannot build tasks"):
+        tasks.create({"tag": "x", "action": {"kind": "log", "message": "hi"}})
+
+
+def test_by_tag_finds_and_misses():
+    a = Task("a", due_time=1.0, actions=[])
+    tasks = TaskRegistry([a])
+    assert tasks.by_tag("a") is a
+    assert tasks.by_tag("nope") is None
+
+
+def test_kill_removes_multiple_matching_tags():
+    tasks = TaskRegistry([Task("a", due_time=1.0, actions=[]), Task("b", due_time=1.0, actions=[]),
+                           Task("c", due_time=1.0, actions=[])])
+    removed = tasks.kill(["a", "c"])
     assert removed == 2
     assert [t.tag for t in tasks] == ["b"]
 
 
-def test_kill_tasks_glob_pattern():
-    tasks = [Task("surv_a", due_time=1.0, actions=[]), Task("surv_b", due_time=1.0, actions=[]),
-              Task("keep", due_time=1.0, actions=[])]
-    removed = kill_tasks(["surv_*"], tasks)
+def test_kill_glob_pattern():
+    tasks = TaskRegistry([Task("surv_a", due_time=1.0, actions=[]),
+                           Task("surv_b", due_time=1.0, actions=[]),
+                           Task("keep", due_time=1.0, actions=[])])
+    removed = tasks.kill(["surv_*"])
     assert removed == 2
     assert [t.tag for t in tasks] == ["keep"]
 
 
-def test_kill_tasks_no_match_is_noop():
-    tasks = [Task("a", due_time=1.0, actions=[])]
-    assert kill_tasks(["zzz*"], tasks) == 0
+def test_kill_no_match_is_noop():
+    tasks = TaskRegistry([Task("a", due_time=1.0, actions=[])])
+    assert tasks.kill(["zzz*"]) == 0
     assert len(tasks) == 1
 
 
 def test_kill_task_action_removes_matching_tags():
-    tasks = [Task("a", due_time=1.0, actions=[]), Task("b", due_time=1.0, actions=[])]
+    tasks = TaskRegistry([Task("a", due_time=1.0, actions=[]), Task("b", due_time=1.0, actions=[])])
     action = KillTaskAction(tags=["a"], flat={}, tasks=tasks)
     action.perform({})
     assert [t.tag for t in tasks] == ["b"]
@@ -689,9 +709,11 @@ def test_script_action_set_state_and_log(task_log):
 
 
 def test_script_action_create_task_appends_to_list():
+    from phc.core.config import _build_task
+
     light = _light("off")
     flat = {"living_light": light}
-    tasks: list[Task] = []
+    tasks = TaskRegistry(build_task=_build_task, flat=flat)
     code = ("create_task({'tag': 'clear_alert', 'time': '+1s', "
             "'action': {'kind': 'set', 'device': 'living_light.state', 'value': 'off'}})")
     action = ScriptAction(code=code, task_tag="t", flat=flat, tasks=tasks)
@@ -702,7 +724,8 @@ def test_script_action_create_task_appends_to_list():
 
 def test_script_action_kill_task_removes_matching_tag():
     flat: dict = {}
-    tasks = [Task("alert_a", due_time=1.0, actions=[]), Task("keep_me", due_time=1.0, actions=[])]
+    tasks = TaskRegistry([Task("alert_a", due_time=1.0, actions=[]),
+                           Task("keep_me", due_time=1.0, actions=[])])
     action = ScriptAction(code="kill_task('alert_a')", task_tag="t", flat=flat, tasks=tasks)
     action.perform({})
     assert [t.tag for t in tasks] == ["keep_me"]
@@ -803,8 +826,8 @@ def _record(sensor, *values):
 
 
 def _namespace(devices, task_tag="t"):
-    return _build_rule_namespace(devices=devices, flat=devices, tasks=[], extensions={},
-                                  sticky_endpoints=set(), task_tag=task_tag, writable=False)
+    return _build_rule_namespace(devices=devices, flat=devices, tasks=None,
+                                  task_tag=task_tag, writable=False)
 
 
 def test_fractile_matches_thc_index_formula():
@@ -917,7 +940,6 @@ def test_fractile_accepts_a_devices_selector_list(task_log):
 def test_history_functions_available_in_read_only_namespace():
     devices = {}
     namespace = _build_rule_namespace(devices=devices, flat=devices, tasks=None,
-                                       extensions=None, sticky_endpoints=None,
                                        task_tag="t", writable=False)
     for name in ("history", "fractile", "median", "average"):
         assert name in namespace

@@ -17,6 +17,16 @@ SURVEILLANCE_EXAMPLE = (Path(__file__).resolve().parent.parent / "examples"
                          / "virtual_surveillance-task_defs_1-nested.yaml")
 
 
+
+def _registry(flat, **kwargs):
+    """A TaskRegistry wired exactly as load_system wires one, for tests that
+    drive create_task/kill_task through the Scheduler and therefore need a
+    container that can actually build tasks."""
+    from phc.core.config import _build_task
+    from phc.core.task import TaskRegistry
+
+    return TaskRegistry(build_task=_build_task, flat=flat, **kwargs)
+
 @pytest.fixture
 def task_log(caplog):
     """caplog, but attached directly to the "phc.tasks" logger, bypassing
@@ -373,7 +383,7 @@ def test_scheduler_create_task_action_spawns_task_that_later_fires():
                            update_interval=1.0)
     flat = {"living_light": light}
 
-    tasks: list[Task] = []
+    tasks = _registry(flat)
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
     specs = {
         "tag": "clear_alert",
@@ -382,7 +392,7 @@ def test_scheduler_create_task_action_spawns_task_that_later_fires():
     }
     trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
-    tasks.append(trigger)
+    tasks.add(trigger)
 
     scheduler = Scheduler(flat, tasks=tasks)
 
@@ -425,12 +435,11 @@ def test_scheduler_create_task_template_spawns_task_that_later_fires():
             "action": {"kind": "set", "device": "living_light.state", "value": "off"},
         },
     }
-    tasks: list[Task] = []
+    tasks = _registry(flat, task_specs=task_specs)
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
     trigger = Task("raise_alert", condition=condition,
-                    actions=[CreateTaskAction(template="clear_alert", flat=flat, tasks=tasks,
-                                               task_specs=task_specs)])
-    tasks.append(trigger)
+                    actions=[CreateTaskAction(template="clear_alert", flat=flat, tasks=tasks)])
+    tasks.add(trigger)
 
     scheduler = Scheduler(flat, tasks=tasks)
 
@@ -465,8 +474,8 @@ def test_scheduler_create_task_unknown_template_raises_at_fire_time():
                            update_interval=1.0)
     flat = {"living_light": light}
 
-    tasks: list[Task] = []
-    action = CreateTaskAction(template="nonexistent", flat=flat, tasks=tasks, task_specs={})
+    tasks = _registry(flat, task_specs={})
+    action = CreateTaskAction(template="nonexistent", flat=flat, tasks=tasks)
     with pytest.raises(ValueError):
         action.perform(flat)
 
@@ -480,7 +489,7 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
                            update_interval=1.0)
     flat = {"living_light": light}
 
-    tasks: list[Task] = []
+    tasks = _registry(flat)
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
     specs = {
         "tag": "clear_alert",
@@ -489,7 +498,7 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
     }
     trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
-    tasks.append(trigger)
+    tasks.add(trigger)
 
     scheduler = Scheduler(flat, tasks=tasks)
 
@@ -517,7 +526,7 @@ def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
                            update_interval=1.0)
     flat = {"living_light": light}
 
-    tasks: list[Task] = []
+    tasks = _registry(flat)
     condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
     # Nested spec is a condition-driven task (always due), not time-driven --
     # if a task appended mid-tick were visible within that same tick's
@@ -534,7 +543,7 @@ def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
     }
     trigger = Task("raise_alert", condition=condition,
                     actions=[CreateTaskAction(specs=specs, flat=flat, tasks=tasks)])
-    tasks.append(trigger)
+    tasks.add(trigger)
 
     scheduler = Scheduler(flat, tasks=tasks)
 
@@ -557,7 +566,7 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
     flat = {"living_light": light}
-    tasks: list[Task] = []
+    tasks = _registry(flat)
 
     trigger_condition = Condition(device_id="living_light", endpoint_key="state", changed=True)
     code = (
@@ -578,7 +587,8 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
     # already snapshotted it (see phc/core/scheduler.py's `list(self._tasks)`),
     # so victim -- already in that snapshot -- still runs this tick; only
     # from the NEXT tick's fresh snapshot is it actually gone.
-    tasks.extend([spawner, victim])
+    tasks.add(spawner)
+    tasks.add(victim)
 
     scheduler = Scheduler(flat, tasks=tasks)
 

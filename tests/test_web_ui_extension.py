@@ -15,8 +15,9 @@ import pytest
 from aiohttp import ClientSession
 from aiohttp.test_utils import TestClient, TestServer
 
-from phc.core.config import ConfigError
+from phc.core.config import ConfigError, _build_task
 from phc.core.endpoint import Endpoint
+from phc.core.task import TaskRegistry
 from phc.devices.virtual.device import VirtualDevice
 from phc.extensions.web_ui.extension import configure
 from phc.extensions.web_ui.server import GRAPH_PANELS_BY_ID, PAGES
@@ -468,7 +469,12 @@ def _timer_registry(tmp_path, flat, selectors=("lamp/*", "dimmer/*"), instance_k
     params = {"path": str(tmp_path / "timers.yaml"), "selectors": list(selectors), "catch_up": "5m"}
     instance = configure_timer(params, flat, instance_key)
     registry = {instance_key: instance}
-    system = types.SimpleNamespace(devices=flat, tasks=[], extensions=registry)
+    # The timers panel drives TimerInstance's CRUD, which creates real
+    # Tasks -- so this needs a registry with a builder, like load_system's.
+    system = types.SimpleNamespace(
+        devices=flat,
+        tasks=TaskRegistry(build_task=_build_task, flat=flat, extensions=registry),
+        extensions=registry)
     instance.on_bind(system)
     return registry
 
