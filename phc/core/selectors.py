@@ -6,7 +6,7 @@ endpoints (currently phc.extensions.logdb; see phc/extensions/logdb/extension.py
 
 import fnmatch
 
-from phc.core.config import ConfigError
+from phc.core.errors import ConfigError
 from phc.core.device import Device
 
 

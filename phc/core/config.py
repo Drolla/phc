@@ -13,6 +13,7 @@ import yaml
 
 from phc.core.device import Device
 from phc.core.endpoint import LOG_AGGREGATIONS, VALUE_TYPES, Endpoint
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration, parse_time
 from phc.core.logging_setup import configure_logging
 from phc.core.registry import (discover_extensions, discover_modules, get_device_class,
@@ -32,8 +33,11 @@ _DEVICES_PACKAGE = "phc.devices"
 _EXTENSIONS_PACKAGE = "phc.extensions"
 
 
-class ConfigError(Exception):
-    """Raised for any invalid or inconsistent system YAML."""
+# ConfigError now lives in phc.core.errors (see that module for why), and
+# is re-exported here because `from phc.core.config import ConfigError` is
+# the spelling every extension and test already uses -- and the natural
+# one, since this is the module that raises it.
+__all__ = ["ConfigError", "System", "load_system"]
 
 
 _include_stack: list[Path] = []
