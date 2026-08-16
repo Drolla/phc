@@ -14,10 +14,10 @@ import time
 
 import pytest
 
-from core.device import Device, _write_collector
-from core.endpoint import Endpoint
-from core.scheduler import Scheduler
-from core.task import SetAction, Task
+from phc.core.device import Device, _write_collector
+from phc.core.endpoint import Endpoint
+from phc.core.scheduler import Scheduler
+from phc.core.task import SetAction, Task
 
 
 class SleepReadDevice(Device):

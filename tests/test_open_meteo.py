@@ -13,10 +13,10 @@ import time
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scheduler import Scheduler
-from devices.open_meteo import device as open_meteo_device
-from devices.open_meteo.device import OpenMeteoDevice
+from phc.core.endpoint import Endpoint
+from phc.core.scheduler import Scheduler
+from phc.devices.open_meteo import device as open_meteo_device
+from phc.devices.open_meteo.device import OpenMeteoDevice
 
 CURRENT = {
     "temperature_2m": 22.5,

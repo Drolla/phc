@@ -1,4 +1,4 @@
-"""Tests for extensions.recovery.recovery: the YAML-backed RecoveryStore
+"""Tests for phc.extensions.recovery.recovery: the YAML-backed RecoveryStore
 (in isolation from the extension/scheduler-hook wiring layer)."""
 
 import logging
@@ -6,7 +6,7 @@ import logging
 import pytest
 import yaml
 
-from extensions.recovery.recovery import RecoveryStore
+from phc.extensions.recovery.recovery import RecoveryStore
 
 
 @pytest.fixture

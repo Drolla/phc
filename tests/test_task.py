@@ -1,17 +1,17 @@
-"""Tests for core.task: Condition, Task, and the built-in Action kinds."""
+"""Tests for phc.core.task: Condition, Task, and the built-in Action kinds."""
 
 import logging
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scripting import compile_expression
-from core.task import (
+from phc.core.endpoint import Endpoint
+from phc.core.scripting import compile_expression
+from phc.core.task import (
     Condition, CreateTaskAction, ExprCondition, KillTaskAction, LogAction, ScriptAction,
     SetAction, Task, ToggleAction, _build_rule_namespace, kill_tasks, register_task,
     resolve_endpoint_ref,
 )
-from devices.virtual.device import VirtualDevice
+from phc.devices.virtual.device import VirtualDevice
 from tests.conftest import fetch_sync
 
 
@@ -374,7 +374,7 @@ def test_one_shot_task_runs_once_and_marks_itself_finished():
     class docstring -- THC's -repeat "" case): fires once, then
     `finished` becomes True. Task never touches any task list itself --
     removing a finished task from the live list is the Scheduler's job
-    (see core/scheduler.py's tick loop)."""
+    (see phc/core/scheduler.py's tick loop)."""
     light = _light("off")
     devices = {"living_light": light}
     task = Task("blink", due_time=0.0,

@@ -1,11 +1,11 @@
-"""Tests for core.selectors: device/endpoint selector pattern resolution."""
+"""Tests for phc.core.selectors: device/endpoint selector pattern resolution."""
 
 import pytest
 
-from core.config import ConfigError
-from core.endpoint import Endpoint
-from core.selectors import resolve_selectors
-from devices.virtual.device import VirtualDevice
+from phc.core.config import ConfigError
+from phc.core.endpoint import Endpoint
+from phc.core.selectors import resolve_selectors
+from phc.devices.virtual.device import VirtualDevice
 
 
 def _house(**endpoint_kwargs):

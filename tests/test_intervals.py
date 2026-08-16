@@ -1,10 +1,10 @@
-"""Tests for core.intervals: duration and time string parsing."""
+"""Tests for phc.core.intervals: duration and time string parsing."""
 
 from datetime import datetime, timedelta
 
 import pytest
 
-from core.intervals import parse_duration, parse_time
+from phc.core.intervals import parse_duration, parse_time
 
 
 # ---------- parse_duration ----------
@@ -160,7 +160,7 @@ def test_parse_time_relative_year_month_and_days_combined():
 # ---------- calendar edge cases (via relative +Y/+M) ----------
 
 def test_add_calendar_clamps_feb_29_non_leap_year():
-    from core.intervals import _add_calendar
+    from phc.core.intervals import _add_calendar
     dt = datetime(2024, 2, 29, 10, 30, 0)  # 2024 is a leap year
     result = _add_calendar(dt, years=1)  # 2025 is not
     assert (result.year, result.month, result.day) == (2025, 2, 28)
@@ -168,21 +168,21 @@ def test_add_calendar_clamps_feb_29_non_leap_year():
 
 
 def test_add_calendar_month_overflow_carries_year():
-    from core.intervals import _add_calendar
+    from phc.core.intervals import _add_calendar
     dt = datetime(2026, 11, 15)
     result = _add_calendar(dt, months=3)
     assert (result.year, result.month, result.day) == (2027, 2, 15)
 
 
 def test_add_calendar_month_underflow_negative_offset_crosses_year():
-    from core.intervals import _add_calendar
+    from phc.core.intervals import _add_calendar
     dt = datetime(2026, 1, 15)
     result = _add_calendar(dt, months=-2)
     assert (result.year, result.month, result.day) == (2025, 11, 15)
 
 
 def test_add_calendar_clamps_day_on_month_shrink():
-    from core.intervals import _add_calendar
+    from phc.core.intervals import _add_calendar
     dt = datetime(2026, 1, 31)
     result = _add_calendar(dt, months=1)  # Feb has 28 days in 2026
     assert (result.year, result.month, result.day) == (2026, 2, 28)

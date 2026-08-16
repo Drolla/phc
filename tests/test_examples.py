@@ -8,7 +8,7 @@ API documentation. A refactor that breaks module/extension discovery,
 descriptor lookup, or any extension's configure() signature shows up here
 first, against real configs rather than fixtures.
 
-Deliberately load-only: load_system() builds devices/tasks/extensions but
+Deliberately load-only: load_system() builds phc/devices/tasks/extensions but
 performs no device I/O (that starts at the Scheduler's first fetch), so
 this stays offline and fast.
 """
@@ -18,13 +18,13 @@ from pathlib import Path
 
 import pytest
 
-from core.config import ConfigError, load_system
+from phc.core.config import ConfigError, load_system
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
 # Examples that ship with `!placeholder` values (credentials, a controller
 # URL) and therefore MUST refuse to load until a user substitutes real
-# ones -- see core.config._find_placeholders. Asserting the refusal is as
+# ones -- see phc.core.config._find_placeholders. Asserting the refusal is as
 # valuable as asserting the others load: it is what stops a half-configured
 # example from silently reaching real hardware with "<URL>" as an address.
 PLACEHOLDER_EXAMPLES = {
@@ -81,7 +81,7 @@ def test_example_config_loads(path, isolated_run):
 
     system = load_system(path)
     assert system.devices, f"{path.name}: built no devices"
-    # Every task's actions resolved against real devices/extensions at
+    # Every task's actions resolved against real phc/devices/extensions at
     # build time; reaching here means none of that raised.
     assert isinstance(system.tasks, list)
 

@@ -1,4 +1,4 @@
-"""Tests for devices/system_monitor: local host performance metrics via
+"""Tests for phc/devices/system_monitor: local host performance metrics via
 psutil, plus a platform-specific CPU temperature path. All psutil/platform
 calls are monkeypatched so these tests are deterministic and independent of
 the actual host's hardware.
@@ -7,9 +7,9 @@ the actual host's hardware.
 import sys
 import types
 
-from core.endpoint import Endpoint
-from devices.system_monitor import device as system_monitor_device
-from devices.system_monitor.device import SystemMonitorDevice
+from phc.core.endpoint import Endpoint
+from phc.devices.system_monitor import device as system_monitor_device
+from phc.devices.system_monitor.device import SystemMonitorDevice
 from tests.conftest import fetch_sync
 
 _ENDPOINT_KEYS = (

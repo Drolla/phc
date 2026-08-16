@@ -1,8 +1,8 @@
-"""Tests for core.endpoint: the two-phase set/update_state state model."""
+"""Tests for phc.core.endpoint: the two-phase set/update_state state model."""
 
 import pytest
 
-from core.endpoint import Endpoint
+from phc.core.endpoint import Endpoint
 
 
 def test_initial_state_is_none():

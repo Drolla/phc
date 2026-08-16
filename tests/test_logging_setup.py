@@ -1,4 +1,4 @@
-"""Tests for core.logging_setup: multi-destination logging and the in-place
+"""Tests for phc.core.logging_setup: multi-destination logging and the in-place
 status line."""
 
 import io
@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from core.logging_setup import (InPlaceLineHandler, NewlineSafeStreamHandler, _InPlaceLineState,
+from phc.core.logging_setup import (InPlaceLineHandler, NewlineSafeStreamHandler, _InPlaceLineState,
                                  _LevelMapFilter, configure_logging)
 
 

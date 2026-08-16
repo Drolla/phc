@@ -1,10 +1,10 @@
-"""Tests for extensions.web_ui.widgets: infer_widget_kind()'s pure
+"""Tests for phc.extensions.web_ui.widgets: infer_widget_kind()'s pure
 inference matrix, describe_endpoint()'s shape, and describe_device()'s
 branch-pruning behavior."""
 
-from core.endpoint import Endpoint
-from devices.virtual.device import VirtualDevice
-from extensions.web_ui.widgets import describe_device, describe_endpoint, infer_widget_kind
+from phc.core.endpoint import Endpoint
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.web_ui.widgets import describe_device, describe_endpoint, infer_widget_kind
 
 
 # ---------- infer_widget_kind ----------

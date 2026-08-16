@@ -1,16 +1,16 @@
-"""Tests for extensions.mail_alert.extension: configure()'s validation,
+"""Tests for phc.extensions.mail_alert.extension: configure()'s validation,
 MailAlertInstance's to/from resolution and success/failure logging,
-MailAlertAction, and an end-to-end test through core.config.load_system().
+MailAlertAction, and an end-to-end test through phc.core.config.load_system().
 The pure delivery logic itself is tested in tests/test_mail_alert.py."""
 
 import logging
 
 import pytest
 
-from core.config import ConfigError, load_system
-from core.registry import discover_extensions
-from core.scheduler import Scheduler
-from extensions.mail_alert.extension import MailAlertAction, MailAlertInstance, configure
+from phc.core.config import ConfigError, load_system
+from phc.core.registry import discover_extensions
+from phc.core.scheduler import Scheduler
+from phc.extensions.mail_alert.extension import MailAlertAction, MailAlertInstance, configure
 from tests.conftest import fetch_sync
 
 
@@ -31,7 +31,7 @@ def mail_log(caplog):
 
 
 def _base_params(**overrides):
-    """A complete params dict, as core.config._merge_extension_params would
+    """A complete params dict, as phc.core.config._merge_extension_params would
     hand to configure() -- every declared parameter present, instance-set
     or extension.yaml-defaulted. Direct configure() calls in these tests
     bypass _merge_extension_params, so (like tests/test_random_light_extension.py)
@@ -83,7 +83,7 @@ def test_configure_missing_to_defaults_to_empty_list():
 def test_send_submits_to_shared_executor(monkeypatch):
     instance = configure(_base_params(), {}, "mail_alert.house")
     submitted = []
-    monkeypatch.setattr("extensions.mail_alert.extension._executor.submit",
+    monkeypatch.setattr("phc.extensions.mail_alert.extension._executor.submit",
                          lambda fn, *args: submitted.append((fn, args)))
     instance.send(to=["b@example.com"], title="Alarm", message="Sensor triggered")
     assert len(submitted) == 1
@@ -95,7 +95,7 @@ def test_send_submits_to_shared_executor(monkeypatch):
 def test_send_falls_back_to_instance_defaults(monkeypatch):
     instance = configure(_base_params(), {}, "mail_alert.house")
     submitted = []
-    monkeypatch.setattr("extensions.mail_alert.extension._executor.submit",
+    monkeypatch.setattr("phc.extensions.mail_alert.extension._executor.submit",
                          lambda fn, *args: submitted.append(args))
     instance.send(to=None, title="Alarm", message="Sensor triggered", from_addr=None)
     assert submitted[0] == (["a@example.com"], "Alarm", "Sensor triggered", "alerts@example.com")
@@ -104,7 +104,7 @@ def test_send_falls_back_to_instance_defaults(monkeypatch):
 def test_send_explicit_to_and_from_override_defaults(monkeypatch):
     instance = configure(_base_params(), {}, "mail_alert.house")
     submitted = []
-    monkeypatch.setattr("extensions.mail_alert.extension._executor.submit",
+    monkeypatch.setattr("phc.extensions.mail_alert.extension._executor.submit",
                          lambda fn, *args: submitted.append(args))
     instance.send(to=["c@example.com"], title="Alarm", message="msg", from_addr="other@example.com")
     assert submitted[0] == (["c@example.com"], "Alarm", "msg", "other@example.com")
@@ -112,7 +112,7 @@ def test_send_explicit_to_and_from_override_defaults(monkeypatch):
 
 def test_deliver_logs_success(monkeypatch, mail_log):
     instance = configure(_base_params(), {}, "mail_alert.house")
-    monkeypatch.setattr("extensions.mail_alert.extension.send_mail", lambda **kwargs: None)
+    monkeypatch.setattr("phc.extensions.mail_alert.extension.send_mail", lambda **kwargs: None)
     instance._deliver(["a@example.com"], "Alarm", "Sensor triggered", "alerts@example.com")
     assert any("sent" in r.message for r in mail_log.records)
 
@@ -123,7 +123,7 @@ def test_deliver_logs_warning_on_failure(monkeypatch, mail_log):
     def _raise(**kwargs):
         raise ConnectionRefusedError("no route to host")
 
-    monkeypatch.setattr("extensions.mail_alert.extension.send_mail", _raise)
+    monkeypatch.setattr("phc.extensions.mail_alert.extension.send_mail", _raise)
     instance._deliver(["a@example.com"], "Alarm", "Sensor triggered", "alerts@example.com")
     assert any(r.levelno == logging.WARNING and "failed" in r.message for r in mail_log.records)
 
@@ -134,7 +134,7 @@ def test_deliver_logs_traceback_when_debug(monkeypatch, mail_log):
     def _raise(**kwargs):
         raise ConnectionRefusedError("no route to host")
 
-    monkeypatch.setattr("extensions.mail_alert.extension.send_mail", _raise)
+    monkeypatch.setattr("phc.extensions.mail_alert.extension.send_mail", _raise)
     instance._deliver(["a@example.com"], "Alarm", "Sensor triggered", "alerts@example.com")
     record = next(r for r in mail_log.records if "failed" in r.message)
     assert record.levelno == logging.ERROR
@@ -175,12 +175,12 @@ def test_mail_alert_action_omitted_to_and_from_pass_through_as_none():
 def test_end_to_end_load_system_sends_alert(tmp_path, monkeypatch):
     discover_extensions()
     sent = []
-    monkeypatch.setattr("extensions.mail_alert.extension.send_mail",
+    monkeypatch.setattr("phc.extensions.mail_alert.extension.send_mail",
                          lambda **kwargs: sent.append(kwargs))
     # send() dispatches delivery to the shared background executor -- run it
     # inline instead, so the assertion below doesn't race the worker thread
     # (and so this test doesn't tear down the executor other tests share).
-    monkeypatch.setattr("extensions.mail_alert.extension._executor.submit",
+    monkeypatch.setattr("phc.extensions.mail_alert.extension._executor.submit",
                          lambda fn, *args: fn(*args))
 
     system_yaml = tmp_path / "system.yaml"

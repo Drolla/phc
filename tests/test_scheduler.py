@@ -1,13 +1,13 @@
-"""Tests for core.scheduler: the Scheduler's tick loop, tasks, and device polling."""
+"""Tests for phc.core.scheduler: the Scheduler's tick loop, tasks, and device polling."""
 
 import logging
 import time
 
 import pytest
 
-from core.config import load_system
-from core.scheduler import Scheduler
-from core.task import Condition, LogAction, Task, ToggleAction
+from phc.core.config import load_system
+from phc.core.scheduler import Scheduler
+from phc.core.task import Condition, LogAction, Task, ToggleAction
 from pathlib import Path
 from tests.conftest import fetch_sync
 
@@ -33,8 +33,8 @@ def task_log(caplog):
 
 
 def test_scheduler_only_runs_due_devices():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     fast = VirtualDevice("fast", endpoints=[Endpoint("state", writable=True)],
                           update_interval=1.0)
@@ -98,7 +98,7 @@ def test_end_to_end_nested_desk_lamp():
 def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_presence():
     """Regression test: self._devices is a flat dict holding every device,
     both a "host" parent and each descendant under its own qualified id
-    (see core.config._build_device), so the commit pass's per-entry
+    (see phc.core.config._build_device), so the commit pass's per-entry
     Device.update_state() call must not also reach into a device's
     children (see that method's docstring) -- otherwise a nested device's
     endpoint gets committed twice in one tick, and its second, redundant
@@ -107,14 +107,14 @@ def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_prese
     system.scheduled_devices() (used by test_end_to_end_nested_desk_lamp,
     above) -- that helper excludes any device with no update_interval,
     which would exclude "house" entirely and hide the bug."""
-    from core.endpoint import Endpoint
-    from devices.host.device import HostDevice
-    from devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.devices.host.device import HostDevice
+    from phc.devices.virtual.device import VirtualDevice
 
     lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True, value_type="int")],
                           update_interval=1.0, parent_qualified_id="house")
     house = HostDevice("house", children=[lamp])
-    # Insertion order matters: matches core.config._build_device, which
+    # Insertion order matters: matches phc.core.config._build_device, which
     # always registers a child's flat entry before its parent's.
     flat = {"house.desk_lamp": lamp, "house": house}
 
@@ -217,8 +217,8 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
 
 
 def test_scheduler_runs_blink_task_and_reschedules():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -255,8 +255,8 @@ def test_scheduler_runs_blink_task_and_reschedules():
 
 
 def test_scheduler_removes_one_shot_task_after_it_fires():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -288,8 +288,8 @@ def test_scheduler_removes_one_shot_task_after_it_fires():
 
 
 def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -324,16 +324,16 @@ def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
 
 def test_scheduler_runs_condition_task_for_nested_device(task_log):
     """Nested-device counterpart to test_scheduler_runs_condition_task_only_
-    on_change_tick, above: Condition.evaluate() (core.task.Condition, which
+    on_change_tick, above: Condition.evaluate() (phc.core.task.Condition, which
     backs every `condition: {device, changed: true}` task trigger, e.g.
     examples/full_house_system.yaml's report_low_battery task) reads
     device.get_event(endpoint_key). Regression test for the bug where a
     nested device's event was always wiped before a task's condition ever
     saw it -- see test_scheduler_commits_change_event_for_nested_device_
     despite_ancestor_presence, above, for the underlying mechanism."""
-    from core.endpoint import Endpoint
-    from devices.host.device import HostDevice
-    from devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.devices.host.device import HostDevice
+    from phc.devices.virtual.device import VirtualDevice
 
     lamp = VirtualDevice("desk_lamp", endpoints=[Endpoint("power", writable=True)],
                           update_interval=1.0, parent_qualified_id="house")
@@ -365,9 +365,9 @@ def test_scheduler_runs_condition_task_for_nested_device(task_log):
 
 
 def test_scheduler_create_task_action_spawns_task_that_later_fires():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.task import CreateTaskAction
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -408,11 +408,11 @@ def test_scheduler_create_task_template_spawns_task_that_later_fires():
     """Same as test_scheduler_create_task_action_spawns_task_that_later_fires
     above, but the create_task action gives `template:` instead of a
     literal `specs:` -- the spec is looked up by name in task_specs at fire
-    time (see core.task.register_task/CreateTaskAction), everything else
+    time (see phc.core.task.register_task/CreateTaskAction), everything else
     about spawning/firing the resulting task is identical."""
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.task import CreateTaskAction
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -456,10 +456,10 @@ def test_scheduler_create_task_unknown_template_raises_at_fire_time():
     """Unlike a literal specs:, template: is only resolved when the
     create_task action fires -- an unknown name surfaces as a ValueError
     from perform() then, not at construction/config-load time (see
-    core.task.register_task)."""
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.task import CreateTaskAction
+    phc.core.task.register_task)."""
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.task import CreateTaskAction
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -472,9 +472,9 @@ def test_scheduler_create_task_unknown_template_raises_at_fire_time():
 
 
 def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.task import CreateTaskAction
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -509,9 +509,9 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
 
 
 def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.task import CreateTaskAction
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -523,7 +523,7 @@ def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
     # if a task appended mid-tick were visible within that same tick's
     # remaining pass 2 loop, this would fire immediately. Instead,
     # _tick_async snapshots self._tasks once per tick (`for task in
-    # list(self._tasks)`, see core/scheduler.py) specifically so a
+    # list(self._tasks)`, see phc/core/scheduler.py) specifically so a
     # create_task/kill_task action's same-tick mutation only takes effect
     # starting the NEXT tick -- deterministic, and consistent with tasks
     # only ever observing state committed by the previous tick.
@@ -550,9 +550,9 @@ def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
 
 
 def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log):
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.task import ScriptAction
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.task import ScriptAction
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -564,7 +564,7 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
         "create_task({'tag': 'spawned', "
         # no 'changed' key: unconditional, same as omitting it entirely --
         # changed=False now means its negation (no event this tick), not
-        # "always true" (see core.task.Condition's docstring)
+        # "always true" (see phc.core.task.Condition's docstring)
         "'condition': {'device': 'living_light.state'}, "
         "'action': {'kind': 'log', 'device': 'living_light.state', 'message': 'spawned ran'}})\n"
         "kill_task('victim')"
@@ -575,7 +575,7 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
                    actions=[LogAction(device_id="living_light", endpoint_key="state", message="victim ran")])
     # "spawner" ordered before "victim": within the same tick, spawner's
     # kill_task('victim') mutates the LIVE list, but this tick's pass 2 loop
-    # already snapshotted it (see core/scheduler.py's `list(self._tasks)`),
+    # already snapshotted it (see phc/core/scheduler.py's `list(self._tasks)`),
     # so victim -- already in that snapshot -- still runs this tick; only
     # from the NEXT tick's fresh snapshot is it actually gone.
     tasks.extend([spawner, victim])
@@ -599,8 +599,8 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
 # ---------- tick_hooks ----------
 
 def test_tick_hook_runs_once_per_tick_with_devices():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -616,8 +616,8 @@ def test_tick_hook_runs_once_per_tick_with_devices():
 
 
 def test_tick_hook_observes_this_ticks_freshly_committed_state():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -634,9 +634,9 @@ def test_tick_hook_observes_this_ticks_freshly_committed_state():
 
 
 def test_history_hook_records_this_ticks_committed_state():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
-    from core.config import _collect_history_records, _make_history_tick_hook
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.core.config import _collect_history_records, _make_history_tick_hook
 
     sensor = VirtualDevice("sensor", endpoints=[
         Endpoint("temp", writable=True, value_type="float", history=4)],
@@ -657,8 +657,8 @@ def test_history_hook_records_this_ticks_committed_state():
 
 
 def test_tick_hook_exception_is_caught_and_does_not_stop_other_hooks():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -692,8 +692,8 @@ def _run_forever_in_thread(scheduler: Scheduler, *, timeout: float = 2.0):
 
 
 def test_tick_never_runs_start_or_stop_hooks():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -716,8 +716,8 @@ def test_tick_never_runs_start_or_stop_hooks():
 
 
 def test_run_forever_runs_start_and_stop_hooks_exactly_once():
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -745,8 +745,8 @@ def test_run_forever_runs_start_and_stop_hooks_exactly_once():
 
 
 def test_start_and_stop_hook_exceptions_are_caught_and_do_not_block_siblings_or_crash(caplog):
-    from devices.virtual.device import VirtualDevice
-    from core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -794,8 +794,8 @@ def test_run_forever_holds_the_heartbeat_grid_despite_slow_ticks():
     `heartbeat + tick duration`. A device that takes ~40ms to read on a
     50ms heartbeat used to yield a ~90ms period (80% slow, compounding
     forever); the deadline grid should keep it near 50ms."""
-    from core.endpoint import Endpoint
-    from core.device import Device
+    from phc.core.endpoint import Endpoint
+    from phc.core.device import Device
 
     class SlowDevice(Device):
         def receive(self) -> dict:
@@ -828,8 +828,8 @@ def test_stop_interrupts_the_heartbeat_sleep_instead_of_waiting_it_out():
     """stop() must not have to wait out a pending heartbeat sleep. With a
     5s heartbeat, the old flag-only stop() took ~5s to return; waking the
     sleep should make it near-instant."""
-    from core.endpoint import Endpoint
-    from devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -852,8 +852,8 @@ def test_device_polling_survives_a_wall_clock_step_backwards():
     DST change that moves time.time() backwards must not stall polling.
     Driven through tick()'s explicit clocks: the wall clock jumps back an
     hour while the monotonic clock keeps advancing."""
-    from core.endpoint import Endpoint
-    from devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=10.0)
@@ -872,8 +872,8 @@ def test_task_cooldown_survives_a_wall_clock_step_backwards():
     """min_interval is a cooldown, so it is measured on the monotonic clock
     -- a wall-clock step backwards must not freeze it (nor a step forwards
     end it early)."""
-    from core.endpoint import Endpoint
-    from devices.virtual.device import VirtualDevice
+    from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=None)

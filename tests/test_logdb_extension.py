@@ -1,18 +1,18 @@
-"""Tests for extensions.logdb.extension: sticky-value subscription/read/
+"""Tests for phc.extensions.logdb.extension: sticky-value subscription/read/
 invalidate wiring, configure(), and LogDbAction, plus an end-to-end test
-through core.config.load_system(). Selector pattern resolution itself is
-tested in tests/test_selectors.py (core.selectors.resolve_selectors)."""
+through phc.core.config.load_system(). Selector pattern resolution itself is
+tested in tests/test_selectors.py (phc.core.selectors.resolve_selectors)."""
 
 from pathlib import Path
 
 import pytest
 
-from core.config import ConfigError, load_system
-from core.endpoint import Endpoint
-from core.registry import discover_extensions
-from core.scheduler import Scheduler
-from devices.virtual.device import VirtualDevice
-from extensions.logdb.extension import LogDbAction, configure
+from phc.core.config import ConfigError, load_system
+from phc.core.endpoint import Endpoint
+from phc.core.registry import discover_extensions
+from phc.core.scheduler import Scheduler
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.logdb.extension import LogDbAction, configure
 from tests.conftest import fetch_sync
 
 
@@ -272,7 +272,7 @@ tasks:
 """)
     system = load_system(system_yaml)
     # The task's "time: +1s"/"repeat: 30s" are wall-clock-relative (see
-    # core.intervals.parse_time), which would make this test's small fake
+    # phc.core.intervals.parse_time), which would make this test's small fake
     # tick(now=...) values wall-clock-dependent -- pin due_time directly to
     # decouple task scheduling from real time for this test.
     task = next(t for t in system.tasks if t.tag == "log_house")

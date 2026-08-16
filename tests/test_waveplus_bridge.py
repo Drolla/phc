@@ -14,10 +14,10 @@ import time
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scheduler import Scheduler
-from devices.waveplus_bridge import device as waveplus_bridge_device
-from devices.waveplus_bridge.device import WavePlusBridgeDevice
+from phc.core.endpoint import Endpoint
+from phc.core.scheduler import Scheduler
+from phc.devices.waveplus_bridge import device as waveplus_bridge_device
+from phc.devices.waveplus_bridge.device import WavePlusBridgeDevice
 
 # cellar_office is fresh (50s old); cellar_room is stale (500s old) relative
 # to current_time, given the default data_validity_time of 5m (300s).
