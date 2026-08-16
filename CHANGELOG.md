@@ -22,8 +22,27 @@ Changes merged into `main` since the 0.1.0 release, in order.
   path, and a `wheel-install` CI job installs a built wheel into a clean
   environment and boots an example from outside the checkout.
 
+**Internal structure**
+
+- `ConfigError` moved to a new, dependency-free `phc.core.errors` (still
+  re-exported from `phc.core.config`), alongside a new `PhcError` base.
+  Naming the exception used to mean importing the whole config loader —
+  `phc.core.selectors`, a leaf module, did exactly that, as did every
+  extension.
+- The live task list is now a `phc.core.task.TaskRegistry` rather than a
+  bare `list` shared and mutated by the Scheduler, every Action, and
+  `extensions.timer`. It also owns the context needed to build tasks at
+  runtime, which removes the last import cycle in `phc.core`:
+  `create_task`/`kill_task` no longer reach into the config loader through
+  a function-local import of a private name. `importing phc.core.task` no
+  longer pulls in the config loader at all. The Scheduler is unchanged and
+  still accepts a plain list of tasks.
+
 **Breaking changes**
 
+- `phc.core.task.register_task()` and `kill_tasks()` are replaced by
+  `TaskRegistry.create()` and `TaskRegistry.kill()`. Affects only code
+  driving PHC's task list directly; no system YAML changes.
 - The Python packages moved under a single `phc` package: `core` →
   `phc.core`, `devices` → `phc.devices`, `extensions` → `phc.extensions`,
   and the `phc.py` script → `phc.cli`. Installing PHC used to claim the
