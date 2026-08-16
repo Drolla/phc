@@ -9,7 +9,7 @@ timer routes) -- see phc.core.config._load_extensions for how configure() is
 invoked, and phc.core.scheduler.Scheduler for on_tick/on_bind timing.
 
 Timers are deliberately NOT a parallel scheduler: each becomes an ordinary
-phc.core.task.Task (via phc.core.task.register_task), tagged "<instance_key>.<id>",
+phc.core.task.Task (via the system's TaskRegistry), tagged "<instance_key>.<id>",
 so firing, one-shot retirement, and repeat catch-up are all handled by
 phc.core.task.Task.run()/phc.core.scheduler.Scheduler exactly like a hand-authored
 `tasks:` entry -- see _task_spec()."""
@@ -21,7 +21,7 @@ from phc.core.errors import ConfigError
 from phc.core.device import Device
 from phc.core.intervals import parse_duration, parse_time
 from phc.core.selectors import resolve_selectors
-from phc.core.task import kill_tasks, register_task
+from phc.core.task import TaskRegistry
 from phc.extensions.timer.timer import TimerDef, TimerStore, expired_one_shot
 
 logger = logging.getLogger("phc.timer")
@@ -30,7 +30,7 @@ logger = logging.getLogger("phc.timer")
 def _task_spec(timer: TimerDef, instance_key: str) -> dict:
     """Build one timer's phc.core.task Task spec (the same shape as a `tasks:`
     YAML entry -- see phc.core.config._build_task), consumed by
-    phc.core.task.register_task. `time:` is always the timer's own literal
+    phc.core.task.TaskRegistry.create. `time:` is always the timer's own literal
     Unix timestamp (parse_time's digit-string branch); `repeat:` (if set)
     then drives parse_time's own "already past -> advance by whole
     multiples" catch-up logic -- no separate rolling-forward code is
@@ -91,10 +91,9 @@ class TimerInstance:
         self._timers: dict[int, TimerDef] = {}
         self._next_id = 1
         # Bound by on_bind(), once the System (incl. its fully-built
-        # `tasks` list) exists -- see class/module docstring.
+        # TaskRegistry) exists -- see class/module docstring.
         self._flat: dict[str, Device] | None = None
-        self._tasks: list | None = None
-        self._extensions: dict[str, object] | None = None
+        self._tasks: TaskRegistry | None = None
 
     # ---------- lifecycle hooks (auto-collected, see phc.core.config.load_system) ----------
 
@@ -106,7 +105,6 @@ class TimerInstance:
         see phc.core.config.load_system's on_bind docstring."""
         self._flat = system.devices
         self._tasks = system.tasks
-        self._extensions = system.extensions
 
         next_id, timers = self.store.load()
         self._next_id = next_id
@@ -188,13 +186,13 @@ class TimerInstance:
                       action: str, value=None, repeat_spec: str | None = None,
                       description: str = "", enabled: bool = True) -> TimerDef:
         """Replace timer `timer_id`'s definition, re-registering its Task
-        (register_task replaces by tag -- see phc.core.task.register_task) so
+        (TaskRegistry.create replaces by tag) so
         an in-flight edit takes effect on the very next tick."""
         if timer_id not in self._timers:
             raise ValueError(f"timer {timer_id}: not found")
         t = self._build_timer(timer_id, time_spec, device, endpoint, action,
                                value, repeat_spec, description, enabled)
-        kill_tasks([t.tag(self.instance_key)], self._tasks)
+        self._tasks.kill([t.tag(self.instance_key)])
         self._timers[timer_id] = t
         if t.enabled:
             self._register_task(t)
@@ -203,7 +201,7 @@ class TimerInstance:
 
     def delete_timer(self, timer_id: int) -> None:
         t = self.get_timer(timer_id)
-        kill_tasks([t.tag(self.instance_key)], self._tasks)
+        self._tasks.kill([t.tag(self.instance_key)])
         del self._timers[timer_id]
         self._persist()
 
@@ -218,7 +216,7 @@ class TimerInstance:
         if enabled:
             self._register_task(t)
         else:
-            kill_tasks([t.tag(self.instance_key)], self._tasks)
+            self._tasks.kill([t.tag(self.instance_key)])
         self._persist()
         return t
 
@@ -249,8 +247,11 @@ class TimerInstance:
                          repeat=repeat, description=description, enabled=bool(enabled))
 
     def _register_task(self, t: TimerDef) -> None:
-        register_task(_task_spec(t, self.instance_key), self._flat, self._tasks,
-                       self._extensions, set(), None)
+        """Mirror one timer into the live task set. The registry supplies
+        the build context (devices, extensions, sticky endpoints, task
+        templates), so a timer's Task is built exactly like a hand-authored
+        `tasks:` entry rather than through a separately-assembled one."""
+        self._tasks.create(_task_spec(t, self.instance_key))
 
     def _persist(self) -> None:
         self.store.write(self._next_id, sorted(self._timers.values(), key=lambda t: t.id))

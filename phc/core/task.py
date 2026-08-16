@@ -1,5 +1,5 @@
 """Task system: conditions that gate actions, and the actions (set, toggle,
-log, create_task, kill_task, script) a Task can perform against phc.devices."""
+log, create_task, kill_task, script) a Task can perform against devices."""
 
 import fnmatch
 import logging
@@ -91,7 +91,6 @@ class ExprCondition:
 
     def evaluate(self, devices: dict[str, Device]) -> bool:
         namespace = _build_rule_namespace(devices=devices, flat=self._flat, tasks=None,
-                                           extensions=None, sticky_endpoints=None,
                                            task_tag=self._task_tag, writable=False)
         for name, ref in self._refs.items():
             device_id, endpoint_key = resolve_endpoint_ref(ref)
@@ -120,12 +119,16 @@ class Action:
     flat/tasks/extensions/task_tag/sticky_endpoints are the live config-
     build context, passed to every action unconditionally regardless of
     kind -- CreateTaskAction/KillTaskAction/ScriptAction and the extension
-    actions use them; the ordinary device-oriented actions ignore them."""
+    actions use them; the ordinary device-oriented actions ignore them.
+    `tasks` is the live TaskRegistry, which also carries that same context
+    (see TaskRegistry); the individual kwargs are kept alongside it because
+    they are the published constructor API every extension's own action
+    kind already accepts."""
 
     kind: str = "generic"
 
     def __init__(self, *, device_id: str | None = None, endpoint_key: str | None = None,
-                 flat: dict[str, Device] | None = None, tasks: list["Task"] | None = None,
+                 flat: dict[str, Device] | None = None, tasks: "TaskRegistry | None" = None,
                  extensions: dict[str, object] | None = None, task_tag: str | None = None,
                  sticky_endpoints: set | None = None, **params):
         self.device_id = device_id
@@ -175,7 +178,6 @@ class SetAction(Action):
     def perform(self, devices: dict[str, Device]) -> None:
         if self.compiled is not None:
             namespace = _build_rule_namespace(devices=devices, flat=self.flat, tasks=None,
-                                               extensions=None, sticky_endpoints=None,
                                                task_tag=self.task_tag, writable=False)
             for name, ref in self.refs.items():
                 device_id, endpoint_key = resolve_endpoint_ref(ref)
@@ -230,51 +232,122 @@ class LogAction(Action):
         logger.info(message)
 
 
-def register_task(specs: dict, flat: dict[str, Device], tasks: list["Task"],
-                   extensions: dict[str, object], sticky_endpoints: set,
-                   task_specs: dict[str, dict] | None = None) -> "Task":
-    """Build `specs` (same shape as a top-level tasks[] entry) into a Task
-    and (re-)register it in the live `tasks` list, replacing any existing
-    task with the same tag rather than duplicating it -- so a repeatedly-
-    firing trigger re-arms the same spawned task instead of accumulating one
-    per firing. Shared by CreateTaskAction and the script sandbox's
-    create_task() function (see _build_rule_namespace).
+class TaskRegistry:
+    """The live set of Tasks, plus the context needed to build more at
+    runtime.
 
-    `specs` may give `template: <name>` instead of a full literal task
-    definition, resolved by name against `task_specs` (the top-level
-    `task_specs:` section, name -> raw entry, same shape as a `tasks:`
-    entry) -- see CreateTaskAction."""
-    from phc.core.config import _build_task  # local import: avoid config<->task import cycle
+    Replaces the bare `list` that used to be passed around and mutated in
+    place by the Scheduler, by every Action, and by extensions.timer -- three
+    layers sharing one unencapsulated object, each doing its own
+    append/remove and its own scan-for-tag.
 
-    if "template" in specs:
-        task_specs = task_specs or {}
-        name = specs["template"]
-        try:
-            specs = task_specs[name]
-        except KeyError:
-            raise ValueError(f"create_task: unknown template {name!r}; "
-                              f"available: {sorted(task_specs)}") from None
+    It also breaks the last import cycle in `phc.core`. Creating a Task from
+    a spec dict is the config loader's job, but `create_task`/`kill_task`
+    need it at *runtime*, from inside this module -- which used to mean
+    task.py reaching into `phc.core.config._build_task` through a
+    function-local import of a private name. The builder is now injected
+    here instead (see `build_task`), so the dependency runs one way:
+    config imports task, never the reverse.
 
-    new_task = _build_task(specs, flat, tasks, extensions, sticky_endpoints, task_specs)
-    existing = next((t for t in tasks if t.tag == new_task.tag), None)
-    if existing is not None:
-        tasks.remove(existing)
-        logger.info("%s: replacing existing task", new_task.tag)
-    tasks.append(new_task)
-    logger.info("%s created", new_task.tag)
-    return new_task
+    Deliberately iterable and equipped with `remove()`, because that is the
+    entire interface `phc.core.scheduler` needs -- a plain list satisfies it
+    too, so the Scheduler works unchanged with either, and every test that
+    hands it a literal list of Tasks keeps working.
+    """
 
+    def __init__(self, tasks: list["Task"] | None = None, *, build_task=None,
+                 flat: dict[str, Device] | None = None,
+                 extensions: dict[str, object] | None = None,
+                 sticky_endpoints: set | None = None,
+                 task_specs: dict[str, dict] | None = None):
+        self._tasks: list["Task"] = list(tasks or [])
+        # callable(spec, registry) -> Task; supplied by the config loader.
+        # None means this registry can hold tasks but not build new ones --
+        # which is all a hand-constructed registry in a unit test needs.
+        self._build_task = build_task
+        # The build context every runtime-created Task needs resolved
+        # against: the flat device tree, the configured extension
+        # instances, the shared sticky-endpoint set, and the named
+        # `task_specs:` templates.
+        self.flat = flat if flat is not None else {}
+        self.extensions = extensions if extensions is not None else {}
+        self.sticky_endpoints = sticky_endpoints if sticky_endpoints is not None else set()
+        self.task_specs = task_specs
 
-def kill_tasks(patterns, tasks: list["Task"]) -> int:
-    """Remove every task from `tasks` whose tag matches any of `patterns`
-    (fnmatch glob, same convention as phc.core.selectors -- an exact tag is also
-    a valid glob), logging each removal. Returns the number removed. Shared
-    by KillTaskAction and the script sandbox's kill_task() function."""
-    to_remove = [t for t in tasks if any(fnmatch.fnmatchcase(t.tag, p) for p in patterns)]
-    for t in to_remove:
-        tasks.remove(t)
-        logger.info("%s killed", t.tag)
-    return len(to_remove)
+    # ---------- container protocol (what the Scheduler and callers use) ----------
+
+    def __iter__(self):
+        return iter(self._tasks)
+
+    def __len__(self) -> int:
+        return len(self._tasks)
+
+    def __getitem__(self, index):
+        return self._tasks[index]
+
+    def __contains__(self, task) -> bool:
+        return task in self._tasks
+
+    def remove(self, task: "Task") -> None:
+        """Drop `task` from the live set (the Scheduler's one-shot retirement
+        path). Raises ValueError if it isn't present, same as list.remove."""
+        self._tasks.remove(task)
+
+    def add(self, task: "Task") -> None:
+        """Append an already-built Task."""
+        self._tasks.append(task)
+
+    def by_tag(self, tag: str) -> "Task | None":
+        """The task with this exact tag, or None. Tags are unique within a
+        registry -- create() replaces rather than duplicates."""
+        return next((t for t in self._tasks if t.tag == tag), None)
+
+    # ---------- runtime creation / removal ----------
+
+    def create(self, specs: dict) -> "Task":
+        """Build `specs` (same shape as a top-level tasks[] entry) into a
+        Task and (re-)register it, replacing any existing task with the same
+        tag rather than duplicating it -- so a repeatedly-firing trigger
+        re-arms the same spawned task instead of accumulating one per
+        firing. Backs CreateTaskAction and the script sandbox's
+        create_task() (see _build_rule_namespace).
+
+        `specs` may give `template: <name>` instead of a full literal task
+        definition, resolved by name against this registry's `task_specs`
+        (the top-level `task_specs:` section) -- see CreateTaskAction."""
+        if self._build_task is None:
+            raise ValueError(
+                "this TaskRegistry cannot build tasks: no build_task was supplied "
+                "(a registry built by phc.core.config.load_system always has one)")
+        if "template" in specs:
+            task_specs = self.task_specs or {}
+            name = specs["template"]
+            try:
+                specs = task_specs[name]
+            except KeyError:
+                raise ValueError(f"create_task: unknown template {name!r}; "
+                                  f"available: {sorted(task_specs)}") from None
+
+        new_task = self._build_task(specs, self)
+        existing = self.by_tag(new_task.tag)
+        if existing is not None:
+            self._tasks.remove(existing)
+            logger.info("%s: replacing existing task", new_task.tag)
+        self._tasks.append(new_task)
+        logger.info("%s created", new_task.tag)
+        return new_task
+
+    def kill(self, patterns) -> int:
+        """Remove every task whose tag matches any of `patterns` (fnmatch
+        glob, same convention as phc.core.selectors -- an exact tag is also a
+        valid glob), logging each removal. Returns the number removed. Backs
+        KillTaskAction and the script sandbox's kill_task()."""
+        to_remove = [t for t in self._tasks
+                     if any(fnmatch.fnmatchcase(t.tag, p) for p in patterns)]
+        for t in to_remove:
+            self._tasks.remove(t)
+            logger.info("%s killed", t.tag)
+        return len(to_remove)
 
 
 @register_task_kind("create_task")
@@ -296,22 +369,15 @@ class CreateTaskAction(Action):
     task instead of accumulating one per firing."""
 
     def __init__(self, *, specs: dict | None = None, template: str | None = None,
-                 flat: dict[str, Device], tasks: list["Task"],
-                 extensions: dict | None = None, sticky_endpoints: set | None = None,
-                 task_specs: dict[str, dict] | None = None, **params):
-        super().__init__(**params)
+                 tasks: "TaskRegistry", **params):
+        super().__init__(tasks=tasks, **params)
         if (specs is None) == (template is None):
             raise ValueError("create_task: specify exactly one of 'specs' or 'template'")
         self._specs = specs if specs is not None else {"template": template}
-        self._flat = flat
         self._tasks = tasks
-        self._extensions = extensions if extensions is not None else {}
-        self._sticky_endpoints = sticky_endpoints if sticky_endpoints is not None else set()
-        self._task_specs = task_specs
 
     def perform(self, devices: dict[str, Device]) -> None:
-        register_task(self._specs, self._flat, self._tasks, self._extensions,
-                       self._sticky_endpoints, self._task_specs)
+        self._tasks.create(self._specs)
 
 
 @register_task_kind("kill_task")
@@ -320,14 +386,13 @@ class KillTaskAction(Action):
     the live task list -- the declarative counterpart to create_task, and
     the structural equivalent of the previous Tcl system's `KillJob`."""
 
-    def __init__(self, *, tags: list[str], flat: dict[str, Device] | None = None,
-                 tasks: list["Task"], extensions: dict | None = None, **params):
-        super().__init__(**params)
+    def __init__(self, *, tags: list[str], tasks: "TaskRegistry", **params):
+        super().__init__(tasks=tasks, **params)
         self._tags = tags
         self._tasks = tasks
 
     def perform(self, devices: dict[str, Device]) -> None:
-        kill_tasks(self._tags, self._tasks)
+        self._tasks.kill(self._tags)
 
 
 def _selector_refs(pattern: str, flat: dict[str, Device]) -> list[str]:
@@ -382,9 +447,8 @@ def _average(pool: list):
 
 
 def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device],
-                           tasks: list["Task"] | None, extensions: dict[str, object] | None,
-                           sticky_endpoints: set | None, task_tag: str, writable: bool,
-                           task_specs: dict[str, dict] | None = None) -> dict:
+                           tasks: "TaskRegistry | None", task_tag: str,
+                           writable: bool) -> dict:
     """The one place that defines what a condition's `expr:` or a script
     action's `code:` can call -- both ExprCondition.evaluate() and
     ScriptAction.perform() build their namespace here, the former with
@@ -431,8 +495,11 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
 
     namespace.update({
         "set_state": _set_state,
-        "create_task": lambda spec: register_task(spec, flat, tasks, extensions, sticky_endpoints, task_specs),
-        "kill_task": lambda *tags: kill_tasks(tags, tasks),
+        # `tasks` is the live TaskRegistry, which already carries the build
+        # context (flat/extensions/sticky_endpoints/task_specs) these two
+        # used to be handed separately.
+        "create_task": lambda spec: tasks.create(spec),
+        "kill_task": lambda *tags: tasks.kill(tags),
         "reset_sticky": _reset_sticky,
         "log": lambda msg: logger.info(msg),
     })
@@ -470,10 +537,7 @@ class ScriptAction(Action):
 
     def perform(self, devices: dict[str, Device]) -> None:
         namespace = _build_rule_namespace(devices=devices, flat=self._flat, tasks=self._tasks,
-                                           extensions=self._extensions,
-                                           sticky_endpoints=self._sticky_endpoints,
-                                           task_tag=self._task_tag, writable=True,
-                                           task_specs=self._task_specs)
+                                           task_tag=self._task_tag, writable=True)
         for name, ref in self.refs.items():
             device_id, endpoint_key = resolve_endpoint_ref(ref)
             namespace[name] = scripting.EndpointRef(device_id, endpoint_key, devices, self._task_tag)
