@@ -127,7 +127,7 @@ class TimerInstance:
                 self._register_task(t)
         if dropped:
             self._persist()
-        logger.info("timer %s: restored %d timer(s), dropped %d expired one-shot(s)",
+        logger.info("%s: restored %d timer(s), dropped %d expired one-shot(s)",
                      self.instance_key, len(kept), dropped)
 
     def on_tick(self, devices: dict[str, Device]) -> None:

@@ -125,7 +125,7 @@ def main(argv=None):
                           tick_hooks=tick_hooks,
                           start_hooks=start_hooks, stop_hooks=stop_hooks)
 
-    logger.info("phc started: %d device(s), %d scheduled, %d task(s), heartbeat=%.3fs",
+    logger.info("started: %d device(s), %d scheduled, %d task(s), heartbeat=%.3fs",
                 len(system.devices), len(system.scheduled_devices()), len(system.tasks),
                 system.heartbeat)
 

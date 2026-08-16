@@ -172,9 +172,9 @@ class WebUiInstance:
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
-        logger.info("web_ui %s listening on http://%s:%d", self._instance_key, self._host, self._port)
+        logger.info("%s listening on http://%s:%d", self._instance_key, self._host, self._port)
 
     async def on_stop(self, devices: dict[str, Device]) -> None:
         if self._runner is not None:
             await self._runner.cleanup()
-        logger.info("web_ui %s stopped", self._instance_key)
+        logger.info("%s stopped", self._instance_key)

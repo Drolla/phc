@@ -52,12 +52,12 @@ class RecoveryInstance:
             qualified_id, _, endpoint_key = pair_key.partition("/")
             device = devices.get(qualified_id)
             if device is None or endpoint_key not in device.endpoints:
-                logger.warning("recovery %s: %r no longer exists; skipping",
+                logger.warning("%s: %r no longer exists; skipping",
                                 self.instance_key, pair_key)
                 skipped += 1
                 continue
             if not device.endpoint(endpoint_key).writable:
-                logger.warning("recovery %s: %r is no longer writable; skipping",
+                logger.warning("%s: %r is no longer writable; skipping",
                                 self.instance_key, pair_key)
                 skipped += 1
                 continue
@@ -65,10 +65,10 @@ class RecoveryInstance:
                 device.set(value, name=endpoint_key)
                 restored += 1
             except Exception:
-                logger.exception("recovery %s: failed to restore %r to %r",
+                logger.exception("%s: failed to restore %r to %r",
                                   self.instance_key, pair_key, value)
                 skipped += 1
-        logger.info("recovery %s: restored %d, skipped %d of %d persisted value(s)",
+        logger.info("%s: restored %d, skipped %d of %d persisted value(s)",
                      self.instance_key, restored, skipped, len(values))
 
     def on_tick(self, devices: dict[str, Device]) -> None:

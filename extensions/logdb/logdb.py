@@ -126,8 +126,8 @@ class LogDb:
         timestamp = int(timestamp)
         unknown = set(values) - set(self._columns)
         if unknown:
-            logger.warning("logdb %s: ignoring unknown label(s) %s", self.csv_path, sorted(unknown))
-        logger.debug("logdb %s: new record time=%d values=%s", self.csv_path, timestamp, values)
+            logger.warning("%s: ignoring unknown label(s) %s", self.csv_path, sorted(unknown))
+        logger.debug("%s: new record time=%d values=%s", self.csv_path, timestamp, values)
         self._times.append(timestamp)
         for label, col in self._columns.items():
             if label in values and label not in unknown:
@@ -394,7 +394,7 @@ class LogDb:
 
         info_text = info_line.decode("utf-8", errors="replace")
         if not info_text.startswith(_INFO_LINE_PREFIX) or not header_line:
-            logger.warning("logdb: %s has an unrecognized header; rotating and starting fresh",
+            logger.warning("%s has an unrecognized header; rotating and starting fresh",
                             self.csv_path)
             self._rotate_existing_file()
             self._write_fresh_header(configured_labels)
@@ -412,7 +412,7 @@ class LogDb:
             self._data_start = data_start
             return combined_labels
 
-        logger.info("logdb %s: extending columns with new label(s) %s", self.csv_path, new_labels)
+        logger.info("%s: extending columns with new label(s) %s", self.csv_path, new_labels)
         new_content = "type,time," + ",".join(combined_labels)
         needed = len(new_content.encode("utf-8")) + 1
         old_header_width = len(header_line)
@@ -531,7 +531,7 @@ class LogDb:
                 chunk_size *= 2
 
         if not f_positions:
-            logger.warning("logdb: no full-vector row found in %s; starting with empty history",
+            logger.warning("no full-vector row found in %s; starting with empty history",
                             self.csv_path)
             return
 
@@ -553,4 +553,4 @@ class LogDb:
                 self._columns[label].append(row[label])
         if rows:
             self._last_written = dict(rows[-1])
-        logger.info("logdb %s: loaded %d record(s) from existing file", self.csv_path, len(self._times))
+        logger.info("%s: loaded %d record(s) from existing file", self.csv_path, len(self._times))
