@@ -23,13 +23,17 @@ def _task_sort_key(due_in: float | None, mode: str) -> tuple[int, float]:
     return (2, 0.0)
 
 
-def _describe_task(task: Task, now: float) -> dict:
+def _describe_task(task: Task, now: float, now_mono: float) -> dict:
     """Mirrors core.scheduler.Scheduler._log_task_countdown's own due-time
     classification, but as structured fields rather than a single debug
     log line. See docs/configuration.md#tasks for `mode`'s cond/time/
     cond+time meanings. `due_in` is None for a task with no due_time
     schedule, or an exhausted one (due_time=+inf) -- `mode` disambiguates
-    the two on the client."""
+    the two on the client.
+
+    Needs both clocks: `due_in` counts down to an absolute wall-clock
+    due_time, while `cooldown` measures against Task.last_fired, which is
+    monotonic (see core.task.Task.run)."""
     has_condition = task.condition is not None
     has_due_time = task.due_time is not None
     mode = "cond+time" if (has_condition and has_due_time) else "cond" if has_condition else "time"
@@ -38,7 +42,7 @@ def _describe_task(task: Task, now: float) -> dict:
     else:
         due_in = max(0.0, task.due_time - now)
     repeat = task.repeat if (has_due_time and task.repeat is not None and task.repeat > 0) else None
-    cooldown = max(0.0, task.min_interval - (now - task.last_fired)) if task.min_interval else 0.0
+    cooldown = max(0.0, task.min_interval - (now_mono - task.last_fired)) if task.min_interval else 0.0
     return {
         "tag": task.tag,
         "mode": mode,
@@ -48,14 +52,20 @@ def _describe_task(task: Task, now: float) -> dict:
     }
 
 
-def _describe_device(qualified_id: str, device: Device, now: float) -> dict:
+def _describe_device(qualified_id: str, device: Device, now_mono: float) -> dict:
     """One row of the device poll queue -- only ever called for a device
     with an update_interval (see build_snapshot's own filter), so
-    next_due() is always finite here."""
+    next_due() is always finite here.
+
+    Takes the MONOTONIC clock: Device.next_due() is expressed in whatever
+    clock the Scheduler drives due()/mark_run() with, which is
+    time.monotonic() (see core.scheduler.Scheduler's class docstring).
+    Subtracting a wall-clock reading from it would yield a meaningless
+    difference of two unrelated epochs."""
     return {
         "id": qualified_id,
         "interval": device.update_interval,
-        "due_in": max(0.0, device.next_due() - now),
+        "due_in": max(0.0, device.next_due() - now_mono),
     }
 
 
@@ -82,7 +92,8 @@ def _describe_endpoint(qualified_id: str, endpoint_key: str, endpoint, now: floa
 
 
 def build_snapshot(system, devices: dict[str, Device], pairs: list[tuple[str, str]], *,
-                    tick: int, now: float, period: float) -> dict:
+                    tick: int, now: float, period: float,
+                    now_mono: float | None = None) -> dict:
     """Build one tick's full snapshot: `system.tasks` in planned-execution
     order, every scheduled device (has an update_interval) by next poll
     time, and every selector-matched (device, endpoint) pair in `pairs`.
@@ -91,11 +102,19 @@ def build_snapshot(system, devices: dict[str, Device], pairs: list[tuple[str, st
     retained across calls. `period` is the caller's own measured wall-clock
     delta since the previous call (an overrun indicator: the actual tick
     period including the heartbeat sleep, not this tick's processing time
-    alone)."""
-    tasks = [_describe_task(task, now) for task in system.tasks]
+    alone).
+
+    `now` is wall-clock (task due_times, endpoint ages); `now_mono` is the
+    monotonic clock the Scheduler drives device intervals and task
+    cooldowns with (see core.scheduler.Scheduler). It defaults to `now`
+    only so a caller with a single synthetic timeline (the tests) stays
+    simple -- the live caller passes both."""
+    if now_mono is None:
+        now_mono = now
+    tasks = [_describe_task(task, now, now_mono) for task in system.tasks]
     tasks.sort(key=lambda t: _task_sort_key(t["due_in"], t["mode"]))
 
-    device_rows = [_describe_device(qid, device, now) for qid, device in devices.items()
+    device_rows = [_describe_device(qid, device, now_mono) for qid, device in devices.items()
                    if device.update_interval is not None]
     device_rows.sort(key=lambda d: d["due_in"])
 

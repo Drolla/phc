@@ -75,7 +75,8 @@ class DebugPortalInstance:
         self._tick += 1
 
         snapshot = build_snapshot(self._system, devices, self._pairs,
-                                   tick=self._tick, now=now, period=period)
+                                   tick=self._tick, now=now, period=period,
+                                   now_mono=time.monotonic())
         self._app[LAST_SNAPSHOT].value = snapshot
         self._app[HUB].broadcast(json.dumps(snapshot))
 

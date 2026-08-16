@@ -1190,11 +1190,12 @@ class _HistoryRecord:
     def __init__(self, endpoint: Endpoint, interval: float):
         self.endpoint = endpoint
         self.interval = interval
-        # 0.0 so the very first tick hook invocation is immediately due --
-        # matching Device._last_run's float("-inf") (see core.device),
-        # which makes a freshly built device due on the scheduler's first
-        # tick.
-        self.next_due = 0.0
+        # -inf so the very first tick hook invocation is immediately due,
+        # matching Device._last_run (see core.device). Must not be 0.0:
+        # next_due is compared against time.monotonic(), whose zero point
+        # is arbitrary and on some platforms is the boot time -- 0.0 would
+        # still be "already due", but only by accident.
+        self.next_due = float("-inf")
 
 
 def _collect_history_records(flat: dict[str, Device]) -> list[_HistoryRecord]:
@@ -1237,19 +1238,22 @@ def _make_history_tick_hook(records: list[_HistoryRecord]):
     created after startup, so there is no live-set-aliasing trick needed
     here.
 
-    One time.time() call per hook invocation (not per record), then a
-    linear scan -- negligible even for many records. A record's next_due
-    only advances when Endpoint.record_history() actually appended a
-    sample (it skips None/non-numeric/NaN, see that method), so a device
-    that hasn't been polled yet, or whose last read failed, is retried
-    every tick instead of losing a whole interval. Deliberately not
-    Task.mark_run()'s whole-multiples catch-up scheme: a burst is
-    structurally impossible here (this hook runs at most once per tick,
-    appending at most one sample), and a stable sampling grid has no value
-    for a smoothing buffer -- so a plain `next_due = now + interval` is
-    enough."""
+    One time.monotonic() call per hook invocation (not per record), then a
+    linear scan -- negligible even for many records. Monotonic, like every
+    other interval in the system (see core.scheduler.Scheduler's class
+    docstring): sampling a smoothing buffer is a pure cadence, with no
+    wall-clock meaning that an NTP/DST step should be allowed to disturb.
+    A record's next_due only advances when Endpoint.record_history()
+    actually appended a sample (it skips None/non-numeric/NaN, see that
+    method), so a device that hasn't been polled yet, or whose last read
+    failed, is retried every tick instead of losing a whole interval.
+    Deliberately not Task.mark_run()'s whole-multiples catch-up scheme: a
+    burst is structurally impossible here (this hook runs at most once per
+    tick, appending at most one sample), and a stable sampling grid has no
+    value for a smoothing buffer -- so a plain `next_due = now + interval`
+    is enough."""
     def _hook(devices: dict[str, Device]) -> None:
-        now = time.time()
+        now = time.monotonic()
         for record in records:
             if now < record.next_due:
                 continue
