@@ -95,12 +95,12 @@ class MailAlertInstance:
             send_mail(smtp_host=self.smtp_host, smtp_port=self.smtp_port, security=self.security,
                       username=self.username, password=self.password, timeout=self.timeout,
                       from_addr=from_addr, to=to, title=title, message=message)
-            logger.info("mail alert %r sent to %s", title, to)
+            logger.info("%r sent to %s", title, to)
         except Exception:
             if self.debug:
-                logger.exception("mail alert %r failed to send to %s", title, to)
+                logger.exception("%r failed to send to %s", title, to)
             else:
-                logger.warning("mail alert %r failed to send to %s", title, to)
+                logger.warning("%r failed to send to %s", title, to)
 
 
 @register_task_kind("mail_alert")

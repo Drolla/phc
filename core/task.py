@@ -259,9 +259,9 @@ def register_task(specs: dict, flat: dict[str, Device], tasks: list["Task"],
     existing = next((t for t in tasks if t.tag == new_task.tag), None)
     if existing is not None:
         tasks.remove(existing)
-        logger.info("task %s: replacing existing task", new_task.tag)
+        logger.info("%s: replacing existing task", new_task.tag)
     tasks.append(new_task)
-    logger.info("task %s created", new_task.tag)
+    logger.info("%s created", new_task.tag)
     return new_task
 
 
@@ -273,7 +273,7 @@ def kill_tasks(patterns, tasks: list["Task"]) -> int:
     to_remove = [t for t in tasks if any(fnmatch.fnmatchcase(t.tag, p) for p in patterns)]
     for t in to_remove:
         tasks.remove(t)
-        logger.info("task %s killed", t.tag)
+        logger.info("%s killed", t.tag)
     return len(to_remove)
 
 

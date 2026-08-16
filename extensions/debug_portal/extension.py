@@ -84,7 +84,7 @@ class DebugPortalInstance:
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
         await site.start()
-        logger.info("debug_portal %s listening on http://%s:%d",
+        logger.info("%s listening on http://%s:%d",
                     self._instance_key, self._host, self._port)
 
     async def on_stop(self, devices: dict[str, Device]) -> None:
@@ -94,4 +94,4 @@ class DebugPortalInstance:
         self._app[SHUTDOWN_EVENT].set()
         if self._runner is not None:
             await self._runner.cleanup()
-        logger.info("debug_portal %s stopped", self._instance_key)
+        logger.info("%s stopped", self._instance_key)
