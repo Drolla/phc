@@ -1,4 +1,4 @@
-"""Tests for extensions.logdb.logdb: the CSV-backed, in-memory-buffered
+"""Tests for phc.extensions.logdb.logdb: the CSV-backed, in-memory-buffered
 LogDb storage engine (in isolation from the extension/task-wiring layer)."""
 
 import logging
@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from extensions.logdb.logdb import LogDb
+from phc.extensions.logdb.logdb import LogDb
 
 
 def _csv_path(tmp_path):
@@ -277,7 +277,7 @@ def test_restore_honors_max_records(tmp_path):
 
 
 def test_restore_across_forced_multi_chunk_backward_read(tmp_path, monkeypatch):
-    import extensions.logdb.logdb as logdb_module
+    import phc.extensions.logdb.logdb as logdb_module
     monkeypatch.setattr(logdb_module, "_INITIAL_CHUNK_SIZE", 64)
 
     path = _csv_path(tmp_path)

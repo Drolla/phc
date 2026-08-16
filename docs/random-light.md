@@ -1,10 +1,10 @@
 # Random light control
 
-[`extensions/random_light/`](../extensions/random_light/) randomizes a set of
+[`phc/extensions/random_light/`](../phc/extensions/random_light/) randomizes a set of
 "light" devices to make an empty house look occupied — each light gets one
 or more on/off time-of-day windows (a fixed local `"HH:MM"`, or
 `"sunrise"`/`"sunset"` plus/minus an offset, resolved against a
-[`devices/sun/`](../devices/sun/) device's live sunrise/sunset), a minimum
+[`phc/devices/sun/`](../phc/devices/sun/) device's live sunrise/sunset), a minimum
 switch interval, and a probability of being on. `windows`/`min_interval`/
 `probability_on` cascade three ways: `extension.yaml`'s own default → this
 instance's own `windows`/`min_interval`/`probability_on` (applies to every

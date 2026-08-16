@@ -9,8 +9,8 @@ their state, all on a fixed-heartbeat scheduler.
   (readable/writable state) and may have child devices. Devices are backed
   by a plugin **module** (e.g. `meteoswiss`, `open_meteo`, `waveplus_bridge`,
   `zway`, `sun`, `virtual`, `host`), declared in a system YAML file.
-- **Module** — a device plugin: a `devices/<name>/device.py` (the `Device`
-  subclass) plus a `devices/<name>/module.yaml` describing its parameters
+- **Module** — a device plugin: a `phc/devices/<name>/device.py` (the `Device`
+  subclass) plus a `phc/devices/<name>/module.yaml` describing its parameters
   and endpoints declaratively. Modules are discovered automatically at
   startup.
 - **Task** — an automation gated by a schedule (`time`/`repeat`), by a
@@ -24,12 +24,12 @@ their state, all on a fixed-heartbeat scheduler.
   evaluates tasks once per heartbeat tick, running device I/O concurrently.
 
 See [`examples/`](../examples/) for complete system configurations, and the
-`module.yaml` file in each [`devices/`](../devices/) subfolder for what
+`module.yaml` file in each [`phc/devices/`](../phc/devices/) subfolder for what
 parameters/endpoints a given device module supports.
 
-[`extensions/`](../extensions/) is the home for non-device PHC extensions
-(e.g. [`extensions/logdb/`](../extensions/logdb/), a CSV-backed sample store,
-and [`extensions/random_light/`](../extensions/random_light/), randomized
+[`phc/extensions/`](../phc/extensions/) is the home for non-device PHC extensions
+(e.g. [`phc/extensions/logdb/`](../phc/extensions/logdb/), a CSV-backed sample store,
+and [`phc/extensions/random_light/`](../phc/extensions/random_light/), randomized
 light control), following the same package-plus-descriptor pattern as
 device modules.
 
@@ -43,7 +43,7 @@ through unchanged. An endpoint definition may opt into:
   numeric value as text.
 - `values` — a raw value → text label mapping, e.g. `{ 0: "off", 1: "on" }`.
 - `min`/`max` — a numeric range hint, stored only (never enforced against
-  a write) — e.g. used by [`extensions/web_ui/`](../extensions/web_ui/) to
+  a write) — e.g. used by [`phc/extensions/web_ui/`](../phc/extensions/web_ui/) to
   decide whether a writable numeric endpoint gets a bounded slider.
 - `format` — a Python format-spec string (e.g. `".2f"`) applied by
   `to_text()`. Defaults to `".1f"` for a `float` endpoint, since `str()` on
@@ -73,7 +73,7 @@ through unchanged. An endpoint definition may opt into:
   numeric values, sampled on a cadence, for the `history()`/`fractile()`/
   `median()`/`average()` functions in a task's `condition`/`script`/`set`
   `expr:` — see [Value history & fractiles](scripting.md#value-history--fractiles).
-  Not the same thing as [`extensions/logdb`](logdb.md)'s long-term,
+  Not the same thing as [`phc/extensions/logdb`](logdb.md)'s long-term,
   disk-backed history used for graphing.
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching

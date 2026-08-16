@@ -10,6 +10,32 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 ### 2026-08-16
 
+**Packaging**
+
+- Installing PHC any way other than `pip install -e .` now works. The
+  built wheel previously contained no `module.yaml`, no `extension.yaml`,
+  and none of the web UI's templates or static assets — nothing but `.py`
+  files — so a real install failed at startup on the first device
+  (`module 'sun' has no module.yaml`) and served an unstyled UI. These are
+  now declared as package data, located at runtime through
+  `importlib.resources` rather than by walking up from a source file's
+  path, and a `wheel-install` CI job installs a built wheel into a clean
+  environment and boots an example from outside the checkout.
+
+**Breaking changes**
+
+- The Python packages moved under a single `phc` package: `core` →
+  `phc.core`, `devices` → `phc.devices`, `extensions` → `phc.extensions`,
+  and the `phc.py` script → `phc.cli`. Installing PHC used to claim the
+  top-level names `core`, `devices` and `extensions` in site-packages,
+  which are about as collision-prone as names get. Only code that imports
+  PHC is affected — no system YAML changes, since `module:`/`extensions:`
+  entries name modules logically, not by Python path.
+- `python phc.py --config ...` is now `python -m phc --config ...`. A
+  root `phc.py` next to the `phc/` package would shadow it and make
+  `import phc.core` ambiguous. The installed `phc` console command is
+  unchanged.
+
 **Bug fixes**
 
 - The heartbeat no longer drifts. Each tick is now scheduled one heartbeat

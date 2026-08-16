@@ -1,4 +1,4 @@
-"""Tests for extensions.timer.timer: TimerDef validation, TimerStore (in
+"""Tests for phc.extensions.timer.timer: TimerDef validation, TimerStore (in
 isolation from the extension/scheduler-hook wiring layer), and
 expired_one_shot()'s catch_up boundary."""
 
@@ -7,7 +7,7 @@ import logging
 import pytest
 import yaml
 
-from extensions.timer.timer import TimerDef, TimerStore, expired_one_shot
+from phc.extensions.timer.timer import TimerDef, TimerStore, expired_one_shot
 
 
 @pytest.fixture

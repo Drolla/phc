@@ -2,7 +2,7 @@
 
 ## Timers are Tasks, not a parallel scheduler
 
-[`extensions/timer/extension.py`](../../extensions/timer/extension.py)'s
+[`phc/extensions/timer/extension.py`](../../phc/extensions/timer/extension.py)'s
 `TimerInstance` deliberately does not implement its own due-time loop.
 Instead, every `TimerDef` is mirrored into an ordinary `core.task.Task` via
 `core.task.register_task`, tagged `"<instance_key>.<id>"`. This buys, for
@@ -31,7 +31,7 @@ persisted timers are actually loaded and turned into Tasks, capturing
 too.
 
 A one-shot timer whose trigger time is more than `catch_up` seconds in the
-past (`extensions/timer/timer.py`'s `expired_one_shot()`) is dropped here
+past (`phc/extensions/timer/timer.py`'s `expired_one_shot()`) is dropped here
 rather than registered — it never becomes a Task, so it can never fire
 late. A repeating timer is never subject to this check: `parse_time`'s own
 catch-up (above) already rolls it forward to a future slot.
@@ -59,11 +59,11 @@ the live task list once per tick, keyed by tag, and reconciles both cases
 
 ## Web UI seam: same pattern as `GraphPanel` → `logdb`
 
-[`extensions/web_ui/panels.py`](../../extensions/web_ui/panels.py)'s
+[`phc/extensions/web_ui/panels.py`](../../phc/extensions/web_ui/panels.py)'s
 `TimersPanel` holds a `timer_instance` name, not a resolved reference — the
 timer instance may be configured before or after the `web_ui:` instance,
 so resolution happens per-request in
-[`extensions/web_ui/server.py`](../../extensions/web_ui/server.py)'s
+[`phc/extensions/web_ui/server.py`](../../phc/extensions/web_ui/server.py)'s
 `_describe_timers_panel`, exactly mirroring `GraphPanel`/`handle_graph_data`
 (see [`docs/developer/web-ui.md`](web-ui.md)). Unlike a graph panel's chart
 data, though, a timers panel's target/timer lists are small enough to embed
@@ -83,7 +83,7 @@ returns, so returning the freshly-rendered fragment is correct immediately.
 
 `static/timers.js` builds the add/edit form's value control (checkbox/
 select/slider/number/text) client-side from a per-panel JSON blob of
-target metadata, mirroring `extensions/web_ui/widgets.py`'s
+target metadata, mirroring `phc/extensions/web_ui/widgets.py`'s
 `infer_widget_kind` — the browser has no server round-trip to ask which
 widget kind a newly-selected target needs. Listeners are delegated at the
 document level (not bound per-element) because htmx replaces the whole

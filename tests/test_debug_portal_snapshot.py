@@ -1,18 +1,18 @@
-"""Tests for extensions.debug_portal.snapshot.build_snapshot(): pure,
+"""Tests for phc.extensions.debug_portal.snapshot.build_snapshot(): pure,
 no-HTTP construction of one tick's JSON-serializable snapshot. Uses a
 minimal hand-built `flat` dict of VirtualDevice/Endpoint instances and
-core.task.Task objects, mirroring tests/test_logdb_extension.py's style --
+phc.core.task.Task objects, mirroring tests/test_logdb_extension.py's style --
 no full YAML system needed."""
 
-from core.device import Device
-from core.endpoint import Endpoint
-from core.task import Condition, Task
-from devices.virtual.device import VirtualDevice
-from extensions.debug_portal.snapshot import build_snapshot
+from phc.core.device import Device
+from phc.core.endpoint import Endpoint
+from phc.core.task import Condition, Task
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.debug_portal.snapshot import build_snapshot
 
 
 class FakeSystem:
-    """Stand-in for core.config.System: build_snapshot only ever reads
+    """Stand-in for phc.core.config.System: build_snapshot only ever reads
     .tasks and .heartbeat off it."""
 
     def __init__(self, tasks=None, heartbeat=1.0):
@@ -81,7 +81,7 @@ def test_state_changes_without_event_show_in_last_valid_disagreement():
     """5 -> None -> 5: get() moves twice, but get_event() stays None both
     times, since the second 5 never differs from _last_valid_state -- the
     exact case get_last_valid_state() was added to make visible (see
-    core/endpoint.py)."""
+    phc/core/endpoint.py)."""
     ep = Endpoint("state", value_type="int")
     device = VirtualDevice("lamp", endpoints=[ep])
     system = FakeSystem()
@@ -116,7 +116,7 @@ def test_endpoint_age_is_none_before_first_update():
 
 def test_endpoint_skipped_when_device_missing():
     """A pair referencing a device id not present in `devices` is silently
-    skipped, matching extensions.logdb.LogDbInstance.on_tick's own
+    skipped, matching phc.extensions.logdb.LogDbInstance.on_tick's own
     device.get()-is-None guard."""
     system = FakeSystem()
     snapshot = build_snapshot(system, {}, [("ghost", "state")], tick=1, now=100.0, period=1.0)

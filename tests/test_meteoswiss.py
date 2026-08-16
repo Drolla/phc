@@ -11,10 +11,10 @@ import time
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scheduler import Scheduler
-from devices.meteoswiss import device as meteoswiss_device
-from devices.meteoswiss.device import MeteoSwissDevice
+from phc.core.endpoint import Endpoint
+from phc.core.scheduler import Scheduler
+from phc.devices.meteoswiss import device as meteoswiss_device
+from phc.devices.meteoswiss.device import MeteoSwissDevice
 
 
 CSV = (

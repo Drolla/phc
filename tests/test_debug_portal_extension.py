@@ -1,4 +1,4 @@
-"""Tests for extensions.debug_portal.extension: configure()'s selector
+"""Tests for phc.extensions.debug_portal.extension: configure()'s selector
 resolution, the on_bind/on_tick/on_start/on_stop hook wiring, and the
 aiohttp.web app it builds (server.py's routes), driven via aiohttp's test
 utilities. No full YAML system needed -- a small hand-built `flat` dict of
@@ -16,14 +16,14 @@ import pytest
 from aiohttp import ClientSession
 from aiohttp.test_utils import TestClient, TestServer
 
-from core.endpoint import Endpoint
-from devices.virtual.device import VirtualDevice
-from extensions.debug_portal.extension import configure
-from extensions.debug_portal.server import LAST_SNAPSHOT
+from phc.core.endpoint import Endpoint
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.debug_portal.extension import configure
+from phc.extensions.debug_portal.server import LAST_SNAPSHOT
 
 
 class FakeSystem:
-    """Stand-in for core.config.System: DebugPortalInstance only ever
+    """Stand-in for phc.core.config.System: DebugPortalInstance only ever
     reads .tasks and .heartbeat off whatever on_bind() is given."""
 
     def __init__(self, tasks=None, heartbeat=1.0):
@@ -83,7 +83,7 @@ def test_on_tick_populates_last_snapshot_from_bound_system():
 
 
 def test_on_tick_period_defaults_to_heartbeat_then_measures_elapsed(monkeypatch):
-    import extensions.debug_portal.extension as ext_module
+    import phc.extensions.debug_portal.extension as ext_module
 
     flat = _flat()
     instance = configure(_base_params(), flat, "debug_portal.demo")

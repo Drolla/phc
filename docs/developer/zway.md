@@ -1,6 +1,6 @@
 # zway internals
 
-[`devices/zway/device.py`](../../devices/zway/device.py) batches every
+[`phc/devices/zway/device.py`](../../phc/devices/zway/device.py) batches every
 `zway` device behind the same controller (`base_url`) into shared caching/
 auth state, keyed by `base_url`:
 
@@ -55,7 +55,7 @@ auth state, keyed by `base_url`:
 ## Profile library notes
 
 A few `device_profiles` entries in
-[`module.yaml`](../../devices/zway/module.yaml) encode wiring that isn't
+[`module.yaml`](../../phc/devices/zway/module.yaml) encode wiring that isn't
 obvious from the endpoint list alone:
 
 - `everspring-siren_300_series`'s `battery` endpoint addresses `"{node}.0"`

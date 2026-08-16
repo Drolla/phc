@@ -1,5 +1,5 @@
 # Demonstrates devices/system_monitor with extensions/web_ui: run with
-#   python phc.py --config examples/system_monitor_system.yaml
+#   python -m phc --config examples/system_monitor_system.yaml
 # then open http://127.0.0.1:8080/ in a browser.
 #
 # One page ("System") with two sections:

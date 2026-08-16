@@ -1,11 +1,11 @@
-"""Tests for core.device: the Device base class (get/set, fetch, tree recursion)."""
+"""Tests for phc.core.device: the Device base class (get/set, fetch, tree recursion)."""
 
 import asyncio
 
 import pytest
 
-from core.device import Device
-from core.endpoint import Endpoint
+from phc.core.device import Device
+from phc.core.endpoint import Endpoint
 from tests.conftest import fetch_sync
 
 
@@ -25,9 +25,9 @@ class EchoDevice(Device):
 
 
 class AsyncOnlyEchoDevice(Device):
-    """Test double for a native-async device (e.g. devices.zway.ZWayDevice):
+    """Test double for a native-async device (e.g. phc.devices.zway.ZWayDevice):
     overrides transmit_async() directly and never implements the synchronous
-    transmit() at all, per core.device.Device's class docstring guidance for
+    transmit() at all, per phc.core.device.Device's class docstring guidance for
     a device whose I/O is genuinely async-friendly."""
 
     def setup(self):
@@ -127,7 +127,7 @@ def test_children_aggregate_via_dict():
 
 
 def test_update_state_does_not_recurse_into_children():
-    # core.scheduler.Scheduler's commit pass visits every device directly
+    # phc.core.scheduler.Scheduler's commit pass visits every device directly
     # via its flat device dict, parent and child alike -- update_state()
     # recursing here too would double-commit a child (see the method's
     # docstring), so a parent's own call must leave its children untouched.
@@ -309,9 +309,9 @@ def test_read_and_write_transform_round_trip_through_fetch_and_set():
 def test_set_text_is_silently_dropped_on_a_native_async_device():
     """Outside a tick, set_text()'s immediate-write path only ever calls the
     synchronous transmit() (see Device._emit()). A device that overrides
-    transmit_async() directly instead -- like devices.zway.ZWayDevice --
+    transmit_async() directly instead -- like phc.devices.zway.ZWayDevice --
     never implements transmit(), so the write is silently swallowed. This
-    pins down that known limitation (the reason extensions.web_ui's write
+    pins down that known limitation (the reason phc.extensions.web_ui's write
     endpoint uses set_text_async() instead, see the next test)."""
     ep = Endpoint("state", writable=True, value_type="int", values={0: "off", 1: "on"})
     device = AsyncOnlyEchoDevice("light", endpoints=[ep])

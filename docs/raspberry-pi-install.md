@@ -86,7 +86,7 @@ sudo -u phc cp /opt/phc/examples/virtual_system.yaml /opt/phc/system.yaml
 Edit `/opt/phc/system.yaml` to describe your actual devices — see
 [`docs/concepts.md`](concepts.md) and
 [`docs/configuration.md`](configuration.md) for the config format, and
-each `devices/<name>/module.yaml` for what a given module supports. If
+each `phc/devices/<name>/module.yaml` for what a given module supports. If
 your Pi drives real hardware (e.g. a Razberry/Z-Wave controller), see
 [`docs/zway.md`](zway.md).
 
@@ -169,7 +169,7 @@ sudo journalctl -u phc.service -f
 PHC logs to stdout by default (see [Logging](configuration.md#logging)),
 which systemd captures into the journal automatically — `journalctl` above
 is the log viewer, no separate log file needed. To also keep a persistent
-file log (e.g. for [`extensions/web_ui`](web-ui.md) or `logdb` history
+file log (e.g. for [`phc/extensions/web_ui`](web-ui.md) or `logdb` history
 independent of journal rotation), add a file `dest:` to `system.yaml`'s
 `log:` list — see [Logging](configuration.md#logging).
 
@@ -181,7 +181,7 @@ sudo systemctl restart phc.service
 
 ## 7. Optional: web UI dashboard
 
-If your config includes [`extensions/web_ui`](web-ui.md), it binds to
+If your config includes [`phc/extensions/web_ui`](web-ui.md), it binds to
 `127.0.0.1` by default (loopback-only, no authentication) — safe to leave
 as-is if you'll only ever browse it from the Pi itself, or if you reach it
 through an SSH tunnel:

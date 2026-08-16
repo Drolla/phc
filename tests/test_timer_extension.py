@@ -1,6 +1,6 @@
-"""Tests for extensions.timer.extension: configure()'s selector resolution/
+"""Tests for phc.extensions.timer.extension: configure()'s selector resolution/
 validation, TimerInstance's on_bind/on_tick hook wiring and CRUD API, and
-an end-to-end test through core.config.load_system() and Scheduler.tick().
+an end-to-end test through phc.core.config.load_system() and Scheduler.tick().
 Pure timer data/persistence is tested in tests/test_timer.py."""
 
 import logging
@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from core.config import ConfigError, load_system
-from core.endpoint import Endpoint
-from core.registry import discover_extensions
-from core.scheduler import Scheduler
-from devices.virtual.device import VirtualDevice
-from extensions.timer.extension import configure
-from extensions.timer.timer import TimerDef, TimerStore
+from phc.core.config import ConfigError, load_system
+from phc.core.endpoint import Endpoint
+from phc.core.registry import discover_extensions
+from phc.core.scheduler import Scheduler
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.timer.extension import configure
+from phc.extensions.timer.timer import TimerDef, TimerStore
 from tests.conftest import fetch_sync
 
 
@@ -36,7 +36,7 @@ def _house():
 
 
 class FakeSystem:
-    """Stand-in for core.config.System: TimerInstance.on_bind only ever
+    """Stand-in for phc.core.config.System: TimerInstance.on_bind only ever
     reads .devices/.tasks/.extensions off whatever it's given -- see
     tests/test_debug_portal_extension.py's own FakeSystem for the same
     pattern."""
@@ -202,7 +202,7 @@ def test_on_tick_removes_timer_whose_one_shot_task_was_retired(tmp_path):
     assert t.id in {x.id for x in instance.list_timers()}
 
     # Simulate the Scheduler retiring the one-shot Task after it fired
-    # (core.scheduler.Scheduler._tick_async pass 2 removes a finished task).
+    # (phc.core.scheduler.Scheduler._tick_async pass 2 removes a finished task).
     system.tasks[:] = [task for task in system.tasks if task.tag != t.tag("timer.house")]
     instance.on_tick(flat)
 

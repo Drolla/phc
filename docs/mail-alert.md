@@ -1,6 +1,6 @@
 # Mail alerts
 
-[`extensions/mail_alert/`](../extensions/mail_alert/) sends a message through
+[`phc/extensions/mail_alert/`](../phc/extensions/mail_alert/) sends a message through
 one configured SMTP server — an `extensions.mail_alert.<instance>` entry
 holds the server's connection details plus a default sender/recipient
 list, and a `kind: mail_alert` task action sends one message through it,

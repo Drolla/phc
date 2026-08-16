@@ -1,8 +1,8 @@
-"""Tests for extensions.recovery.extension: selector resolution/validation,
+"""Tests for phc.extensions.recovery.extension: selector resolution/validation,
 configure(), and the RecoveryInstance's on_start/on_tick/on_stop hook
-wiring, plus an end-to-end test through core.config.load_system() and a
+wiring, plus an end-to-end test through phc.core.config.load_system() and a
 simulated crash/restart. Selector pattern resolution itself is tested in
-tests/test_selectors.py (core.selectors.resolve_selectors)."""
+tests/test_selectors.py (phc.core.selectors.resolve_selectors)."""
 
 import asyncio
 import logging
@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from core.config import ConfigError, load_system
-from core.endpoint import Endpoint
-from core.registry import discover_extensions
-from core.scheduler import Scheduler
-from devices.virtual.device import VirtualDevice
-from extensions.recovery.extension import configure
-from extensions.recovery.recovery import RecoveryStore
+from phc.core.config import ConfigError, load_system
+from phc.core.endpoint import Endpoint
+from phc.core.registry import discover_extensions
+from phc.core.scheduler import Scheduler
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.recovery.extension import configure
+from phc.extensions.recovery.recovery import RecoveryStore
 from tests.conftest import fetch_sync
 
 

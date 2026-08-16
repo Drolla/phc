@@ -1,5 +1,5 @@
 # Demonstrates extensions/timer: run with
-#   python phc.py --config examples/timer_system.yaml
+#   python -m phc --config examples/timer_system.yaml
 # then open http://127.0.0.1:8080/ in a browser and use the "Timers" panel
 # to create a one-shot timer a minute or two out, targeting e.g.
 # lights.desk_lamp/power. Watch it fire (the widget in the "Lights" section

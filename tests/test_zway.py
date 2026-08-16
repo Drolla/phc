@@ -18,11 +18,11 @@ import urllib.parse
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scheduler import Scheduler
-from core.task import SetAction, Task
-from devices.zway import device as zway_device
-from devices.zway.device import ZWayDevice
+from phc.core.endpoint import Endpoint
+from phc.core.scheduler import Scheduler
+from phc.core.task import SetAction, Task
+from phc.devices.zway import device as zway_device
+from phc.devices.zway.device import ZWayDevice
 
 
 @pytest.fixture(autouse=True)
@@ -422,7 +422,7 @@ def test_zway_write_issues_one_set_and_invalidates_cache():
     # write-collector path (a task action within a tick) -- ZWayDevice, like
     # any native-async device, only overrides transmit_async(), not the
     # sync transmit() that a direct dev.set() outside a tick would call
-    # instead (see core.device.Device._emit/core/scheduler.py's write
+    # instead (see phc.core.device.Device._emit/core/scheduler.py's write
     # collector; test_scheduler_async.py's SleepWriteDevice is the only
     # existing device that overrides plain transmit(), so it's the one
     # that direct dev.set() actually exercises).

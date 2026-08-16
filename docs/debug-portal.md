@@ -1,6 +1,6 @@
 # Debug portal
 
-[`extensions/debug_portal/`](../extensions/debug_portal/) is a small
+[`phc/extensions/debug_portal/`](../phc/extensions/debug_portal/) is a small
 aiohttp.web server for watching a running system's internals live: the
 scheduler's task queue, the device poll queue, and every selected
 endpoint's state/event/last-valid-state. It exists purely for
@@ -39,7 +39,7 @@ in a browser. The page has three parts:
   change event (if any), and how long ago it last updated. A row where
   `state` and `last_valid` disagree despite no event is exactly the case
   where a value changed but nothing was actually notified of it — see
-  [`core/endpoint.py`](../core/endpoint.py)'s two-phase state model.
+  [`phc/core/endpoint.py`](../phc/core/endpoint.py)'s two-phase state model.
 
 The page updates **once per scheduler tick**, pushed from the server over
 Server-Sent Events — there is no separate refresh interval to configure,
@@ -62,7 +62,7 @@ would otherwise keep changing under you.
   bind beyond loopback on a trusted LAN.
 - `selectors` (default `["*"]`) — which endpoints appear in the endpoint
   table (same `"<device-glob>/<endpoint-glob>"` syntax as
-  [`extensions/logdb`](logdb.md)'s own `selectors`). The task queue and
+  [`phc/extensions/logdb`](logdb.md)'s own `selectors`). The task queue and
   device poll queue always show everything, regardless of this setting.
 - `shutdown_timeout` (default `5`) — seconds aiohttp waits for an
   in-flight request to finish when the server stops. An open live view

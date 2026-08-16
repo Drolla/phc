@@ -1,4 +1,4 @@
-"""Tests for extensions.web_ui.extension: configure()'s page/section/panel
+"""Tests for phc.extensions.web_ui.extension: configure()'s page/section/panel
 YAML parsing, and the aiohttp.web app it builds (server.py's routes),
 driven via aiohttp's test utilities. No full YAML system needed -- a
 small hand-built `flat` dict of VirtualDevice/Endpoint instances, mirrored
@@ -15,11 +15,11 @@ import pytest
 from aiohttp import ClientSession
 from aiohttp.test_utils import TestClient, TestServer
 
-from core.config import ConfigError
-from core.endpoint import Endpoint
-from devices.virtual.device import VirtualDevice
-from extensions.web_ui.extension import configure
-from extensions.web_ui.server import GRAPH_PANELS_BY_ID, PAGES
+from phc.core.config import ConfigError
+from phc.core.endpoint import Endpoint
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.web_ui.extension import configure
+from phc.extensions.web_ui.server import GRAPH_PANELS_BY_ID, PAGES
 
 
 def _base_params(**overrides):
@@ -363,7 +363,7 @@ def _logdb_registry(tmp_path, flat, selectors=("*",), instance_key="logdb.house"
     """Build a real LogDbInstance (mirrors tests/test_logdb_extension.py's
     own configure() construction) and wrap it in the small extensions
     registry dict web_ui's configure() expects as its 4th argument."""
-    from extensions.logdb.extension import configure as configure_logdb
+    from phc.extensions.logdb.extension import configure as configure_logdb
     params = {
         "selectors": list(selectors),
         "csv_path": str(tmp_path / "log.csv"),
@@ -460,11 +460,11 @@ def test_get_api_graph_missing_values_serialize_as_null_not_literal_nan(tmp_path
 
 def _timer_registry(tmp_path, flat, selectors=("lamp/*", "dimmer/*"), instance_key="timer.house"):
     """Build a real TimerInstance (mirrors _logdb_registry's own
-    construction) and bind it via a minimal stand-in for core.config.System
+    construction) and bind it via a minimal stand-in for phc.core.config.System
     (TimerInstance.on_bind only ever reads .devices/.tasks/.extensions --
     see tests/test_timer_extension.py's own FakeSystem), so the CRUD API
     the timers routes drive is fully wired, not just configure()'d."""
-    from extensions.timer.extension import configure as configure_timer
+    from phc.extensions.timer.extension import configure as configure_timer
     params = {"path": str(tmp_path / "timers.yaml"), "selectors": list(selectors), "catch_up": "5m"}
     instance = configure_timer(params, flat, instance_key)
     registry = {instance_key: instance}

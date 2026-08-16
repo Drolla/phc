@@ -15,7 +15,7 @@ hardware). A profile name never needs a module-name prefix — a device's
 `meteoswiss` profile even if both declared one under the same name:
 
 ```yaml
-# devices/zway/module.yaml
+# phc/devices/zway/module.yaml
 endpoint_parameters:
   - name: command_group
   - name: address
@@ -68,7 +68,7 @@ unconditional `endpoints:`. A module that never declares any templates
 (most of them, today) is unaffected, since a spec with no `{...}` anywhere
 just passes through unchanged.
 
-See [`devices/zway/module.yaml`](../devices/zway/module.yaml) for the full
+See [`phc/devices/zway/module.yaml`](../phc/devices/zway/module.yaml) for the full
 product list and [`examples/zway_system.yaml`](../examples/zway_system.yaml)
 for a worked example mixing a whole-device profile with named endpoints, a
 device profile with one field overridden, and a single endpoint profile
@@ -113,7 +113,7 @@ same base/overlay ambiguity either way.
 Reach for this instead of editing the module's own `module.yaml` when a
 profile is specific to your setup rather than a real shared product — e.g.
 a `virtual` siren with no real hardware behind it doesn't belong in
-`devices/virtual/module.yaml`'s generic library. It also composes with
+`phc/devices/virtual/module.yaml`'s generic library. It also composes with
 `<<: !include` for free, since that's a plain YAML merge key: a
 `device_profiles:` block can live in a shared fragment file included from
 multiple system configs (see [Splitting configuration across

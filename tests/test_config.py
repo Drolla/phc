@@ -1,4 +1,4 @@
-"""Tests for core.config: system YAML loading, param/endpoint merging, and validation."""
+"""Tests for phc.core.config: system YAML loading, param/endpoint merging, and validation."""
 
 import logging
 import time
@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _build_effective_module,
+from phc.core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _build_effective_module,
                           _collect_history_records, _expand_endpoint_specs, _find_placeholders,
                           _load_extensions, _make_history_tick_hook, _merge_endpoints,
                           _merge_extension_params, _merge_params, _parse_history_spec,
                           _Placeholder, _resolve_interval, _resolve_module_config,
                           _substitute_endpoint_spec, load_system)
-from core.device import Device
-from core.endpoint import Endpoint
+from phc.core.device import Device
+from phc.core.endpoint import Endpoint
 
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -908,9 +908,9 @@ def test_history_tick_hook_samples_only_once_per_interval(monkeypatch):
     hook = _make_history_tick_hook(records)
 
     # Monotonic, not time.time(): history sampling is an interval like any
-    # other in the system (see core.scheduler.Scheduler's class docstring).
+    # other in the system (see phc.core.scheduler.Scheduler's class docstring).
     now = [1000.0]
-    monkeypatch.setattr("core.config.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # next_due starts at -inf -> immediately due
     assert ep.get_history() == [1.0]
@@ -934,7 +934,7 @@ def test_history_tick_hook_retries_after_a_skipped_none_sample(monkeypatch):
     hook = _make_history_tick_hook(records)
 
     now = [1000.0]
-    monkeypatch.setattr("core.config.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # ep.get() is still None -> record_history() is False
     assert ep.get_history() == []
@@ -1319,7 +1319,7 @@ devices: []
 
 def test_load_system_rejects_unknown_device_entry_key(tmp_path):
     # A typo'd device-entry key (e.g. "device_profil" instead of
-    # "device_profile") must not be silently ignored: devices/zway/device.py
+    # "device_profile") must not be silently ignored: phc/devices/zway/device.py
     # documents that a misconfigured endpoint permanently reports None with
     # no error, so catching the typo here, at load time, is the only safety
     # net.
@@ -1495,7 +1495,7 @@ def test_load_system_condition_shorthand_value_filter(tmp_path):
     through load_system() and behaves end to end: `value:` alone is a
     level check (current state, any tick), `changed: true` + `value:` is
     an edge check (only the transition tick), and a bare `device:` with
-    neither key is unconstrained (always True) -- see core.task.Condition's
+    neither key is unconstrained (always True) -- see phc.core.task.Condition's
     docstring for the full independent-AND model."""
     from tests.conftest import fetch_sync
 
@@ -1726,7 +1726,7 @@ tasks:
 """)
     system = load_system(system_yaml)
     task = next(t for t in system.tasks if t.tag == "raise_alert")
-    from core.task import CreateTaskAction
+    from phc.core.task import CreateTaskAction
     assert isinstance(task.actions[0], CreateTaskAction)
 
 
@@ -1820,12 +1820,12 @@ tasks:
 """)
     system = load_system(system_yaml)
     task = next(t for t in system.tasks if t.tag == "raise_alert")
-    from core.task import CreateTaskAction
+    from phc.core.task import CreateTaskAction
     action = task.actions[0]
     assert isinstance(action, CreateTaskAction)
     # Only the top-level tasks: entries are built into Task objects at load
     # time -- task_specs: entries stay raw dicts until a template: reference
-    # actually resolves them (see core.task.register_task).
+    # actually resolves them (see phc.core.task.register_task).
     assert [t.tag for t in system.tasks] == ["raise_alert"]
 
 
@@ -2040,7 +2040,7 @@ tasks:
     action: { kind: log, device: "living_light.state", message: "changed" }
 """)
     system = load_system(system_yaml)
-    from core.task import ExprCondition
+    from phc.core.task import ExprCondition
     task = next(t for t in system.tasks if t.tag == "report")
     assert isinstance(task.condition, ExprCondition)
 
@@ -2148,13 +2148,13 @@ devices:
 
 
 def test_load_system_collects_on_start_on_stop_from_extension_instances(tmp_path, monkeypatch):
-    """No shipped extension has on_start/on_stop yet (only extensions.web_ui
-    will), so this exercises core.config's auto-collection directly by
+    """No shipped extension has on_start/on_stop yet (only phc.extensions.web_ui
+    will), so this exercises phc.core.config's auto-collection directly by
     monkeypatching _load_extensions to return a fake instance -- the same
     collection mechanism already proven for on_tick (see
     test_load_system_condition_expr_registers_sticky_tick_hook above and
     logdb/random_light's own end-to-end tests)."""
-    import core.config as config_module
+    import phc.core.config as config_module
 
     calls = {"start": [], "stop": []}
 
@@ -2192,10 +2192,10 @@ devices:
 def test_load_system_calls_on_bind_with_fully_built_system(tmp_path, monkeypatch):
     """on_bind runs after tasks: are built (unlike configure(), see
     _load_extensions), so an instance can see system.tasks -- this is the
-    behavior extensions.debug_portal relies on to bind to the live task
+    behavior phc.extensions.debug_portal relies on to bind to the live task
     list. Absence of on_bind on an instance (the common case -- no shipped
     extension besides debug_portal defines it) must not raise."""
-    import core.config as config_module
+    import phc.core.config as config_module
 
     bound = []
 
@@ -2290,7 +2290,7 @@ tasks:
         log('done')
 """)
     system = load_system(system_yaml)
-    from core.task import ScriptAction
+    from phc.core.task import ScriptAction
     task = next(t for t in system.tasks if t.tag == "react")
     assert isinstance(task.actions[0], ScriptAction)
 
@@ -2350,7 +2350,7 @@ tasks:
     action: { kind: set, device: "target.state", expr: "state('source.state')" }
 """)
     system = load_system(system_yaml)
-    from core.task import SetAction
+    from phc.core.task import SetAction
     task = next(t for t in system.tasks if t.tag == "mirror")
     action = task.actions[0]
     assert isinstance(action, SetAction)
@@ -2460,7 +2460,7 @@ tasks:
     action: { kind: kill_task, tags: ["surveillance_*"] }
 """)
     system = load_system(system_yaml)
-    from core.task import KillTaskAction
+    from phc.core.task import KillTaskAction
     task = next(t for t in system.tasks if t.tag == "disable")
     assert isinstance(task.actions[0], KillTaskAction)
 
@@ -2576,7 +2576,7 @@ devices: !include a.yaml
 def test_load_system_include_splices_a_list_valued_target_into_tasks(tmp_path):
     """A `- !include <path>` list item whose target file is itself a YAML
     sequence (e.g. several tasks merged into one topic file) is spliced
-    into the surrounding tasks: list -- core.config._flatten_list_entries
+    into the surrounding tasks: list -- phc.core.config._flatten_list_entries
     -- rather than nested as one list-of-lists element, so it composes
     with an ordinary literal task item in the same list."""
     (tmp_path / "extra_tasks.yaml").write_text("""

@@ -1,14 +1,14 @@
-"""Tests for core.scripting: the restricted-Python AST whitelist, compile/
+"""Tests for phc.core.scripting: the restricted-Python AST whitelist, compile/
 eval/exec sandbox, and EndpointRef."""
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scripting import (
+from phc.core.endpoint import Endpoint
+from phc.core.scripting import (
     EndpointRef, ScriptError, compile_expression, compile_script,
     evaluate_expression, run_script,
 )
-from devices.virtual.device import VirtualDevice
+from phc.devices.virtual.device import VirtualDevice
 from tests.conftest import fetch_sync
 
 

@@ -1,6 +1,6 @@
 # Web UI
 
-[`extensions/web_ui/`](../extensions/web_ui/) is a small aiohttp.web server
+[`phc/extensions/web_ui/`](../phc/extensions/web_ui/) is a small aiohttp.web server
 that renders the live device tree as a browser dashboard — view current
 status and flip/slide/select new values — with **no per-device UI code**:
 each endpoint's widget is inferred purely from its existing metadata:
@@ -17,7 +17,7 @@ each endpoint's widget is inferred purely from its existing metadata:
 Layout is either a single flat page (the `selectors` shorthand, default
 everything) or an explicit `pages:` list, each holding one or more
 collapsible `sections:` (folded by default) that pick their devices via
-the same selector syntax [`extensions/logdb`](logdb.md) uses:
+the same selector syntax [`phc/extensions/logdb`](logdb.md) uses:
 
 ```yaml
 extensions:
@@ -51,7 +51,7 @@ A section's content is a list of **panels**, dispatched by `kind` (default
 
 `kind: graph` renders a [Dygraphs](https://dygraphs.com) time-series chart
 over one or more endpoints' logged history, backed by a named
-[`extensions/logdb`](logdb.md) instance:
+[`phc/extensions/logdb`](logdb.md) instance:
 
 ```yaml
 extensions:
@@ -86,7 +86,7 @@ own `GET /api/graph/{id}` JSON data route — fetched client-side, not
 embedded in the page render. `logdb_instance` (required) is resolved
 lazily, at request time, so it may be declared either before or after this
 `web_ui:` instance. `selectors` picks which endpoints to plot (same syntax
-as `extensions/logdb`'s own `selectors`) — each must also be covered by the
+as `phc/extensions/logdb`'s own `selectors`) — each must also be covered by the
 referenced logdb instance, or its series is empty. `title` defaults to
 `id`. `unit` (optional) labels the Y axis. `window` (default `24h`) sets
 the chart's initial zoom; the full retained history is still fetched and
@@ -96,7 +96,7 @@ in groups of `factor`, bounding how much history data is shipped to the
 browser as it grows.
 
 `kind: timers` renders a create/edit/delete UI for user timers, backed by a
-named [`extensions/timer`](timer.md) instance:
+named [`phc/extensions/timer`](timer.md) instance:
 
 ```yaml
 extensions:

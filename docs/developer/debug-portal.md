@@ -2,7 +2,7 @@
 
 ## Why push, not poll
 
-[`extensions/web_ui`](web-ui.md) works by having each widget poll its own
+[`phc/extensions/web_ui`](web-ui.md) works by having each widget poll its own
 small HTML fragment. That model can't show change events:
 `core.endpoint.Endpoint._event` is cleared at the top of every
 `update_state()` call (see `Endpoint`'s own docstring), so it only exists
@@ -10,7 +10,7 @@ for the one tick that produced it — any polling cadence slower than the
 heartbeat would silently miss most of them, and even polling at exactly
 the heartbeat rate can't guarantee alignment.
 
-Instead, [`extensions/debug_portal/extension.py`](../../extensions/debug_portal/extension.py)'s
+Instead, [`phc/extensions/debug_portal/extension.py`](../../phc/extensions/debug_portal/extension.py)'s
 `DebugPortalInstance.on_tick()` is registered as a Scheduler tick hook (see
 `core.config.load_system`'s auto-collection of `on_tick`), so it runs once
 per tick, after that tick's state is fully committed (`core.scheduler`'s
@@ -38,7 +38,7 @@ per-tick callback into individual devices.
 
 ## `SseHub`: single-slot mailbox, not a queue
 
-[`extensions/debug_portal/server.py`](../../extensions/debug_portal/server.py)'s
+[`phc/extensions/debug_portal/server.py`](../../phc/extensions/debug_portal/server.py)'s
 `SseHub` gives each connected client an `asyncio.Queue(maxsize=1)`.
 `broadcast()` (called synchronously from `on_tick`, on the same event loop
 every SSE handler runs on) overwrites a full queue rather than blocking or
@@ -64,9 +64,9 @@ before the process could exit.
 
 ## Snapshot shape
 
-[`extensions/debug_portal/snapshot.py`](../../extensions/debug_portal/snapshot.py)'s
+[`phc/extensions/debug_portal/snapshot.py`](../../phc/extensions/debug_portal/snapshot.py)'s
 `build_snapshot()` is deliberately free of any aiohttp/HTTP concern (same
-split as `extensions/web_ui/widgets.py`'s `describe_endpoint()`/
+split as `phc/extensions/web_ui/widgets.py`'s `describe_endpoint()`/
 `describe_device()`), so it's directly unit-testable.
 
 Endpoint `state`/`last_valid` are sent as `repr()` strings, not
@@ -99,7 +99,7 @@ lingering in an "exhausted" (`due_time=+inf`) state.
 row keyed by `data-key="device/endpoint"`. The task and device-poll tables
 are **not** pre-rendered: `create_task`/`kill_task` actions mutate the live
 task list at runtime, so
-[`extensions/debug_portal/static/portal.js`](../../extensions/debug_portal/static/portal.js)
+[`phc/extensions/debug_portal/static/portal.js`](../../phc/extensions/debug_portal/static/portal.js)
 builds those two tables entirely from the snapshot stream, keeping a
 `Map` of key → `<tr>` and re-`appendChild`-ing each tick to keep DOM order
 matching the snapshot's own (already-sorted) order — `appendChild` on an

@@ -2,10 +2,10 @@
 
 import pytest
 
-from core.endpoint import Endpoint
-from core.scheduler import Scheduler
-from devices.virtual.device import VirtualDevice
-from phc import _parse_log_level_module, _resolve_debug_portal_instance, main
+from phc.core.endpoint import Endpoint
+from phc.core.scheduler import Scheduler
+from phc.devices.virtual.device import VirtualDevice
+from phc.cli import _parse_log_level_module, _resolve_debug_portal_instance, main
 
 
 def test_parse_log_level_module_splits_name_and_level():
@@ -31,8 +31,8 @@ devices: []
 
     import logging
 
-    from core.config import load_system
-    from core.logging_setup import _LevelMapFilter
+    from phc.core.config import load_system
+    from phc.core.logging_setup import _LevelMapFilter
 
     def _resolved(name, level=logging.INFO):
         root = logging.getLogger("phc")
@@ -55,7 +55,7 @@ devices: []
 
 
 class _FakeSystem:
-    """Minimal stand-in for core.config.System: _resolve_debug_portal_instance
+    """Minimal stand-in for phc.core.config.System: _resolve_debug_portal_instance
     only ever reads .devices (handed straight to configure()'s selector
     resolution) and .extensions (to detect an already YAML-configured
     debug_portal instance)."""
@@ -138,7 +138,7 @@ extensions:
 
 def test_main_reports_config_error_without_traceback(tmp_path, capsys):
     """A ConfigError (e.g. an unfilled !placeholder -- see
-    core.config._find_placeholders) must reach the user as a plain
+    phc.core.config._find_placeholders) must reach the user as a plain
     argparse error message, not an uncaught Python traceback."""
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""

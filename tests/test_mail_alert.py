@@ -1,13 +1,13 @@
-"""Tests for extensions.mail_alert.mail_alert.send_mail: the pure delivery
+"""Tests for phc.extensions.mail_alert.mail_alert.send_mail: the pure delivery
 logic (message construction, security-mode branching), independent of the
-extension wiring/threading in extensions/mail_alert/extension.py (see
+extension wiring/threading in phc/extensions/mail_alert/extension.py (see
 tests/test_mail_alert_extension.py)."""
 
 import smtplib
 
 import pytest
 
-from extensions.mail_alert.mail_alert import send_mail
+from phc.extensions.mail_alert.mail_alert import send_mail
 
 
 class _FakeSMTP:
@@ -53,8 +53,8 @@ def _reset_instances():
 
 
 def _send(monkeypatch, smtp_cls=_FakeSMTP, **overrides):
-    monkeypatch.setattr("extensions.mail_alert.mail_alert.smtplib.SMTP", smtp_cls)
-    monkeypatch.setattr("extensions.mail_alert.mail_alert.smtplib.SMTP_SSL", smtp_cls)
+    monkeypatch.setattr("phc.extensions.mail_alert.mail_alert.smtplib.SMTP", smtp_cls)
+    monkeypatch.setattr("phc.extensions.mail_alert.mail_alert.smtplib.SMTP_SSL", smtp_cls)
     params = dict(
         smtp_host="smtp.example.com", smtp_port=587, security="starttls",
         username=None, password=None, timeout=10.0,
@@ -118,8 +118,8 @@ def test_ssl_security_uses_smtp_ssl_not_plain_smtp(monkeypatch):
     class _SslSMTP(_FakeSMTP):
         instances = []
 
-    monkeypatch.setattr("extensions.mail_alert.mail_alert.smtplib.SMTP", _PlainSMTP)
-    monkeypatch.setattr("extensions.mail_alert.mail_alert.smtplib.SMTP_SSL", _SslSMTP)
+    monkeypatch.setattr("phc.extensions.mail_alert.mail_alert.smtplib.SMTP", _PlainSMTP)
+    monkeypatch.setattr("phc.extensions.mail_alert.mail_alert.smtplib.SMTP_SSL", _SslSMTP)
     send_mail(smtp_host="smtp.example.com", smtp_port=465, security="ssl",
               username=None, password=None, timeout=10.0, from_addr="alerts@example.com",
               to=["a@example.com"], title="Alarm", message="Sensor triggered")
@@ -134,8 +134,8 @@ def test_non_ssl_security_uses_plain_smtp_not_smtp_ssl(monkeypatch):
     class _SslSMTP(_FakeSMTP):
         instances = []
 
-    monkeypatch.setattr("extensions.mail_alert.mail_alert.smtplib.SMTP", _PlainSMTP)
-    monkeypatch.setattr("extensions.mail_alert.mail_alert.smtplib.SMTP_SSL", _SslSMTP)
+    monkeypatch.setattr("phc.extensions.mail_alert.mail_alert.smtplib.SMTP", _PlainSMTP)
+    monkeypatch.setattr("phc.extensions.mail_alert.mail_alert.smtplib.SMTP_SSL", _SslSMTP)
     send_mail(smtp_host="smtp.example.com", smtp_port=587, security="starttls",
               username=None, password=None, timeout=10.0, from_addr="alerts@example.com",
               to=["a@example.com"], title="Alarm", message="Sensor triggered")

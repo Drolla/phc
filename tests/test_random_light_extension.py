@@ -1,19 +1,19 @@
-"""Tests for extensions.random_light.extension: configure()'s validation
+"""Tests for phc.extensions.random_light.extension: configure()'s validation
 and extension-default/instance/per-light cascade, RandomLightInstance.apply()'s
 write-diffing, RandomLightAction, and an end-to-end test through
-core.config.load_system(). The pure algorithm itself is tested in
+phc.core.config.load_system(). The pure algorithm itself is tested in
 tests/test_random_light.py."""
 
 from datetime import datetime
 
 import pytest
 
-from core.config import ConfigError, load_system
-from core.endpoint import Endpoint
-from core.registry import discover_extensions
-from core.scheduler import Scheduler
-from devices.virtual.device import VirtualDevice
-from extensions.random_light.extension import RandomLightAction, configure
+from phc.core.config import ConfigError, load_system
+from phc.core.endpoint import Endpoint
+from phc.core.registry import discover_extensions
+from phc.core.scheduler import Scheduler
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.random_light.extension import RandomLightAction, configure
 from tests.conftest import fetch_sync
 
 
@@ -40,7 +40,7 @@ def _light_entry(**overrides):
 
 
 def _base_params(**overrides):
-    """A complete params dict, as core.config._merge_extension_params would
+    """A complete params dict, as phc.core.config._merge_extension_params would
     hand to configure() -- every declared parameter present, instance-set
     or extension.yaml-defaulted. Direct configure() calls in these tests
     bypass _merge_extension_params, so (like tests/test_logdb_extension.py)
@@ -291,7 +291,7 @@ tasks:
     task.repeat = 0.0
 
     fixed_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
-    monkeypatch.setattr("extensions.random_light.extension.time.time", lambda: fixed_now)
+    monkeypatch.setattr("phc.extensions.random_light.extension.time.time", lambda: fixed_now)
 
     scheduler = Scheduler(system.devices, tasks=system.tasks, heartbeat=system.heartbeat,
                           tick_hooks=system.tick_hooks)

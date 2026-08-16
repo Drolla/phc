@@ -36,5 +36,11 @@ pytest
 
 See [`docs/developer/writing-a-device-module.md`](docs/developer/writing-a-device-module.md)
 for the module.yaml + device.py pattern; extensions follow the same
-package-plus-descriptor shape under `extensions/` (`extension.yaml` +
+package-plus-descriptor shape under `phc/extensions/` (`extension.yaml` +
 `extension.py`).
+
+A descriptor (`module.yaml`/`extension.yaml`) and any web assets are
+package *data*, not code, so a new one must also be covered by
+`[tool.setuptools.package-data]` in `pyproject.toml` — otherwise it works
+in a source checkout and is missing from every real install. The
+`wheel-install` CI job checks this.

@@ -1,10 +1,10 @@
-"""Tests for extensions.random_light.random_light: the pure, framework-
+"""Tests for phc.extensions.random_light.random_light: the pure, framework-
 agnostic random light control algorithm (in isolation from the extension/
 task-wiring layer)."""
 
 from datetime import datetime
 
-from extensions.random_light.random_light import Light, RandomLightController, WindowBound
+from phc.extensions.random_light.random_light import Light, RandomLightController, WindowBound
 
 
 def _ts(hour: int, minute: int = 0) -> float:

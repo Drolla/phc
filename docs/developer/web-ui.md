@@ -2,14 +2,14 @@
 
 ## Panel-kind registry
 
-[`extensions/web_ui/panels.py`](../../extensions/web_ui/panels.py) keeps its
-own kind → class registry, local to this extension — `core/registry.py` is
+[`phc/extensions/web_ui/panels.py`](../../phc/extensions/web_ui/panels.py) keeps its
+own kind → class registry, local to this extension — `phc/core/registry.py` is
 not involved, since only this extension's own `configure()` ever dispatches
 on panel kind. `Panel` is the base class (`describe()` returns the data
 `templates/_macros.html`'s `render_panel` macro needs); `DevicesPanel` (the
 selector-matched device/endpoint subtree), `GraphPanel` (a time-series
-chart backed by a named `extensions/logdb` instance), and `TimersPanel` (a
-create/edit/delete UI backed by a named `extensions/timer` instance — see
+chart backed by a named `phc/extensions/logdb` instance), and `TimersPanel` (a
+create/edit/delete UI backed by a named `phc/extensions/timer` instance — see
 [`docs/developer/timer.md`](timer.md)) are the three v1 kinds. Adding a new
 kind: subclass `Panel`, decorate with `@register_panel_kind("...")`, and
 add the matching branch to `templates/_macros.html`'s `render_panel` macro.
@@ -29,7 +29,7 @@ parameter.
 
 ## Widget-rendering architecture
 
-[`extensions/web_ui/widgets.py`](../../extensions/web_ui/widgets.py) is the
+[`phc/extensions/web_ui/widgets.py`](../../phc/extensions/web_ui/widgets.py) is the
 **one and only** place that decides which widget kind (`toggle`, `dropdown`,
 `slider`, `number`, `text`, `label`) represents an endpoint — purely from
 its existing generic metadata (`readable`/`writable`/`value_type`/`values`/
@@ -86,7 +86,7 @@ it directly — unlike `handle_api_set`'s empty `204`, a timer CRUD write is
 extension state, already committed by the time the handler returns, so
 there's no next-tick staleness to avoid rendering. See
 [`docs/developer/timer.md`](timer.md) for the full writeup, including how
-`extensions/timer` itself turns a timer into a real `core.task.Task`.
+`phc/extensions/timer` itself turns a timer into a real `core.task.Task`.
 
 ## `extension.py`
 

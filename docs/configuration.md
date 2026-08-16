@@ -323,7 +323,7 @@ for spawning/replacing tasks at runtime via `create_task`.
 
 `update:` intervals, a task's `repeat:`/`min_interval:`, an endpoint's
 `history.interval` (see [Value history & fractiles](scripting.md#value-history--fractiles)),
-and window bounds (e.g. [`extensions/random_light`](random-light.md)'s
+and window bounds (e.g. [`phc/extensions/random_light`](random-light.md)'s
 `windows:`) accept a **duration** string: a plain number of seconds, or a
 compact string combining fixed-length units `ms`/`s`/`m`/`h`/`D` (day)/`W`
 (week), e.g. `"10s"`, `"1h30m"`, `"2D12h"`. Calendar units (`Y`/`M`) aren't

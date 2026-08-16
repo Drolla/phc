@@ -1,12 +1,12 @@
-"""Tests for extensions.web_ui.panels: the local (not core.registry) panel
+"""Tests for phc.extensions.web_ui.panels: the local (not phc.core.registry) panel
 kind registry, DevicesPanel, GraphPanel, and TimersPanel."""
 
 import pytest
 
-from core.config import ConfigError
-from core.endpoint import Endpoint
-from devices.virtual.device import VirtualDevice
-from extensions.web_ui.panels import DevicesPanel, GraphPanel, TimersPanel, get_panel_kind_class
+from phc.core.config import ConfigError
+from phc.core.endpoint import Endpoint
+from phc.devices.virtual.device import VirtualDevice
+from phc.extensions.web_ui.panels import DevicesPanel, GraphPanel, TimersPanel, get_panel_kind_class
 
 
 def test_get_panel_kind_class_returns_devices_panel_by_default():
