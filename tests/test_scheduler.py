@@ -785,3 +785,113 @@ def test_start_and_stop_hook_exceptions_are_caught_and_do_not_block_siblings_or_
     assert len(stop_calls) == 1  # sibling still ran despite failing_stop
     assert "start hook" in caplog.text
     assert "stop hook" in caplog.text
+
+
+# ---------- heartbeat grid, shutdown latency, and the two clocks ----------
+
+def test_run_forever_holds_the_heartbeat_grid_despite_slow_ticks():
+    """The tick period must stay on the heartbeat grid, not become
+    `heartbeat + tick duration`. A device that takes ~40ms to read on a
+    50ms heartbeat used to yield a ~90ms period (80% slow, compounding
+    forever); the deadline grid should keep it near 50ms."""
+    from core.endpoint import Endpoint
+    from core.device import Device
+
+    class SlowDevice(Device):
+        def receive(self) -> dict:
+            time.sleep(0.04)
+            return {"value": 1}
+
+    ticks: list[float] = []
+
+    def record_tick(devices):
+        ticks.append(time.monotonic())
+
+    device = SlowDevice("slow", endpoints=[Endpoint("value")], update_interval=0.0)
+    scheduler = Scheduler({"slow": device}, heartbeat=0.05, tick_hooks=[record_tick])
+
+    thread = _run_forever_in_thread(scheduler)
+    time.sleep(0.6)
+    scheduler.stop()
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
+
+    assert len(ticks) >= 5, f"too few ticks to judge the grid: {len(ticks)}"
+    periods = [b - a for a, b in zip(ticks, ticks[1:])]
+    average = sum(periods) / len(periods)
+    # Serial (pre-fix) behaviour would sit at ~0.09s. Allow generous slack
+    # for CI scheduling jitter while still failing the old implementation.
+    assert average < 0.075, f"heartbeat drifted: average period {average:.3f}s"
+
+
+def test_stop_interrupts_the_heartbeat_sleep_instead_of_waiting_it_out():
+    """stop() must not have to wait out a pending heartbeat sleep. With a
+    5s heartbeat, the old flag-only stop() took ~5s to return; waking the
+    sleep should make it near-instant."""
+    from core.endpoint import Endpoint
+    from devices.virtual.device import VirtualDevice
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=1.0)
+    scheduler = Scheduler({"living_light": light}, heartbeat=5.0)
+
+    thread = _run_forever_in_thread(scheduler)
+    time.sleep(0.1)     # let it get into the heartbeat sleep
+
+    start = time.perf_counter()
+    scheduler.stop()
+    thread.join(timeout=6.0)
+    elapsed = time.perf_counter() - start
+
+    assert not thread.is_alive()
+    assert elapsed < 1.0, f"stop() waited out the heartbeat sleep: {elapsed:.3f}s"
+
+
+def test_device_polling_survives_a_wall_clock_step_backwards():
+    """Device intervals run on the monotonic clock, so an NTP correction or
+    DST change that moves time.time() backwards must not stall polling.
+    Driven through tick()'s explicit clocks: the wall clock jumps back an
+    hour while the monotonic clock keeps advancing."""
+    from core.endpoint import Endpoint
+    from devices.virtual.device import VirtualDevice
+
+    light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=10.0)
+    scheduler = Scheduler({"living_light": light})
+
+    scheduler.tick(now=1_000_000.0, now_mono=100.0)
+    assert light.next_due() == 110.0        # expressed in monotonic terms
+
+    # Wall clock jumps back an hour; monotonic advances past the interval.
+    scheduler.tick(now=1_000_000.0 - 3600.0, now_mono=111.0)
+    assert light.next_due() == 121.0, "device was not re-polled after a wall-clock step back"
+    scheduler.close()
+
+
+def test_task_cooldown_survives_a_wall_clock_step_backwards():
+    """min_interval is a cooldown, so it is measured on the monotonic clock
+    -- a wall-clock step backwards must not freeze it (nor a step forwards
+    end it early)."""
+    from core.endpoint import Endpoint
+    from devices.virtual.device import VirtualDevice
+
+    light = VirtualDevice("light", endpoints=[Endpoint("state", writable=True)],
+                           update_interval=None)
+    devices = {"light": light}
+    fired: list[float] = []
+
+    class RecordingAction(LogAction):
+        def perform(self, devices):
+            fired.append(1.0)
+
+    task = Task("cooldown", min_interval=60.0, actions=[RecordingAction()])
+
+    assert task.run(1_000_000.0, devices, 100.0) is True
+    assert len(fired) == 1
+    # Wall clock jumps back an hour; only 10 monotonic seconds have passed,
+    # so the cooldown is still in effect and must still block.
+    assert task.run(1_000_000.0 - 3600.0, devices, 110.0) is False
+    assert len(fired) == 1
+    # Once the cooldown genuinely elapses on the monotonic clock, it fires.
+    assert task.run(1_000_000.0 - 3600.0, devices, 161.0) is True
+    assert len(fired) == 2
