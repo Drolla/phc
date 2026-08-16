@@ -1,5 +1,5 @@
 # Demonstrates extensions/debug_portal: run with
-#   python phc.py --config examples/debug_portal_system.yaml
+#   python -m phc --config examples/debug_portal_system.yaml
 # then open http://127.0.0.1:8081/ in a browser -- the task queue, the
 # device poll queue, and every endpoint's state/event/last_valid_state
 # update once per heartbeat over Server-Sent Events, with any cell that

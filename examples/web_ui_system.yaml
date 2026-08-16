@@ -1,5 +1,5 @@
 # Demonstrates extensions/web_ui: run with
-#   python phc.py --config examples/web_ui_system.yaml
+#   python -m phc --config examples/web_ui_system.yaml
 # then open http://127.0.0.1:8080/ in a browser.
 #
 # Two pages, exercising every inferred widget kind plus a kind: graph panel:
