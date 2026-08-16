@@ -1,8 +1,8 @@
 # Razberry/zWay Z-Wave integration
 
-[`devices/zway/`](../devices/zway/) controls Z-Wave devices through a
+[`phc/devices/zway/`](../phc/devices/zway/) controls Z-Wave devices through a
 Razberry/zWay controller, via
-[`thc_zWay.js`](../devices/zway/thc_zWay.js), a small helper script from
+[`thc_zWay.js`](../phc/devices/zway/thc_zWay.js), a small helper script from
 the earlier THC project
 (https://github.com/Drolla/thc/tree/master/modules/thc_zWay). Copy
 `thc_zWay.js` into the zWay server's automation folder yourself (PHC does
@@ -43,7 +43,7 @@ additionally needs its own `node` param set (the zWay node number) — used
 for a one-time `Configure_TagReader` setup call the first time that device
 is polled, the same `node` used to fill in any `{node}` template below.
 
-`devices/zway/module.yaml` ships a two-axis profile library instead of
+`phc/devices/zway/module.yaml` ships a two-axis profile library instead of
 writing every endpoint out fully explicitly: an `endpoint_profile` (named
 after its command group, e.g. `switch_binary`,
 `sensor_multilevel_temperature` — no module-name prefix needed, since a
@@ -51,7 +51,7 @@ profile is only ever resolved against the module of the device referencing
 it) captures the *access pattern* — type, units, writability — shared by
 every product using that command group, while a `device_profile` names one
 *product* — e.g. `fibaro-fgs222`, `everspring-st814`, `popp-z-weather`
-(see [`devices/zway/module.yaml`](../devices/zway/module.yaml) for the full
+(see [`phc/devices/zway/module.yaml`](../phc/devices/zway/module.yaml) for the full
 list) — supplying that product's own addresses, which an `endpoint_profile`
 never hardcodes (the same command group wires up differently on different
 hardware). Set `node:` and `device_profile:` directly on the device to get
@@ -102,7 +102,7 @@ library.
 ## Adding a new device profile
 
 Adding a Z-Wave device this module doesn't have a profile for yet --
-either to `devices/zway/module.yaml` for a real shared product, or to your
+either to `phc/devices/zway/module.yaml` for a real shared product, or to your
 own system config's `modules.zway.device_profiles` (see [Extending a
 module's profile library from a system
 config](profiles.md#extending-a-modules-profile-library-from-a-system-config))

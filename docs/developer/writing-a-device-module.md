@@ -1,15 +1,15 @@
 # Writing a device module
 
-A new device type is a new `devices/<name>/` package containing:
+A new device type is a new `phc/devices/<name>/` package containing:
 
 - `device.py` — a `Device` subclass decorated with `@register_module("<name>")`.
 - `module.yaml` — its declared parameters, endpoints, and (if any endpoint
   needs a protocol field like zway's `command_group`/`address`) declared
   `endpoint_parameters:`.
 
-See any existing module (e.g. [`devices/virtual/`](../../devices/virtual/))
-for the minimal shape, [`devices/meteoswiss/`](../../devices/meteoswiss/) for
-a fuller, network-backed example, or [`devices/zway/`](../../devices/zway/)
+See any existing module (e.g. [`phc/devices/virtual/`](../../phc/devices/virtual/))
+for the minimal shape, [`phc/devices/meteoswiss/`](../../phc/devices/meteoswiss/) for
+a fuller, network-backed example, or [`phc/devices/zway/`](../../phc/devices/zway/)
 for one using `endpoint_parameters:` and a two-axis endpoint/device profile
 library.
 

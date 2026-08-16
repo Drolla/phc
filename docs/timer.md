@@ -1,8 +1,8 @@
 # Timer
 
-[`extensions/timer/`](../extensions/timer/) lets you create, edit, and
+[`phc/extensions/timer/`](../phc/extensions/timer/) lets you create, edit, and
 delete timers at runtime — from the timer panel in
-[`extensions/web_ui`](web-ui.md) — instead of having to hand-author a
+[`phc/extensions/web_ui`](web-ui.md) — instead of having to hand-author a
 `tasks:` entry and restart PHC. Each timer sets or toggles one target
 device endpoint at a chosen time, optionally repeating, and is persisted to
 its own YAML file so it survives a restart.
@@ -34,7 +34,7 @@ extensions:
   restore every pending timer.
 - `selectors` (default `["*"]`) — a list of `"<device-glob>/<endpoint-glob>"`
   patterns, or bare `"*"` for everything writable — same glob syntax as
-  [`extensions/logdb`](logdb.md)'s `selectors`. Only endpoints matched here
+  [`phc/extensions/logdb`](logdb.md)'s `selectors`. Only endpoints matched here
   can be picked as a timer's target, in both the web UI and the CRUD API.
   Every matched endpoint must be writable.
 - `catch_up` (default `5m`) — grace window for a one-shot timer whose

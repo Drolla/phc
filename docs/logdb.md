@@ -1,6 +1,6 @@
 # Log database (logdb)
 
-[`extensions/logdb/`](../extensions/logdb/) is a CSV-backed,
+[`phc/extensions/logdb/`](../phc/extensions/logdb/) is a CSV-backed,
 in-memory-buffered log of numeric device endpoint state: an
 `extensions.logdb.<instance>` entry defines one log, sampled whenever a
 task with `kind: log_db, instance: "logdb.<instance>"` fires. Only
@@ -44,7 +44,7 @@ tasks:
   header line, letting it grow in place as new devices/endpoints are added
   across restarts without rewriting the whole file.
 
-A named `logdb` instance also backs [`extensions/web_ui/`](../extensions/web_ui/)'s
+A named `logdb` instance also backs [`phc/extensions/web_ui/`](../phc/extensions/web_ui/)'s
 `kind: graph` panel, which charts its logged history — see [Web UI](web-ui.md).
 
 Not to be confused with an endpoint's own `history:` field (see [Value

@@ -35,8 +35,8 @@ state, all on a fixed-heartbeat scheduler.
 - **Device** — a node in a tree that exposes zero or more **endpoints**
   (readable/writable state) and may have child devices, backed by a
   plugin **module** declared in a system YAML file.
-- **Module** — a device plugin: a `devices/<name>/device.py` (the `Device`
-  subclass) plus a `devices/<name>/module.yaml` describing its parameters
+- **Module** — a device plugin: a `phc/devices/<name>/device.py` (the `Device`
+  subclass) plus a `phc/devices/<name>/module.yaml` describing its parameters
   and endpoints declaratively. Modules are discovered automatically at
   startup.
 - **Task** — an automation triggered either by a schedule (`time`/`repeat`)
@@ -49,8 +49,8 @@ state, all on a fixed-heartbeat scheduler.
 See [`docs/concepts.md`](docs/concepts.md) for the full picture (including
 endpoint types/units/formatting), [`examples/`](examples/) for complete
 system configurations, and the `module.yaml` file in each
-[`devices/`](devices/) subfolder for what parameters/endpoints a given
-device module supports. [`extensions/`](extensions/) is the home for
+[`phc/devices/`](phc/devices/) subfolder for what parameters/endpoints a given
+device module supports. [`phc/extensions/`](phc/extensions/) is the home for
 non-device PHC extensions, following the same package-plus-descriptor
 pattern as device modules.
 
@@ -79,7 +79,7 @@ Run PHC against one of the example systems:
 phc --config examples/virtual_system.yaml
 ```
 
-(`pip install -e .` installs the `phc` console command; `python phc.py
+(`pip install -e .` installs the `phc` console command; `python -m phc
 --config ...` works the same way when run from the repo root without
 installing.)
 

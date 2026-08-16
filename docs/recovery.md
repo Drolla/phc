@@ -1,6 +1,6 @@
 # Recovery
 
-[`extensions/recovery/`](../extensions/recovery/) persists a selected set
+[`phc/extensions/recovery/`](../phc/extensions/recovery/) persists a selected set
 of writable device endpoint values to a small YAML file, so PHC can
 restore them to their last-known-good state after a crash or restart —
 instead of every device falling back to its hardcoded `default:` — e.g. a
@@ -23,7 +23,7 @@ extensions:
 - `selectors` (required) — a list of `"<device-glob>/<endpoint-glob>"`
   patterns (e.g. `"house.desk_lamp/power"`, `"house.*/setpoint"`), or bare
   `"*"` for everything writable — same glob syntax as
-  [`extensions/logdb`](logdb.md)'s `selectors`. Every matched endpoint must
+  [`phc/extensions/logdb`](logdb.md)'s `selectors`. Every matched endpoint must
   be writable — a selector that matches a read-only endpoint, or matches
   nothing, fails at startup rather than silently persisting less than
   configured.

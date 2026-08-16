@@ -5,14 +5,14 @@
 Given a description of one or more Z-Wave devices, produce an
 `endpoint_profiles:`/`device_profiles:` YAML snippet for the `zway` module.
 Display the snippet in chat only -- do not add it to
-[`devices/zway/module.yaml`](../../devices/zway/module.yaml) or any other
+[`phc/devices/zway/module.yaml`](../../phc/devices/zway/module.yaml) or any other
 file.
 
 ## References
 
 Consult these two files:
 
-- [`devices/zway/module.yaml`](../../devices/zway/module.yaml) -- existing
+- [`phc/devices/zway/module.yaml`](../../phc/devices/zway/module.yaml) -- existing
   `endpoint_profiles`/`device_profiles` to reuse, their shape, and the
   allowed `device_profiles` metadata keys (`brand`, `type`, `product`,
   `description`, `endpoints`).
@@ -47,10 +47,10 @@ Do not check other files from this project/repo.
   value with a YAML comment flagging it for review, even though this
   deviates from the comment-free style of existing entries.
 - Output must be valid YAML, styled like the existing entries in
-  [`devices/zway/module.yaml`](../../devices/zway/module.yaml).
+  [`phc/devices/zway/module.yaml`](../../phc/devices/zway/module.yaml).
 - New endpoint_profile names and device_profile keys follow the rules
   already used in
-  [`devices/zway/module.yaml`](../../devices/zway/module.yaml).
+  [`phc/devices/zway/module.yaml`](../../phc/devices/zway/module.yaml).
 - Value overrides are allowed only when explicitly provided by the user.
   The skill must not infer overrides.
 - Writable must be inherited from the endpoint_profile unless the user
@@ -60,7 +60,7 @@ Do not check other files from this project/repo.
 - `description` and `endpoints` are required for every device_profile;
   `brand`, `type`, and `product` are included when known and omitted
   otherwise, matching existing entries in
-  [`devices/zway/module.yaml`](../../devices/zway/module.yaml).
+  [`phc/devices/zway/module.yaml`](../../phc/devices/zway/module.yaml).
 - When multiple devices are provided, output all of them in one YAML
   block, preserving user order. Deduplicate endpoint_profiles across the
   whole output.

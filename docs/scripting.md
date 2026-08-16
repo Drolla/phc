@@ -27,7 +27,7 @@ tasks:
 No imports, no method-call chains beyond what's explicitly allowed, no
 unbounded loops — this is mistake-containment for a trusted, locally-
 authored YAML file, not a sandbox against a hostile author (see
-`core/scripting.py`'s own docstring). The rest of this page covers what
+`phc/core/scripting.py`'s own docstring). The rest of this page covers what
 [the shared sandbox](#the-shared-sandbox) offers all three surfaces, the
 two ways to write a task's [condition](#conditions), the different
 `kind:`s an [action](#actions) can take and when to reach for each, and
@@ -161,7 +161,7 @@ condition: { expr: "event('surveillance.armed') == 1" }
 
 Forms 2/3 and 4/5 are equivalent pairs because `event(ref)` *is*
 `state(ref)` on the tick of a change (both come from the same
-`update_state()` commit — see `core/endpoint.py`) and `None` on every
+`update_state()` commit — see `phc/core/endpoint.py`) and `None` on every
 other tick, so `event(ref) == 1` already implies "changed, to 1" in one
 comparison. Reach for the shorthand (form 1) when a single endpoint's
 value is all the condition needs — it's the shortest, and doesn't require
@@ -307,7 +307,7 @@ doesn't need a `code:` string embedded inside another `code:` string. See
 ### Sticky values
 
 `sticky(ref)` reads a since-last-`reset_sticky()` min/max window on one
-endpoint — the same mechanism [`extensions/logdb`](logdb.md) uses to make
+endpoint — the same mechanism [`phc/extensions/logdb`](logdb.md) uses to make
 sure a brief spike between two samples isn't lost. Every endpoint a
 condition/script/`set expr:` references this way is subscribed under the
 owning task's tag (`task_tag`, typically the task's own `tag:`) as its
@@ -435,10 +435,10 @@ rounding), which agrees with it only for some pool sizes/fractions.
 
 A history buffer is in-memory only: it starts empty on every restart and
 fills back up from scratch as new samples arrive (no persistence, and
-deliberately not restored by [`extensions/recovery`](recovery.md) — a
+deliberately not restored by [`phc/extensions/recovery`](recovery.md) — a
 days-old reading would actively corrupt the smoothing for a full window
 after restart). It is a different mechanism from
-[`extensions/logdb`](logdb.md): `logdb` is a long-term, disk-backed,
+[`phc/extensions/logdb`](logdb.md): `logdb` is a long-term, disk-backed,
 graphable series driven by its own `log_db` task; `history:` is a short,
 volatile ring buffer read directly by a script/condition/`set expr:`, with
 no separate task or storage of its own. Nothing stops you from also
