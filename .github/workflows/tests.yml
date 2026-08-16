@@ -25,3 +25,65 @@ jobs:
 
       - name: Run test suite
         run: pytest
+
+  # The test suite runs against the source tree, so it cannot notice a
+  # packaging mistake: for most of this project's life the wheel shipped
+  # no module.yaml, no extension.yaml, and no web assets at all, and only
+  # `pip install -e .` produced a working install. This job installs a
+  # built wheel into a clean environment and runs it from a directory
+  # outside the checkout, which is the only way that class of bug shows
+  # up.
+  wheel-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Install the wheel into a clean venv
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+
+      - name: Assert the wheel carries its descriptors and web assets
+        run: |
+          /tmp/venv/bin/python - <<'PY'
+          import importlib.resources as res
+          # One descriptor per bundled module/extension, plus the two web
+          # extensions' templates and static assets -- all package data,
+          # all silently absent before pyproject.toml declared them.
+          for pkg, name in [("phc.devices", "module.yaml"),
+                            ("phc.extensions", "extension.yaml")]:
+              roots = [p for p in res.files(pkg).iterdir() if p.is_dir() and p.name != "__pycache__"]
+              assert roots, f"no subpackages found under {pkg}"
+              for root in roots:
+                  assert (root / name).is_file(), f"missing {root.name}/{name}"
+              print(f"{pkg}: {len(roots)} x {name} present")
+          for pkg in ("phc.extensions.web_ui", "phc.extensions.debug_portal"):
+              for kind in ("templates", "static"):
+                  entries = list((res.files(pkg) / kind).iterdir())
+                  assert entries, f"{pkg}/{kind} is empty"
+                  print(f"{pkg}/{kind}: {len(entries)} file(s)")
+          PY
+
+      - name: Run an example from outside the source tree
+        run: |
+          mkdir -p /tmp/run
+          cp -r examples/. /tmp/run/
+          cd /tmp/run
+          # Boot the full example (every bundled module and extension),
+          # then stop it: the run must reach "started" and bind its
+          # servers, which requires every descriptor and asset above to
+          # have been found at runtime, not just to exist.
+          timeout -s INT 15 /tmp/venv/bin/phc --config virtual_full_system.yaml > run.log 2>&1 || true
+          cat run.log
+          grep -q "phc: started:" run.log
+          grep -q "web_ui.home listening" run.log

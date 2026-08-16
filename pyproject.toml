@@ -18,13 +18,22 @@ dev = [
 ]
 
 [project.scripts]
-phc = "phc:main"
-
-[tool.setuptools]
-py-modules = ["phc"]
+phc = "phc.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["core*", "devices*", "extensions*"]
+include = ["phc*"]
+
+# Device modules and extensions are a Python package PLUS a descriptor
+# (module.yaml/extension.yaml) that is read at runtime, and the two web
+# extensions serve Jinja templates and static assets from their own
+# package directories. None of that is a .py file, so without this section
+# a wheel contains the code and nothing else -- and every install that
+# isn't `pip install -e .` fails at startup with "module 'sun' has no
+# module.yaml", or serves an unstyled UI. Guarded by the
+# wheel-install job in .github/workflows/tests.yml.
+[tool.setuptools.package-data]
+"phc.devices" = ["*/module.yaml"]
+"phc.extensions" = ["*/extension.yaml", "*/templates/*", "*/static/*"]
 
 [tool.pytest.ini_options]
 # testpaths keeps a bare `pytest` from also walking examples/ and fusion18/.
