@@ -26,6 +26,20 @@ py-modules = ["phc"]
 [tool.setuptools.packages.find]
 include = ["core*", "devices*", "extensions*"]
 
+[tool.pytest.ini_options]
+# testpaths keeps a bare `pytest` from also walking examples/ and fusion18/.
+testpaths = ["tests"]
+# --strict-markers/--strict-config turn a typo'd marker or an unknown
+# setting in this section into an error rather than a silently ignored
+# line.
+addopts = "--strict-markers --strict-config"
+# The suite drives asyncio directly (asyncio.run / Scheduler's own loop)
+# rather than through pytest-asyncio, so an "async def" test would be
+# silently skipped as a non-awaited coroutine -- warn loudly instead.
+filterwarnings = [
+    "error::RuntimeWarning:_pytest.python",
+]
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"

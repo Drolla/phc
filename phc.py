@@ -129,6 +129,10 @@ def main(argv=None):
                 len(system.devices), len(system.scheduled_devices()), len(system.tasks),
                 system.heartbeat)
 
+    # Scheduler.stop() is thread/signal-safe and wakes the heartbeat sleep
+    # immediately (see its docstring), so a plain signal.signal handler is
+    # enough here -- and unlike loop.add_signal_handler it works on Windows
+    # too, and needs no reference to a loop the Scheduler creates lazily.
     def _stop(_signum, _frame):
         logger.info("shutting down")
         scheduler.stop()

@@ -907,10 +907,12 @@ def test_history_tick_hook_samples_only_once_per_interval(monkeypatch):
     records = _collect_history_records({"d": device})
     hook = _make_history_tick_hook(records)
 
+    # Monotonic, not time.time(): history sampling is an interval like any
+    # other in the system (see core.scheduler.Scheduler's class docstring).
     now = [1000.0]
-    monkeypatch.setattr("core.config.time.time", lambda: now[0])
+    monkeypatch.setattr("core.config.time.monotonic", lambda: now[0])
 
-    hook({"d": device})  # next_due starts at 0.0 -> immediately due
+    hook({"d": device})  # next_due starts at -inf -> immediately due
     assert ep.get_history() == [1.0]
 
     ep.set(2.0)
@@ -932,7 +934,7 @@ def test_history_tick_hook_retries_after_a_skipped_none_sample(monkeypatch):
     hook = _make_history_tick_hook(records)
 
     now = [1000.0]
-    monkeypatch.setattr("core.config.time.time", lambda: now[0])
+    monkeypatch.setattr("core.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # ep.get() is still None -> record_history() is False
     assert ep.get_history() == []

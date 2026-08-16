@@ -122,28 +122,34 @@ class Device:
     # ---------- 2. PHC control interface (driven by the scheduler) ----------
 
     async def fetch(self) -> None:
-        """Stage this device's own raw state via receive_async(), then
-        recurse into children. The single always-async orchestration method --
-        identical for every device, sync-bridged or native-async.
+        """Stage this device's own raw state via receive_async(). The single
+        always-async orchestration method -- identical for every device,
+        sync-bridged or native-async.
+
+        Deliberately NOT recursive into children, for the same reason
+        update_state() isn't (see that method): core.scheduler.Scheduler
+        drives every device directly from its flat device dict (parent and
+        descendant alike, see core.config._build_device), so recursing here
+        would fetch a child twice whenever both it and its parent are due --
+        concurrently, at that. It also makes each device's own `update:`
+        authoritative: a child no longer inherits its parent's poll cadence
+        just by being nested under it.
 
         In-flight guard: if a previous receive_async() bridge call (this
         device's own blocking receive(), offloaded to a worker thread) is
         still running -- only possible when the Scheduler's fetch_timeout
-        abandoned that await, since a thread can't be force-cancelled -- skip
-        this WHOLE subtree fetch (no restage, no recursion) until that thread
-        clears, so it's never entered a second time and children aren't
-        redundantly re-walked either. A native-async device's receive_async()
-        override never touches this flag, so the check is always a no-op for
-        it (a real coroutine is actually cancelled by fetch_timeout -- no
-        orphaned call to guard against)."""
+        abandoned that await, since a thread can't be force-cancelled --
+        skip this fetch until that thread clears, so receive() is never
+        entered a second time concurrently. A native-async device's
+        receive_async() override never touches this flag, so the check is
+        always a no-op for it (a real coroutine is actually cancelled by
+        fetch_timeout -- no orphaned call to guard against)."""
         if self._fetch_thread_running:
             return
         raw = await self.receive_async()
         for key, value in raw.items():
             if key in self.endpoints:
                 self.endpoints[key].set_raw(value)
-        for child in self.children.values():
-            await child.fetch()
 
     def update_state(self):
         """Commit every endpoint's staged value (see Endpoint.update_state).
@@ -158,19 +164,26 @@ class Device:
             ep.update_state()
 
     def due(self, now: float) -> bool:
-        """True if this device is unscheduled-eligible now: has an
-        update_interval and at least that long has passed since mark_run()."""
+        """True if this device is poll-eligible now: has an update_interval
+        and at least that long has passed since mark_run().
+
+        `now` is whatever clock the caller drives the pair with -- the
+        Scheduler passes time.monotonic(), so a wall-clock step (NTP, DST)
+        can neither stall polling nor trigger a catch-up burst; see
+        core.scheduler.Scheduler's class docstring."""
         if self.update_interval is None:
             return False
         return (now - self._last_run) >= self.update_interval
 
     def mark_run(self, now: float):
-        """Record `now` as this device's last poll time, for due()."""
+        """Record `now` as this device's last poll time, for due(). Same
+        clock as due() -- monotonic, when driven by the Scheduler."""
         self._last_run = now
 
     def next_due(self) -> float:
-        """Return the time.time() at which due() next becomes True, or +inf
-        for a device with no update_interval (never auto-polled)."""
+        """Return the clock reading (see due()) at which due() next becomes
+        True, or +inf for a device with no update_interval (never
+        auto-polled)."""
         if self.update_interval is None:
             return float("inf")
         return self._last_run + self.update_interval

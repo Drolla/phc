@@ -503,22 +503,33 @@ class Task:
         self._finished = False
         self._last_fired = float("-inf")
 
-    def run(self, now: float, devices: dict[str, Device]) -> bool:
+    def run(self, now: float, devices: dict[str, Device],
+            now_mono: float | None = None) -> bool:
         """Gate on due_time, condition, then min_interval (each checked once
         per call, not per action) -- a fixed short-circuit chain, so a false
         condition or a cooldown still in effect returns before
         min_interval's own bookkeeping (`_last_fired`) is touched. Runs all
         actions and rearms/finishes (see docs/configuration.md#tasks) if
-        every gate passes. Returns True iff the actions ran."""
+        every gate passes. Returns True iff the actions ran.
+
+        Two clocks: `now` is wall-clock, since due_time is an absolute time
+        of day (see core.intervals.parse_time); `now_mono` is monotonic and
+        measures only the min_interval cooldown, so a wall-clock step
+        backwards can't freeze a cooldown for hours (nor a step forwards
+        end one early). `now_mono` defaults to `now`, keeping a
+        single-clock caller working unchanged -- see
+        core.scheduler.Scheduler's class docstring."""
+        if now_mono is None:
+            now_mono = now
         if self.due_time is not None and now < self.due_time:
             return False
         if self.condition is not None and not self.condition.evaluate(devices):
             return False
-        if self.min_interval and (now - self._last_fired) < self.min_interval:
+        if self.min_interval and (now_mono - self._last_fired) < self.min_interval:
             return False
         for action in self.actions:
             action.perform(devices)
-        self._last_fired = now
+        self._last_fired = now_mono
         if self.due_time is not None:
             # See class docstring: a bare condition task (due_time still
             # None) skips this branch entirely and just stays resident.

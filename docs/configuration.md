@@ -137,6 +137,13 @@ or `params` (reserved even though it's no longer a device/modules key
 either, since a parameter literally named `params` would be indistinguishable
 from the old nested-dict spelling).
 
+Each device is polled strictly on **its own** resolved `update:` interval,
+including a device nested under a `host` (or any other parent) — nesting
+groups devices in the tree and in their qualified ids, but never makes one
+device's poll cadence depend on another's. A child with no interval at all
+(`update: null` at every level) is therefore never auto-polled, whatever
+its parent does.
+
 A parameter declared `scope: module` (e.g. `meteoswiss`'s `data_url`/
 `cache_time`) is different: it has exactly one value for every device of
 that module type, settable *only* directly under `modules.<name>` — setting
@@ -269,6 +276,38 @@ device's change exactly one tick after the value was actually fetched --
 never on the same tick the change was observed. This is deliberate and
 keeps every task's view of the world consistent within a tick, rather than
 having task order affect which tasks see a change first.
+
+### Which clock each schedule runs on
+
+PHC measures **intervals** and **absolute times** on two different clocks,
+so that a clock correction can't disturb the polling loop:
+
+| Setting | Clock | Why |
+| --- | --- | --- |
+| `heartbeat:` | monotonic | A tick period is an interval, not a time of day. |
+| a device's `update:` | monotonic | Ditto — "every 10 minutes" means elapsed minutes. |
+| an endpoint's `history.interval` | monotonic | Ditto. |
+| a task's `min_interval:` | monotonic | A cooldown is elapsed time since the last firing. |
+| a task's `time:` | wall clock | It names an actual time of day (`"22:00"`, an ISO date). |
+| a task's `repeat:` | wall clock | It advances an absolute `time:`, staying anchored to the clock. |
+
+The monotonic clock only ever moves forwards, at a steady rate, regardless
+of what happens to the system clock. So when NTP corrects a drifting
+Raspberry Pi clock, or a daylight-saving change shifts local time by an
+hour, polling simply continues: nothing stalls waiting for the wall clock
+to catch back up, and nothing fires a burst of catch-up polls.
+
+Wall-clock scheduling stays exactly that, though: a task set for `22:00`
+fires at 22:00 local time, and a DST change moves it with the clock — which
+is the whole point of writing a time of day rather than an interval.
+
+The heartbeat itself is a **fixed grid**: each tick is scheduled one
+heartbeat after the previous tick's *start*, not after it finishes, so a
+tick that takes 200ms on a 1s heartbeat is still followed by the next tick
+800ms later — the period stays 1s rather than becoming 1.2s. If a tick
+overruns its heartbeat entirely, the missed grid points are skipped (with
+one WARNING per overrun episode) rather than queued up and worked off in a
+burst.
 
 ### Actions
 
