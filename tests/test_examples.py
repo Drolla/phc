@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from phc.core.config import ConfigError, load_system
+from phc.core.task import TaskRegistry
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
@@ -81,9 +82,9 @@ def test_example_config_loads(path, isolated_run):
 
     system = load_system(path)
     assert system.devices, f"{path.name}: built no devices"
-    # Every task's actions resolved against real phc/devices/extensions at
+    # Every task's actions resolved against real devices/extensions at
     # build time; reaching here means none of that raised.
-    assert isinstance(system.tasks, list)
+    assert isinstance(system.tasks, TaskRegistry)
 
 
 def test_every_example_is_covered():

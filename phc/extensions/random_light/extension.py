@@ -10,7 +10,7 @@ picked up at startup."""
 import re
 import time
 
-from phc.core.config import ConfigError
+from phc.core.errors import ConfigError
 from phc.core.device import Device
 from phc.core.intervals import parse_duration
 from phc.core.registry import register_task_kind

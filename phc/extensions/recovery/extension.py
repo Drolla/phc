@@ -9,7 +9,7 @@ start_hooks/tick_hooks/stop_hooks timing."""
 
 import logging
 
-from phc.core.config import ConfigError
+from phc.core.errors import ConfigError
 from phc.core.device import Device
 from phc.core.selectors import resolve_selectors
 from phc.extensions.recovery.recovery import RecoveryStore

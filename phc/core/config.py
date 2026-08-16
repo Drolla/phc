@@ -13,12 +13,13 @@ import yaml
 
 from phc.core.device import Device
 from phc.core.endpoint import LOG_AGGREGATIONS, VALUE_TYPES, Endpoint
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration, parse_time
 from phc.core.logging_setup import configure_logging
 from phc.core.registry import (discover_extensions, discover_modules, get_device_class,
                             get_endpoint_class, get_task_kind_class)
 from phc.core import scripting
-from phc.core.task import Condition, ExprCondition, Task, resolve_endpoint_ref
+from phc.core.task import Condition, ExprCondition, Task, TaskRegistry, resolve_endpoint_ref
 
 # Descriptor lookup goes through importlib.resources, not a path derived
 # from this file's own location: a module.yaml/extension.yaml is package
@@ -32,8 +33,11 @@ _DEVICES_PACKAGE = "phc.devices"
 _EXTENSIONS_PACKAGE = "phc.extensions"
 
 
-class ConfigError(Exception):
-    """Raised for any invalid or inconsistent system YAML."""
+# ConfigError now lives in phc.core.errors (see that module for why), and
+# is re-exported here because `from phc.core.config import ConfigError` is
+# the spelling every extension and test already uses -- and the natural
+# one, since this is the module that raises it.
+__all__ = ["ConfigError", "System", "load_system"]
 
 
 _include_stack: list[Path] = []
@@ -482,7 +486,7 @@ class ExtensionDescriptor:
     """Parsed extension.yaml for one extension package. Structurally like
     ModuleDescriptor, but every extension instance (e.g. one named logdb
     entry) is merged independently against the same descriptor -- there is
-    no module/device scope split since extensions aren't phc.devices."""
+    no module/device scope split since extensions aren't devices."""
 
     def __init__(self, name: str, raw: dict):
         self.name = name
@@ -1033,8 +1037,8 @@ def _subscribe_referenced_endpoints(paths: set[str], flat: dict[str, Device], ta
         sticky_endpoints.add(endpoint)
 
 
-def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
-                      sticky_endpoints: set) -> Condition | ExprCondition | None:
+def _build_condition(spec: dict | None, task_tag: str,
+                      registry: TaskRegistry) -> Condition | ExprCondition | None:
     """Build a task's `condition:` YAML entry into a Condition or
     ExprCondition, or None if absent. Requires exactly one of `device` (the
     {device, changed, value} shorthand -- see Condition's docstring for how
@@ -1050,6 +1054,7 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
     tick regardless of when/whether this condition is evaluated."""
     if spec is None:
         return None
+    flat, sticky_endpoints = registry.flat, registry.sticky_endpoints
     has_device = "device" in spec
     has_expr = "expr" in spec
     if has_device == has_expr:
@@ -1072,9 +1077,7 @@ def _build_condition(spec: dict | None, flat: dict[str, Device], task_tag: str,
                       changed=spec.get("changed"), value=spec.get("value"))
 
 
-def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: list[Task],
-                   extensions: dict[str, object], sticky_endpoints: set,
-                   task_specs: dict[str, dict] | None = None):
+def _build_action(spec: dict, task_tag: str, registry: TaskRegistry):
     """Build one `action:`/`actions[]` YAML entry into an Action instance,
     dispatching on `kind` (via the task-kind registry). Every kind is built
     the same way: device_id/endpoint_key are resolved from `device:` when
@@ -1098,6 +1101,7 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     whitelist. A device-oriented kind (e.g. set, toggle) whose `device:` is
     missing builds without error here -- it fails at that action's own
     perform() instead, the first time it fires."""
+    flat, sticky_endpoints = registry.flat, registry.sticky_endpoints
     kind = spec.get("kind")
     if kind is None:
         raise ConfigError(f"task {task_tag!r}: action requires a 'kind'")
@@ -1115,9 +1119,14 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
             raise ConfigError(f"task {task_tag!r}: action device {device_id!r} not found")
 
     try:
+        # The individual context kwargs are kept (rather than passing the
+        # registry alone) because they are the published Action constructor
+        # API that every extension's own action kind already accepts --
+        # see e.g. phc.extensions.logdb's LogDbAction(extensions=...).
         action = action_cls(device_id=device_id, endpoint_key=endpoint_key, flat=flat,
-                             tasks=tasks, extensions=extensions, task_tag=task_tag,
-                             sticky_endpoints=sticky_endpoints, task_specs=task_specs, **extra)
+                             tasks=registry, extensions=registry.extensions, task_tag=task_tag,
+                             sticky_endpoints=sticky_endpoints,
+                             task_specs=registry.task_specs, **extra)
     except (TypeError, ValueError, scripting.ScriptError) as exc:
         raise ConfigError(f"task {task_tag!r}: invalid {kind!r} action: {exc}") from None
 
@@ -1132,9 +1141,7 @@ def _build_action(spec: dict, flat: dict[str, Device], task_tag: str, tasks: lis
     return action
 
 
-def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
-                 extensions: dict[str, object], sticky_endpoints: set,
-                 task_specs: dict[str, dict] | None = None) -> Task:
+def _build_task(entry: dict, registry: TaskRegistry) -> Task:
     """Build one `tasks:` YAML entry (or a `create_task`/script action's
     nested spec, or a `task_specs:` entry once instantiated by a
     `template:` reference) into a Task. See docs/configuration.md#tasks
@@ -1146,7 +1153,7 @@ def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
     min_interval_spec = entry.get("min_interval", 0)
     min_interval = parse_duration(min_interval_spec) if min_interval_spec else 0.0
 
-    condition = _build_condition(entry.get("condition"), flat, tag, sticky_endpoints)
+    condition = _build_condition(entry.get("condition"), tag, registry)
 
     time_spec = entry.get("time")
     if time_spec is None:
@@ -1166,11 +1173,9 @@ def _build_task(entry: dict, flat: dict[str, Device], tasks: list[Task],
         action_specs = entry["actions"]
         if not isinstance(action_specs, list) or not action_specs:
             raise ConfigError(f"task {tag!r}: 'actions' must be a non-empty list")
-        actions = [_build_action(spec, flat, tag, tasks, extensions, sticky_endpoints, task_specs)
-                   for spec in action_specs]
+        actions = [_build_action(spec, tag, registry) for spec in action_specs]
     else:
-        actions = [_build_action(entry["action"], flat, tag, tasks, extensions,
-                                  sticky_endpoints, task_specs)]
+        actions = [_build_action(entry["action"], tag, registry)]
 
     return Task(
         tag,
@@ -1288,14 +1293,18 @@ class System:
     scheduler settings, as built by load_system()."""
 
     def __init__(self, heartbeat: float, roots: list[Device], devices: dict[str, Device],
-                 tasks: list[Task] | None = None, max_workers: int | None = None,
+                 tasks: TaskRegistry | list[Task] | None = None, max_workers: int | None = None,
                  fetch_timeout: float | None = None, tick_hooks: list | None = None,
                  start_hooks: list | None = None, stop_hooks: list | None = None,
                  extensions: dict[str, object] | None = None):
         self.heartbeat = heartbeat
         self.roots = roots
         self.devices = devices
-        self.tasks = tasks or []
+        # Normally a TaskRegistry (load_system always builds one). A plain
+        # list is accepted for a hand-constructed System in a test, and
+        # wrapped so `system.tasks` has one type either way -- note the
+        # wrapper cannot build new tasks, having no builder.
+        self.tasks = tasks if isinstance(tasks, TaskRegistry) else TaskRegistry(tasks)
         # Concurrency controls for the Scheduler's device I/O (see Scheduler):
         # max_workers bounds the thread pool; fetch_timeout (seconds) bounds how
         # long a tick waits on any one device before moving on. Both optional.
@@ -1426,10 +1435,15 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
             raise ConfigError(f"task_specs: duplicate tag {spec_tag!r}")
         task_specs[spec_tag] = entry
 
-    tasks: list[Task] = []
+    # The registry owns the live task list AND the context needed to build
+    # more of them at runtime (create_task, extensions.timer). _build_task is
+    # injected here as its builder, which is what lets phc.core.task create
+    # tasks without importing this module -- see TaskRegistry's docstring.
     sticky_endpoints: set = set()
+    tasks = TaskRegistry(build_task=_build_task, flat=flat, extensions=extensions_registry,
+                          sticky_endpoints=sticky_endpoints, task_specs=task_specs)
     for entry in _flatten_list_entries(raw.get("tasks", [])):
-        tasks.append(_build_task(entry, flat, tasks, extensions_registry, sticky_endpoints, task_specs))
+        tasks.add(_build_task(entry, tasks))
     if sticky_endpoints:
         tick_hooks.append(_make_sticky_tick_hook(sticky_endpoints))
 

@@ -42,9 +42,16 @@ class FakeSystem:
     pattern."""
 
     def __init__(self, devices, tasks=None, extensions=None):
+        from phc.core.config import _build_task
+        from phc.core.task import TaskRegistry
+
         self.devices = devices
-        self.tasks = tasks if tasks is not None else []
         self.extensions = extensions if extensions is not None else {}
+        # A real TaskRegistry with a real builder, exactly as load_system
+        # wires one: TimerInstance mirrors each timer into a live Task
+        # through it, so a bare list would not exercise the real path.
+        self.tasks = tasks if isinstance(tasks, TaskRegistry) else TaskRegistry(
+            tasks, build_task=_build_task, flat=devices, extensions=self.extensions)
 
 
 @pytest.fixture
@@ -142,7 +149,7 @@ def test_on_bind_drops_one_shot_missed_beyond_catch_up_and_logs(tmp_path, timer_
     instance = _configure(flat, tmp_path, catch_up="5m")
     system = _bind(instance, flat)
 
-    assert system.tasks == []
+    assert list(system.tasks) == []
     assert instance.list_timers() == []
     assert "dropping expired" in timer_log.text
 
@@ -176,7 +183,7 @@ def test_on_bind_does_not_register_a_disabled_timer(tmp_path):
     instance = _configure(flat, tmp_path)
     system = _bind(instance, flat)
 
-    assert system.tasks == []
+    assert list(system.tasks) == []
     assert [t.id for t in instance.list_timers()] == [1]
 
 
@@ -203,7 +210,7 @@ def test_on_tick_removes_timer_whose_one_shot_task_was_retired(tmp_path):
 
     # Simulate the Scheduler retiring the one-shot Task after it fired
     # (phc.core.scheduler.Scheduler._tick_async pass 2 removes a finished task).
-    system.tasks[:] = [task for task in system.tasks if task.tag != t.tag("timer.house")]
+    system.tasks.remove(system.tasks.by_tag(t.tag("timer.house")))
     instance.on_tick(flat)
 
     assert instance.list_timers() == []
@@ -332,7 +339,7 @@ def test_delete_timer_removes_task_and_record(tmp_path):
 
     instance.delete_timer(t.id)
 
-    assert system.tasks == []
+    assert list(system.tasks) == []
     assert instance.list_timers() == []
 
 
@@ -345,7 +352,7 @@ def test_set_enabled_false_kills_task_but_keeps_record(tmp_path):
 
     instance.set_enabled(t.id, False)
 
-    assert system.tasks == []
+    assert list(system.tasks) == []
     assert instance.get_timer(t.id).enabled is False
 
 
@@ -355,7 +362,7 @@ def test_set_enabled_true_re_registers_task(tmp_path):
     system = _bind(instance, flat)
     t = instance.add_timer(time_spec=str(int(time.time() + 3600)), device="house.desk_lamp",
                             endpoint="power", action="set", value="on", enabled=False)
-    assert system.tasks == []
+    assert list(system.tasks) == []
 
     instance.set_enabled(t.id, True)
 
