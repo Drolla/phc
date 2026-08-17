@@ -164,8 +164,62 @@ class WebUiInstance:
         # against extensions declared *after* this one, since by the time
         # HTTP requests are served, load_system() has long since returned
         # and the registry is complete.
+        self._pages = pages
+        self._extensions_registry = extensions_registry
         self._app = build_app(devices, pages, refresh_interval, extensions_registry)
         self._runner: web.AppRunner | None = None
+
+    def on_bind(self, system) -> None:
+        """Check every panel's reference to another extension instance now
+        that all of them exist -- see phc.core.config.load_system's on_bind
+        pass.
+
+        A `kind: graph` panel names an extensions.logdb instance and a
+        `kind: timers` panel an extensions.timer instance. Neither can be
+        resolved at configure()-time, since the referenced instance may be
+        declared later in the file; they are therefore looked up per
+        request, where an unresolvable name could only surface as a 404 in
+        a browser -- a typo in a config file reported as a runtime
+        symptom, and only if someone happened to open that page.
+
+        Here the registry is complete, so the same lookup becomes a
+        ConfigError at startup, naming the panel and what is available."""
+        for page in self._pages:
+            for section in page.sections:
+                for panel in section.panels:
+                    self._check_panel_reference(panel)
+
+    def _check_panel_reference(self, panel) -> None:
+        """Validate one panel's cross-extension reference, if it has one.
+
+        Checks the exact attribute path the request handler will use, not
+        merely that the name resolves -- `store` alone would accept an
+        extensions.recovery instance, which has a `store` of its own that
+        is not a queryable history. So this asks for what a graph actually
+        needs (`store.get_decimated`), which distinguishes "no such
+        instance" from "real instance, wrong kind of extension"."""
+        if panel.kind == "graph":
+            reference, path, kind = panel.logdb_instance, ("store", "get_decimated"), "logdb"
+        elif panel.kind == "timers":
+            reference, path, kind = panel.timer_instance, ("list_timers",), "timer"
+        else:
+            return
+
+        instance = self._extensions_registry.get(reference)
+        if instance is None:
+            raise ConfigError(
+                f"web_ui instance {self._instance_key!r}: {panel.kind} panel {panel.id!r} "
+                f"references unknown extension instance {reference!r}; configured: "
+                f"{sorted(self._extensions_registry)}")
+
+        target = instance
+        for attribute in path:
+            target = getattr(target, attribute, None)
+            if target is None:
+                raise ConfigError(
+                    f"web_ui instance {self._instance_key!r}: {panel.kind} panel "
+                    f"{panel.id!r} references {reference!r}, which is not a usable "
+                    f"{kind} instance (no {'.'.join(path)})")
 
     async def on_start(self, devices: dict[str, Device]) -> None:
         self._runner = web.AppRunner(self._app, shutdown_timeout=self._shutdown_timeout)
