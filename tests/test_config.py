@@ -910,7 +910,7 @@ def test_history_tick_hook_samples_only_once_per_interval(monkeypatch):
     # Monotonic, not time.time(): history sampling is an interval like any
     # other in the system (see phc.core.scheduler.Scheduler's class docstring).
     now = [1000.0]
-    monkeypatch.setattr("phc.core.config.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.config.hooks.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # next_due starts at -inf -> immediately due
     assert ep.get_history() == [1.0]
@@ -934,7 +934,7 @@ def test_history_tick_hook_retries_after_a_skipped_none_sample(monkeypatch):
     hook = _make_history_tick_hook(records)
 
     now = [1000.0]
-    monkeypatch.setattr("phc.core.config.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.config.hooks.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # ep.get() is still None -> record_history() is False
     assert ep.get_history() == []
@@ -2154,7 +2154,7 @@ def test_load_system_collects_on_start_on_stop_from_extension_instances(tmp_path
     collection mechanism already proven for on_tick (see
     test_load_system_condition_expr_registers_sticky_tick_hook above and
     logdb/random_light's own end-to-end tests)."""
-    import phc.core.config as config_module
+    import phc.core.config.system as config_module
 
     calls = {"start": [], "stop": []}
 
@@ -2195,7 +2195,7 @@ def test_load_system_calls_on_bind_with_fully_built_system(tmp_path, monkeypatch
     behavior phc.extensions.debug_portal relies on to bind to the live task
     list. Absence of on_bind on an instance (the common case -- no shipped
     extension besides debug_portal defines it) must not raise."""
-    import phc.core.config as config_module
+    import phc.core.config.system as config_module
 
     bound = []
 

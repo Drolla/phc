@@ -25,11 +25,27 @@ class Device:
                  endpoints: list[Endpoint] | None = None,
                  children: list["Device"] | None = None,
                  update_interval: float | None = None,
-                 parent_qualified_id: str | None = None):
+                 parent_qualified_id: str | None = None,
+                 context: dict | None = None):
         self.id = id
         self.name = name or id
         self.qualified_id = f"{parent_qualified_id}.{id}" if parent_qualified_id else id
         self.params = params or {}
+        # Scratch space shared by every device built from ONE system config
+        # (see phc.core.config.devices._build_device, which creates one dict
+        # per load and hands it to every device). A module needing state
+        # shared between its own instances -- a connection pool, a batched
+        # request registry, a cached session cookie -- keeps it here, under
+        # its own key, instead of at module scope.
+        #
+        # Module-level state would be shared by every system loaded in the
+        # process instead, which is the wrong lifetime: it outlives the
+        # System it belongs to, leaks between two systems loaded in one
+        # process, and forces tests to reach in and reset module internals
+        # by hand. Available from setup() onwards (assigned just below).
+        # Defaults to a private dict so a directly-constructed Device (a
+        # test, a script) still works with no ceremony.
+        self.context = context if context is not None else {}
         self.endpoints: dict[str, Endpoint] = {e.key: e for e in (endpoints or [])}
         self.children: dict[str, "Device"] = {c.id: c for c in (children or [])}
         self.update_interval = update_interval
