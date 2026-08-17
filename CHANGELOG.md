@@ -62,6 +62,26 @@ Changes merged into `main` since the 0.1.0 release, in order.
 - A typo'd `module:`/extension name now reports what *is* available
   instead of raising a bare `KeyError` from the registry.
 
+- The heartbeat no longer drifts. Each tick is now scheduled one heartbeat
+  after the previous tick's *start* rather than after it finishes, so the
+  real tick period was previously `heartbeat + tick duration` — a system
+  with a 1s heartbeat and a 200ms tick actually ran 20% slow, and every
+  `update:`/`repeat:` interval in it with it. An overrunning tick now skips
+  the missed grid points (one WARNING per overrun episode) instead of
+  accumulating a backlog.
+- Shutdown is immediate. `Scheduler.stop()` (Ctrl-C/SIGTERM) previously
+  only set a flag, leaving the process to wait out the pending heartbeat
+  sleep before exiting — up to a full heartbeat, which on a quiet
+  installation using a 10s+ heartbeat looked like a hang.
+- Intervals now run on a monotonic clock instead of the wall clock: a
+  device's `update:`, an endpoint's `history.interval` and a task's
+  `min_interval:`. An NTP correction or a daylight-saving change that moved
+  the system clock backwards used to stall *all* polling for the size of
+  the step, and a step forwards fired a burst of catch-up polls. A task's
+  `time:`/`repeat:` still use the wall clock, since they name an absolute
+  time of day. See
+  [Which clock each schedule runs on](docs/configuration.md#which-clock-each-schedule-runs-on).
+
 **Internal structure**
 
 - `phc/core/config.py` (1469 lines, ~15 responsibilities) is now a package
@@ -107,30 +127,6 @@ Changes merged into `main` since the 0.1.0 release, in order.
   root `phc.py` next to the `phc/` package would shadow it and make
   `import phc.core` ambiguous. The installed `phc` console command is
   unchanged.
-
-**Bug fixes**
-
-- The heartbeat no longer drifts. Each tick is now scheduled one heartbeat
-  after the previous tick's *start* rather than after it finishes, so the
-  real tick period was previously `heartbeat + tick duration` — a system
-  with a 1s heartbeat and a 200ms tick actually ran 20% slow, and every
-  `update:`/`repeat:` interval in it with it. An overrunning tick now skips
-  the missed grid points (one WARNING per overrun episode) instead of
-  accumulating a backlog.
-- Shutdown is immediate. `Scheduler.stop()` (Ctrl-C/SIGTERM) previously
-  only set a flag, leaving the process to wait out the pending heartbeat
-  sleep before exiting — up to a full heartbeat, which on a quiet
-  installation using a 10s+ heartbeat looked like a hang.
-- Intervals now run on a monotonic clock instead of the wall clock: a
-  device's `update:`, an endpoint's `history.interval` and a task's
-  `min_interval:`. An NTP correction or a daylight-saving change that moved
-  the system clock backwards used to stall *all* polling for the size of
-  the step, and a step forwards fired a burst of catch-up polls. A task's
-  `time:`/`repeat:` still use the wall clock, since they name an absolute
-  time of day. See
-  [Which clock each schedule runs on](docs/configuration.md#which-clock-each-schedule-runs-on).
-
-**Breaking changes**
 
 - A device is now polled only on its own `update:` interval. Previously
   `Device.fetch()` recursed into child devices, so a child was also
