@@ -1,0 +1,20 @@
+description: >
+  Out-of-tree test plugin: a fictional sensor reporting a fixed temperature,
+  used to verify that a device module shipped outside the phc package is
+  discovered and configured exactly like a bundled one.
+
+update: "1s"
+
+parameters:
+  - name: offset
+    override: allowed
+    default: 0.0
+    description: Added to the reported temperature, in degrees Celsius.
+
+endpoints:
+  - key: temperature
+    readable: true
+    writable: false
+    type: float
+    unit: "°C"
+    description: Current temperature reading

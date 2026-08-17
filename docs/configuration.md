@@ -97,6 +97,31 @@ un-tagged example text (e.g. `smtp_host: "smtp.example.com"`) is just
 illustrative and isn't checked -- use `!placeholder` for anything that
 must not be left as-is.
 
+## Using device modules and extensions from outside PHC
+
+`plugin_paths:` is a list of directories holding device modules or
+extensions that aren't bundled with PHC — each laid out like
+[`phc/devices/`](../phc/devices/), one subdirectory per module:
+
+```yaml
+plugin_paths: ["./my_modules"]
+
+devices:
+  - id: shed
+    module: acme_sensor      # from ./my_modules/acme_sensor/
+```
+
+Paths are resolved relative to this YAML file's own directory (like a
+`log:` file destination), so a config that carries its private modules
+alongside itself stays relocatable. A listed directory that doesn't exist
+is an error rather than a silent no-op.
+
+A module installed as part of another distribution needs nothing here at
+all — it is discovered automatically if that distribution advertises it in
+the `phc.devices`/`phc.extensions` entry point group. Either way,
+`module:` names it exactly as it would a bundled one. See [writing a
+device module](developer/writing-a-device-module.md#shipping-a-module-outside-phc).
+
 ## Modules and shared configuration
 
 A `module.yaml` declares each parameter's `scope` (default `device`) and

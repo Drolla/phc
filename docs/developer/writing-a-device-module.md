@@ -1,6 +1,12 @@
 # Writing a device module
 
-A new device type is a new `phc/devices/<name>/` package containing:
+A new device type is a new package containing a `device.py` and a
+`module.yaml`. It does **not** have to live inside PHC — see [Shipping a
+module outside PHC](#shipping-a-module-outside-phc) below. Bundled
+modules live in `phc/devices/<name>/`, and everything in this page applies
+to all three cases equally.
+
+A new bundled device type is a new `phc/devices/<name>/` package containing:
 
 - `device.py` — a `Device` subclass decorated with `@register_module("<name>")`.
 - `module.yaml` — its declared parameters, endpoints, and (if any endpoint
@@ -58,6 +64,47 @@ which is not something a reader of the YAML could tell.
 A system config can extend a module's profile library too, without
 touching the module's own `module.yaml` — see [Endpoint and device
 profiles](../profiles.md).
+
+## Shipping a module outside PHC
+
+A device module is discovered by the same mechanism wherever it lives, and
+a system YAML cannot tell the difference — `module: <name>` either way.
+Its `module.yaml` is always read from the package its `Device` subclass was
+defined in, so it travels with the code.
+
+**As part of a distribution** — the normal way to publish a plugin.
+Advertise an entry point in the `phc.devices` group (or `phc.extensions`
+for an extension), where the *name* is what configs write and the *value*
+is the package holding `device.py` and `module.yaml`:
+
+```toml
+[project.entry-points."phc.devices"]
+acme_sensor = "acme_phc.acme_sensor"
+```
+
+Installing that distribution alongside PHC is all that is needed; there is
+nothing to register and no PHC file to edit.
+
+**As a local directory** — for a private module not worth packaging, e.g.
+one belonging to a single household's config. Point `plugin_paths:` at a
+directory laid out like `phc/devices/`, one subdirectory per module:
+
+```yaml
+plugin_paths: ["./my_modules"]
+
+devices:
+  - id: shed
+    module: acme_sensor      # from ./my_modules/acme_sensor/
+```
+
+Paths are resolved relative to the system YAML's own directory, so a
+config that carries its private modules alongside itself stays
+relocatable. Each directory goes on `sys.path`, so its subdirectories are
+imported as ordinary top-level packages — give them distinctive names.
+
+If a plugin's own `device.py` fails to import (a missing dependency, say),
+that error is raised, naming what went wrong. It is not treated as "no
+such module".
 
 ## Sharing state between a module's devices
 

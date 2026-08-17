@@ -104,8 +104,17 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         configure_logging(raw.get("log"), log_levels_override, Path(path).resolve().parent)
     except ValueError as exc:
         raise ConfigError(str(exc)) from None
-    discover_modules()
-    discover_extensions()
+    # `plugin_paths:` are resolved relative to the system YAML's own
+    # directory (like a `log:` file destination, and unlike an extension's
+    # own path params), so a config that ships its private device modules
+    # alongside itself stays relocatable.
+    config_dir = Path(path).resolve().parent
+    plugin_paths = [str((config_dir / p).resolve()) for p in (raw.get("plugin_paths") or [])]
+    for plugin_path in plugin_paths:
+        if not Path(plugin_path).is_dir():
+            raise ConfigError(f"plugin_paths: no such directory: {plugin_path}")
+    discover_modules(plugin_paths=plugin_paths)
+    discover_extensions(plugin_paths=plugin_paths)
 
     intervals_map = raw.get("intervals") or {}
     modules_config = raw.get("modules") or {}

@@ -22,6 +22,66 @@ Changes merged into `main` since the 0.1.0 release, in order.
   path, and a `wheel-install` CI job installs a built wheel into a clean
   environment and boots an example from outside the checkout.
 
+**New features**
+
+- New CLI subcommands. `phc validate --config FILE` performs the entire
+  load — discovery, parameter and endpoint resolution, task and action
+  building — and reports what it built, without starting the scheduler,
+  binding a port or touching hardware; it exits non-zero on a broken
+  config, so it works as a pre-deploy check. `phc list-modules` /
+  `phc list-extensions` report what an installation can actually use, with
+  each plugin's package, description and declared parameters
+  (`--plugin-path DIR` includes out-of-tree ones). The original
+  `phc --config FILE` spelling is unchanged and remains the default action.
+- Device modules and extensions no longer have to live inside PHC. A
+  module is discovered the same way wherever it lives, and a system YAML
+  cannot tell the difference — `module: <name>` either way, with its
+  `module.yaml` read from whichever package defines it. Two new sources
+  alongside the bundled ones: an entry point in the `phc.devices` /
+  `phc.extensions` group (the normal way to publish a plugin), and
+  `plugin_paths:` in the system YAML, a list of directories laid out like
+  `phc/devices/` for a private module not worth packaging. See
+  [Using device modules and extensions from outside PHC](docs/configuration.md#using-device-modules-and-extensions-from-outside-phc).
+
+**Bug fixes**
+
+- A web UI `graph`/`timers` panel naming an extension instance that does
+  not exist now fails at startup with a `ConfigError` naming the panel and
+  listing what is configured. These references are resolved per request
+  (the referenced instance may be declared later in the file), so a typo
+  previously survived the whole load and surfaced only as a 404 in a
+  browser, and only if someone opened that page. The check asks for the
+  capability the panel actually uses, so pointing a graph at a real
+  instance of the wrong kind is caught too.
+- A plugin whose own `device.py`/`extension.py` fails to import now
+  reports that error instead of being silently skipped. Discovery caught
+  `ModuleNotFoundError` broadly, so it could not tell "this package has no
+  device.py" from "device.py exists but its `import serial` failed" — a
+  module with a missing dependency simply did not exist, and the config
+  naming it failed later, confusingly, as an unknown module.
+- A typo'd `module:`/extension name now reports what *is* available
+  instead of raising a bare `KeyError` from the registry.
+
+- The heartbeat no longer drifts. Each tick is now scheduled one heartbeat
+  after the previous tick's *start* rather than after it finishes, so the
+  real tick period was previously `heartbeat + tick duration` — a system
+  with a 1s heartbeat and a 200ms tick actually ran 20% slow, and every
+  `update:`/`repeat:` interval in it with it. An overrunning tick now skips
+  the missed grid points (one WARNING per overrun episode) instead of
+  accumulating a backlog.
+- Shutdown is immediate. `Scheduler.stop()` (Ctrl-C/SIGTERM) previously
+  only set a flag, leaving the process to wait out the pending heartbeat
+  sleep before exiting — up to a full heartbeat, which on a quiet
+  installation using a 10s+ heartbeat looked like a hang.
+- Intervals now run on a monotonic clock instead of the wall clock: a
+  device's `update:`, an endpoint's `history.interval` and a task's
+  `min_interval:`. An NTP correction or a daylight-saving change that moved
+  the system clock backwards used to stall *all* polling for the size of
+  the step, and a step forwards fired a burst of catch-up polls. A task's
+  `time:`/`repeat:` still use the wall clock, since they name an absolute
+  time of day. See
+  [Which clock each schedule runs on](docs/configuration.md#which-clock-each-schedule-runs-on).
+
 **Internal structure**
 
 - `phc/core/config.py` (1469 lines, ~15 responsibilities) is now a package
@@ -67,30 +127,6 @@ Changes merged into `main` since the 0.1.0 release, in order.
   root `phc.py` next to the `phc/` package would shadow it and make
   `import phc.core` ambiguous. The installed `phc` console command is
   unchanged.
-
-**Bug fixes**
-
-- The heartbeat no longer drifts. Each tick is now scheduled one heartbeat
-  after the previous tick's *start* rather than after it finishes, so the
-  real tick period was previously `heartbeat + tick duration` — a system
-  with a 1s heartbeat and a 200ms tick actually ran 20% slow, and every
-  `update:`/`repeat:` interval in it with it. An overrunning tick now skips
-  the missed grid points (one WARNING per overrun episode) instead of
-  accumulating a backlog.
-- Shutdown is immediate. `Scheduler.stop()` (Ctrl-C/SIGTERM) previously
-  only set a flag, leaving the process to wait out the pending heartbeat
-  sleep before exiting — up to a full heartbeat, which on a quiet
-  installation using a 10s+ heartbeat looked like a hang.
-- Intervals now run on a monotonic clock instead of the wall clock: a
-  device's `update:`, an endpoint's `history.interval` and a task's
-  `min_interval:`. An NTP correction or a daylight-saving change that moved
-  the system clock backwards used to stall *all* polling for the size of
-  the step, and a step forwards fired a burst of catch-up polls. A task's
-  `time:`/`repeat:` still use the wall clock, since they name an absolute
-  time of day. See
-  [Which clock each schedule runs on](docs/configuration.md#which-clock-each-schedule-runs-on).
-
-**Breaking changes**
 
 - A device is now polled only on its own `update:` interval. Previously
   `Device.fetch()` recursed into child devices, so a child was also

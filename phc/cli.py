@@ -9,10 +9,14 @@ without needing an extensions.debug_portal: entry in the config file itself.
 import argparse
 import logging
 import signal
+import sys
 
 import yaml
 
 from phc.core.config import ConfigError, System, load_system
+from phc.core.config.descriptors import _load_extension_descriptor, _load_module_descriptor
+from phc.core.registry import (discover_extensions, discover_modules, extension_package,
+                                module_package, registered_extensions, registered_modules)
 from phc.core.scheduler import Scheduler
 from phc.extensions.debug_portal.extension import DebugPortalInstance
 from phc.extensions.debug_portal.extension import configure as configure_debug_portal
@@ -59,9 +63,102 @@ def _resolve_debug_portal_instance(system: System, port: int | None,
     return instance
 
 
+def _validate(argv) -> int:
+    """`phc validate --config X`: load the config and report, without
+    running it. Everything load_system() does -- module/extension
+    discovery, parameter and endpoint resolution, task and action building
+    -- happens here, so this catches the same problems a real start would,
+    without touching hardware or binding a port. Returns a process exit
+    code, so it is usable as a pre-deploy check."""
+    parser = argparse.ArgumentParser(prog="phc validate")
+    parser.add_argument("--config", required=True, help="path to the system YAML config")
+    args = parser.parse_args(argv)
+
+    try:
+        system = load_system(args.config)
+    except (ConfigError, OSError, yaml.YAMLError) as exc:
+        print(f"{args.config}: INVALID\n\n{exc}")
+        return 1
+
+    scheduled = len(system.scheduled_devices())
+    print(f"{args.config}: OK")
+    print(f"  {len(system.devices)} device(s), {scheduled} polled, "
+          f"{len(system.tasks)} task(s), {len(system.extensions)} extension instance(s)")
+    print(f"  heartbeat {system.heartbeat:g}s")
+    return 0
+
+
+def _describe_parameters(parameters) -> list[str]:
+    """One indented line per declared parameter, for the list commands."""
+    lines = []
+    for spec in parameters:
+        override = spec.get("override", "allowed")
+        detail = "required" if override == "required" else f"default {spec.get('default')!r}"
+        if override == "none":
+            detail += ", not overridable"
+        if spec.get("scope") == "module":
+            detail += ", module-scoped"
+        lines.append(f"      {spec['name']} ({detail})")
+    return lines
+
+
+def _list_plugins(argv, kind: str) -> int:
+    """`phc list-modules` / `phc list-extensions`: what this installation
+    can actually use, including anything provided by an entry point or a
+    plugin_paths: directory -- the answer to "is my plugin installed, and
+    what does it accept?", which otherwise required reading source."""
+    parser = argparse.ArgumentParser(prog=f"phc list-{kind}s")
+    parser.add_argument("--plugin-path", metavar="DIR", action="append", default=[],
+                         help="also look in this directory (same layout as a system "
+                              "YAML's plugin_paths:); repeatable")
+    args = parser.parse_args(argv)
+
+    if kind == "module":
+        discover_modules(plugin_paths=args.plugin_path)
+        names, load = registered_modules(), _load_module_descriptor
+    else:
+        discover_extensions(plugin_paths=args.plugin_path)
+        names, load = registered_extensions(), _load_extension_descriptor
+
+    for name in names:
+        try:
+            descriptor = load(name)
+        except ConfigError as exc:
+            print(f"{name}\n    <descriptor unreadable: {exc}>")
+            continue
+        summary = " ".join((descriptor.description or "").split())
+        print(f"{name}    [{module_package(name) if kind == 'module' else extension_package(name)}]")
+        if summary:
+            print(f"    {summary[:200]}{'...' if len(summary) > 200 else ''}")
+        if descriptor.parameters:
+            print("    parameters:")
+            print("\n".join(_describe_parameters(descriptor.parameters)))
+    return 0
+
+
+_SUBCOMMANDS = {
+    "validate": _validate,
+    "list-modules": lambda argv: _list_plugins(argv, "module"),
+    "list-extensions": lambda argv: _list_plugins(argv, "extension"),
+}
+
+
 def main(argv=None):
-    """Parse arguments, load and run the configured system until stopped."""
-    parser = argparse.ArgumentParser(prog="phc")
+    """Parse arguments, load and run the configured system until stopped.
+
+    A leading subcommand (validate/list-modules/list-extensions) is
+    dispatched instead. Checked by hand rather than with argparse
+    subparsers so the original, subcommand-less `phc --config X` spelling
+    keeps working as the default action."""
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] in _SUBCOMMANDS:
+        return _SUBCOMMANDS[argv[0]](argv[1:])
+
+    parser = argparse.ArgumentParser(
+        prog="phc",
+        epilog="subcommands: " + ", ".join(sorted(_SUBCOMMANDS))
+                + " (each takes its own --help)")
     parser.add_argument("--config", required=True, help="path to the system YAML config")
     parser.add_argument("--log-level", metavar="LEVEL",
                          help="default logging level (DEBUG, INFO, WARNING, ERROR); "

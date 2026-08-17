@@ -1,4 +1,6 @@
-"""Tests for phc.py's command-line argument parsing."""
+"""Tests for phc.cli: command-line argument parsing and the subcommands."""
+
+from pathlib import Path
 
 import pytest
 
@@ -178,3 +180,85 @@ def test_main_wires_cli_debug_portal_without_yaml_entry(tmp_path, monkeypatch):
     system_yaml = _write_minimal_system(tmp_path)
     monkeypatch.setattr(Scheduler, "run_forever", lambda self: None)
     main(["--config", str(system_yaml), "--debug-portal-port", "0"])
+
+
+# ---------- subcommands ----------
+
+def test_validate_reports_ok_and_exits_zero(tmp_path, capsys):
+    """`phc validate` runs the whole load -- discovery, parameter and
+    endpoint resolution, task building -- without starting the scheduler,
+    binding a port, or touching hardware."""
+    config = tmp_path / "system.yaml"
+    config.write_text("""
+heartbeat: 2s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{ key: state, writable: true, default: "off" }]
+tasks:
+  - tag: noop
+    time: "+1h"
+    action: { kind: toggle, device: "living_light.state" }
+""", encoding="utf-8")
+
+    assert main(["validate", "--config", str(config)]) == 0
+    out = capsys.readouterr().out
+    assert "OK" in out
+    assert "1 device(s)" in out
+    assert "1 task(s)" in out
+    assert "heartbeat 2s" in out
+
+
+def test_validate_reports_the_error_and_exits_nonzero(tmp_path, capsys):
+    """A broken config is reported as a message and a non-zero exit code,
+    so this is usable as a pre-deploy check."""
+    config = tmp_path / "system.yaml"
+    config.write_text("""
+heartbeat: 1s
+devices:
+  - id: x
+    module: no_such_module
+""", encoding="utf-8")
+
+    assert main(["validate", "--config", str(config)]) == 1
+    out = capsys.readouterr().out
+    assert "INVALID" in out
+    assert "no_such_module" in out
+
+
+def test_validate_on_a_missing_file_exits_nonzero(tmp_path, capsys):
+    assert main(["validate", "--config", str(tmp_path / "nope.yaml")]) == 1
+    assert "INVALID" in capsys.readouterr().out
+
+
+def test_list_modules_reports_names_packages_and_parameters(capsys):
+    assert main(["list-modules"]) == 0
+    out = capsys.readouterr().out
+    assert "virtual" in out
+    assert "[phc.devices.sun]" in out, "should name the package each module lives in"
+    assert "latitude (required)" in out, "should list declared parameters"
+
+
+def test_list_modules_includes_a_plugin_path(capsys):
+    """The listing answers "is my plugin installed?", so it has to cover
+    out-of-tree modules too."""
+    plugins = Path(__file__).resolve().parent / "fixtures" / "plugins"
+    assert main(["list-modules", "--plugin-path", str(plugins)]) == 0
+    out = capsys.readouterr().out
+    assert "acme_sensor" in out
+    assert "offset (default 0.0)" in out
+
+
+def test_list_extensions_reports_names_and_parameters(capsys):
+    assert main(["list-extensions"]) == 0
+    out = capsys.readouterr().out
+    assert "logdb" in out
+    assert "[phc.extensions.web_ui]" in out
+
+
+def test_bare_form_without_a_subcommand_still_requires_config(capsys):
+    """The original `phc --config X` spelling stays the default action --
+    a subcommand is opt-in, not mandatory."""
+    with pytest.raises(SystemExit):
+        main([])
+    assert "--config" in capsys.readouterr().err

@@ -687,3 +687,98 @@ def test_on_start_binds_a_real_port_and_on_stop_releases_it():
                 async with session.get(f"http://127.0.0.1:{port}/page/home", timeout=1) as resp:
                     pass
     asyncio.run(run())
+
+
+# ---------- cross-extension references validated at load time ----------
+
+def _system_with_graph_panel(tmp_path, logdb_instance: str, declare_logdb: bool = True) -> str:
+    """A minimal system whose web_ui has one graph panel pointing at
+    `logdb_instance`."""
+    logdb_block = f"""
+  logdb:
+    house_log:
+      csv_path: "{(tmp_path / 'log.csv').as_posix()}"
+      selectors: ["living_light/state"]
+""" if declare_logdb else ""
+    config = tmp_path / "system.yaml"
+    config.write_text(f"""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{{ key: state, writable: true, default: "off" }}]
+extensions:{logdb_block}
+  web_ui:
+    home:
+      port: 0
+      pages:
+        - id: main
+          sections:
+            - id: charts
+              panels:
+                - kind: graph
+                  id: temps
+                  logdb_instance: "{logdb_instance}"
+                  selectors: ["living_light/state"]
+""", encoding="utf-8")
+    return str(config)
+
+
+def test_graph_panel_with_unknown_logdb_instance_fails_at_load(tmp_path):
+    """A typo'd logdb_instance used to survive load entirely and surface
+    as a 404 in the browser -- a config mistake reported as a runtime
+    symptom, and only if someone opened that page. It is now a
+    ConfigError at startup, naming what is configured."""
+    from phc.core.config import load_system
+
+    config = _system_with_graph_panel(tmp_path, "logdb.typo")
+    with pytest.raises(ConfigError) as excinfo:
+        load_system(config)
+    message = str(excinfo.value)
+    assert "temps" in message, "should name the offending panel"
+    assert "logdb.typo" in message
+    assert "logdb.house_log" in message, "should list what IS configured"
+
+
+def test_graph_panel_with_a_valid_logdb_instance_loads(tmp_path):
+    """The reference check must not reject a correct config -- including
+    one where the referenced instance is declared BEFORE web_ui, which is
+    the ordering the request-time lookup existed to tolerate."""
+    from phc.core.config import load_system
+
+    system = load_system(_system_with_graph_panel(tmp_path, "logdb.house_log"))
+    assert "web_ui.home" in system.extensions
+
+
+def test_graph_panel_pointed_at_the_wrong_kind_of_extension_fails_at_load(tmp_path):
+    """Naming a real instance that isn't a logdb is caught too -- the
+    check is for a usable store, not merely a known name."""
+    from phc.core.config import load_system
+
+    config = tmp_path / "system.yaml"
+    config.write_text(f"""
+heartbeat: 1s
+devices:
+  - id: living_light
+    module: virtual
+    endpoints: [{{ key: state, writable: true, default: "off" }}]
+extensions:
+  recovery:
+    critical:
+      path: "{(tmp_path / 'recovery.yaml').as_posix()}"
+      selectors: ["living_light/state"]
+  web_ui:
+    home:
+      port: 0
+      pages:
+        - id: main
+          sections:
+            - id: charts
+              panels:
+                - kind: graph
+                  id: temps
+                  logdb_instance: "recovery.critical"
+                  selectors: ["living_light/state"]
+""", encoding="utf-8")
+    with pytest.raises(ConfigError, match="not a usable logdb instance"):
+        load_system(str(config))
