@@ -13,6 +13,8 @@ import importlib.resources
 import yaml
 
 from phc.core.errors import ConfigError
+from phc.core.registry import (_device_modules, _extension_packages,
+                                extension_package, module_package)
 
 # Descriptor lookup goes through importlib.resources, not a path derived
 # from this file's own location: a module.yaml/extension.yaml is package
@@ -20,22 +22,8 @@ from phc.core.errors import ConfigError
 # resolving it relative to a source file only happens to work while the
 # package sits in a source checkout. importlib.resources asks the import
 # system where the package actually is, which keeps working for an
-# installed wheel -- and, once out-of-tree plugins land, for a device
-# module living in someone else's distribution entirely.
-
-
-# Descriptor lookup goes through importlib.resources, not a path derived
-# from this file's own location: a module.yaml/extension.yaml is package
-# DATA (declared in pyproject.toml's [tool.setuptools.package-data]), and
-# resolving it as "two directories up from core/config.py" only happens to
-# work while the package sits in a source checkout. importlib.resources
-# asks the import system where the package actually is, which keeps
-# working for an installed wheel -- and, once out-of-tree plugins land,
-# for a device module living in someone else's distribution entirely.
-_DEVICES_PACKAGE = "phc.devices"
-
-
-_EXTENSIONS_PACKAGE = "phc.extensions"
+# installed wheel -- and for a device module living in someone else's
+# distribution entirely, whose package the registry reports.
 
 
 # Keys recognized on an endpoint spec, at every stage before a module's own
@@ -188,30 +176,45 @@ _module_descriptors: dict[str, ModuleDescriptor] = {}
 
 def _read_descriptor_yaml(package: str, name: str, filename: str, kind: str) -> dict:
     """Read and parse one packaged descriptor (a device module's
-    module.yaml or an extension's extension.yaml), located through the
-    import system rather than the filesystem -- see _DEVICES_PACKAGE.
-    Raises ConfigError if the package or the descriptor within it doesn't
-    exist, which is what an unknown/typo'd `module:` name looks like from
-    here.
+    module.yaml or an extension's extension.yaml) from `package`, located
+    through the import system rather than the filesystem.
 
-    ModuleNotFoundError is translated rather than propagated: to a user,
-    naming a module that doesn't exist is a config mistake like any other,
-    not an import failure."""
+    `package` comes from the registry (see phc.core.registry's
+    module_package()/extension_package()), i.e. from wherever the plugin's
+    code actually lives -- so a module shipped by another distribution
+    finds its descriptor next to its own code rather than under
+    phc.devices.
+
+    Raises ConfigError if the package or the descriptor within it doesn't
+    exist. ModuleNotFoundError is translated rather than propagated: to a
+    user, naming a module that doesn't exist is a config mistake like any
+    other, not an import failure."""
     try:
-        resource = importlib.resources.files(f"{package}.{name}") / filename
+        resource = importlib.resources.files(package) / filename
     except (ModuleNotFoundError, TypeError):
-        raise ConfigError(f"{kind} {name!r} is not installed (no {package}.{name} package)") from None
+        raise ConfigError(f"{kind} {name!r} is not installed (no {package} package)") from None
     if not resource.is_file():
-        raise ConfigError(f"{kind} {name!r} has no {filename} (looked in {package}.{name})")
+        raise ConfigError(f"{kind} {name!r} has no {filename} (looked in {package})")
     return yaml.safe_load(resource.read_text(encoding="utf-8")) or {}
 
 
 def _load_module_descriptor(module_name: str) -> ModuleDescriptor:
     """Return the cached ModuleDescriptor for `module_name`, loading and
-    parsing its module.yaml on first use."""
+    parsing its module.yaml on first use.
+
+    The package to read it from is whichever one registered the module's
+    Device subclass, so a bundled module and a third-party one are handled
+    identically. An unregistered name means no discovered plugin claims it
+    -- reported as the config error it is, naming what is available."""
     if module_name in _module_descriptors:
         return _module_descriptors[module_name]
-    raw = _read_descriptor_yaml(_DEVICES_PACKAGE, module_name, "module.yaml", "module")
+    try:
+        package = module_package(module_name)
+    except KeyError:
+        raise ConfigError(
+            f"unknown device module {module_name!r}; discovered modules: "
+            f"{sorted(_device_modules)}") from None
+    raw = _read_descriptor_yaml(package, module_name, "module.yaml", "module")
     descriptor = ModuleDescriptor(module_name, raw)
     _module_descriptors[module_name] = descriptor
     return descriptor
@@ -234,10 +237,17 @@ _extension_descriptors: dict[str, ExtensionDescriptor] = {}
 
 def _load_extension_descriptor(name: str) -> ExtensionDescriptor:
     """Return the cached ExtensionDescriptor for `name`, loading and parsing
-    its extension.yaml on first use."""
+    its extension.yaml on first use. The package to read it from comes from
+    the registry (see _load_module_descriptor for the same reasoning)."""
     if name in _extension_descriptors:
         return _extension_descriptors[name]
-    raw = _read_descriptor_yaml(_EXTENSIONS_PACKAGE, name, "extension.yaml", "extension")
+    try:
+        package = extension_package(name)
+    except KeyError:
+        raise ConfigError(
+            f"unknown extension {name!r}; discovered extensions: "
+            f"{sorted(_extension_packages)}") from None
+    raw = _read_descriptor_yaml(package, name, "extension.yaml", "extension")
     descriptor = ExtensionDescriptor(name, raw)
     _extension_descriptors[name] = descriptor
     return descriptor

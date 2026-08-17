@@ -8,6 +8,7 @@ import importlib
 from phc.core.config.descriptors import ExtensionDescriptor, _load_extension_descriptor
 from phc.core.device import Device
 from phc.core.errors import ConfigError
+from phc.core.registry import extension_package
 
 
 def _merge_extension_params(descriptor: ExtensionDescriptor, instance_config: dict,
@@ -73,7 +74,7 @@ def _load_extensions(raw: dict, flat: dict[str, Device]) -> dict[str, object]:
         if not isinstance(instances, dict):
             raise ConfigError(f"extensions.{ext_name}: expected a mapping of instance name -> params")
         descriptor = _load_extension_descriptor(ext_name)
-        module = importlib.import_module(f"phc.extensions.{ext_name}.extension")
+        module = importlib.import_module(f"{extension_package(ext_name)}.extension")
         configure = getattr(module, "configure", None)
         if configure is None:
             raise ConfigError(f"extension {ext_name!r} has no configure() entry point")
