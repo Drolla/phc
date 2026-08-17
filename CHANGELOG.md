@@ -22,6 +22,29 @@ Changes merged into `main` since the 0.1.0 release, in order.
   path, and a `wheel-install` CI job installs a built wheel into a clean
   environment and boots an example from outside the checkout.
 
+**New features**
+
+- Device modules and extensions no longer have to live inside PHC. A
+  module is discovered the same way wherever it lives, and a system YAML
+  cannot tell the difference — `module: <name>` either way, with its
+  `module.yaml` read from whichever package defines it. Two new sources
+  alongside the bundled ones: an entry point in the `phc.devices` /
+  `phc.extensions` group (the normal way to publish a plugin), and
+  `plugin_paths:` in the system YAML, a list of directories laid out like
+  `phc/devices/` for a private module not worth packaging. See
+  [Using device modules and extensions from outside PHC](docs/configuration.md#using-device-modules-and-extensions-from-outside-phc).
+
+**Bug fixes**
+
+- A plugin whose own `device.py`/`extension.py` fails to import now
+  reports that error instead of being silently skipped. Discovery caught
+  `ModuleNotFoundError` broadly, so it could not tell "this package has no
+  device.py" from "device.py exists but its `import serial` failed" — a
+  module with a missing dependency simply did not exist, and the config
+  naming it failed later, confusingly, as an unknown module.
+- A typo'd `module:`/extension name now reports what *is* available
+  instead of raising a bare `KeyError` from the registry.
+
 **Internal structure**
 
 - `phc/core/config.py` (1469 lines, ~15 responsibilities) is now a package
