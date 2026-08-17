@@ -45,6 +45,14 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 **Bug fixes**
 
+- A web UI `graph`/`timers` panel naming an extension instance that does
+  not exist now fails at startup with a `ConfigError` naming the panel and
+  listing what is configured. These references are resolved per request
+  (the referenced instance may be declared later in the file), so a typo
+  previously survived the whole load and surfaced only as a 404 in a
+  browser, and only if someone opened that page. The check asks for the
+  capability the panel actually uses, so pointing a graph at a real
+  instance of the wrong kind is caught too.
 - A plugin whose own `device.py`/`extension.py` fails to import now
   reports that error instead of being silently skipped. Discovery caught
   `ModuleNotFoundError` broadly, so it could not tell "this package has no
