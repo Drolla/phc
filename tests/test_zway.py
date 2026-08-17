@@ -21,37 +21,29 @@ import pytest
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
 from phc.core.task import SetAction, Task
-from phc.devices.zway import device as zway_device
 from phc.devices.zway.device import ZWayDevice
 
 
+# The per-system device context every device this module builds shares
+# (see phc.core.device.Device.context) -- one System's worth of zway state,
+# reset between tests by the fixture below. load_system() creates one of
+# these per config; here one per test is the same isolation.
+_context: dict = {}
+
+
 @pytest.fixture(autouse=True)
-def _clear_module_state():
-    """All zway module-level state is process-global by design (see
-    ZWayDevice) -- clear it between tests. The two asyncio.Lock()s are also
-    replaced, not just left alone: each test builds its own Scheduler (->
-    its own event loop), and asyncio.Lock only binds to a specific loop
-    lazily on first genuinely-contended acquire(), so a lock left over from
-    a previous test's already-closed loop would fail cross-test with "bound
-    to a different event loop" the moment two sibling devices actually
-    contend for it -- same hazard tests/test_waveplus_bridge.py documents
-    for its own cache lock."""
-    zway_device._identifiers.clear()
-    zway_device._response_cache.clear()
-    zway_device._response_cache_lock = asyncio.Lock()
-    zway_device._throttled_values.clear()
-    zway_device._session_cookies.clear()
-    zway_device._session_lock = asyncio.Lock()
-    zway_device._configured_tag_readers.clear()
-    zway_device._helper_loaded.clear()
-    zway_device._helper_lock = asyncio.Lock()
+def _fresh_context():
+    """Give each test its own zway state.
+
+    zway state (the batched-fetch identifier registry, response cache,
+    session cookies, helper-loaded markers and their asyncio.Locks) hangs
+    off the shared device context rather than module globals, so isolating
+    tests is just a matter of starting from an empty context -- including
+    the Locks, which must not outlive the event loop they bind to (each
+    test builds its own Scheduler, hence its own loop)."""
+    _context.clear()
     yield
-    zway_device._identifiers.clear()
-    zway_device._response_cache.clear()
-    zway_device._throttled_values.clear()
-    zway_device._session_cookies.clear()
-    zway_device._configured_tag_readers.clear()
-    zway_device._helper_loaded.clear()
+    _context.clear()
 
 
 def _parse_get_args(path: str) -> list:
@@ -179,10 +171,15 @@ def _tagreader_endpoints():
     return [Endpoint("state", params={"command_group": "TagReader", "address": "22"})]
 
 
-def _device(base_url, device_id="dev", endpoints=None, **params):
+def _device(base_url, device_id="dev", endpoints=None, context_override=None, **params):
+    """Build one ZWayDevice sharing this test's device context (so sibling
+    devices batch their reads, as they do in a real system).
+    `context_override` opts one device into a *different* context, for the
+    test that checks two systems stay isolated."""
     return ZWayDevice(device_id, params={"base_url": base_url, **params},
                        endpoints=endpoints if endpoints is not None else _switch_endpoints(),
-                       update_interval=0.0)
+                       update_interval=0.0,
+                       context=_context if context_override is None else context_override)
 
 
 def test_zway_fetches_single_device():
@@ -654,3 +651,27 @@ def test_zway_relogs_in_on_expired_cookie():
         assert calls["n"] == 2   # first login (expired), one re-login after the 401
     finally:
         server.shutdown()
+
+
+def test_zway_state_is_per_system_not_per_process():
+    """Regression guard: zway's batched-fetch registry, response cache and
+    session cookies used to be module globals, so two systems loaded in one
+    process shared them -- identifiers left behind by one system kept the
+    other's response cache permanently invalid (its freshness check
+    compares against len(identifiers)), and a cached cookie or
+    helper-loaded marker outlived the connection it belonged to. State now
+    hangs off the shared device context, so it is scoped to one System.
+
+    Siblings within a system must still share it, since batching sibling
+    reads into one HTTP request is the whole point."""
+    system_a: dict = {}
+    system_b: dict = {}
+    a1 = _device("http://ctrl.example", "a1", context_override=system_a)
+    a2 = _device("http://ctrl.example", "a2", context_override=system_a)
+    b1 = _device("http://ctrl.example", "b1", context_override=system_b)
+
+    assert a1._state is a2._state, "siblings in one system must share state (batching)"
+    assert a1._state is not b1._state, "separate systems must not share state"
+    # Each system registered its own devices' identifiers, not the other's.
+    assert len(a1._state.identifiers["http://ctrl.example"]) == 1
+    assert len(b1._state.identifiers["http://ctrl.example"]) == 1
