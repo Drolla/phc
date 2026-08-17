@@ -15,7 +15,8 @@ from phc.core.registry import get_device_class
 def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | None,
                    flat: dict[str, Device], modules_config: dict,
                    module_config_cache: dict[str, "_ModuleConfig"],
-                   effective_module_cache: dict[str, ModuleDescriptor]) -> Device:
+                   effective_module_cache: dict[str, ModuleDescriptor],
+                   context: dict | None = None) -> Device:
     """Recursively build one `devices:` YAML entry (and its children) into a
     Device tree, registering every device by qualified id in `flat` as it
     goes. Raises ConfigError on a duplicate qualified id or an unrecognized
@@ -24,7 +25,11 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     ModuleDescriptor), so unlike `_DEVICE_PROFILE_KEYS`-style checks this
     can't validate `entry`'s keys until after the module is loaded --
     _merge_params raises on whatever's left in `instance_params` once its
-    own declared names are picked out."""
+    own declared names are picked out.
+
+    `context` is the one scratch dict shared by every device of this system
+    (see Device.context) -- created once per load_system() call and passed
+    down unchanged, including into children."""
     device_id = entry["id"]
     module_name = entry["module"]
     module = _load_module_descriptor(module_name)
@@ -49,7 +54,7 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
 
     children = [
         _build_device(child_entry, intervals_map, qualified_id, flat, modules_config,
-                      module_config_cache, effective_module_cache)
+                      module_config_cache, effective_module_cache, context)
         for child_entry in _flatten_list_entries(entry.get("children", []))
     ]
 
@@ -61,6 +66,7 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
         children=children,
         update_interval=update_interval,
         parent_qualified_id=parent_qualified_id,
+        context=context,
     )
 
     for ep, default_value in seeds:

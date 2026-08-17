@@ -133,9 +133,13 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         module_config_cache[module_name] = _resolve_module_config(module, modules_config)
         effective_module_cache[module_name] = _build_effective_module(module, modules_config)
 
+    # One scratch dict per loaded system, handed to every device built from
+    # it (see Device.context): where a module keeps state shared between its
+    # own instances, scoped to this System rather than to the process.
+    device_context: dict = {}
     roots = [
         _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache,
-                      effective_module_cache)
+                      effective_module_cache, device_context)
         for entry in _flatten_list_entries(raw.get("devices", []))
     ]
 
