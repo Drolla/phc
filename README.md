@@ -83,6 +83,15 @@ phc --config examples/virtual_system.yaml
 --config ...` works the same way when run from the repo root without
 installing.)
 
+Subcommands:
+
+- `phc validate --config FILE` — load the config and report what it builds,
+  without starting the scheduler, binding a port or touching hardware.
+  Exits non-zero if the config is broken, so it works as a pre-deploy check.
+- `phc list-modules` / `phc list-extensions` — what this installation can
+  use, with each one's package, description and declared parameters. Add
+  `--plugin-path DIR` to include out-of-tree plugins.
+
 Useful flags:
 
 - `--log-level LEVEL` — default logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`);

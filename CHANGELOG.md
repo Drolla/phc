@@ -24,6 +24,15 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 **New features**
 
+- New CLI subcommands. `phc validate --config FILE` performs the entire
+  load — discovery, parameter and endpoint resolution, task and action
+  building — and reports what it built, without starting the scheduler,
+  binding a port or touching hardware; it exits non-zero on a broken
+  config, so it works as a pre-deploy check. `phc list-modules` /
+  `phc list-extensions` report what an installation can actually use, with
+  each plugin's package, description and declared parameters
+  (`--plugin-path DIR` includes out-of-tree ones). The original
+  `phc --config FILE` spelling is unchanged and remains the default action.
 - Device modules and extensions no longer have to live inside PHC. A
   module is discovered the same way wherever it lives, and a system YAML
   cannot tell the difference — `module: <name>` either way, with its
