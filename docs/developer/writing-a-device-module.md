@@ -58,3 +58,36 @@ which is not something a reader of the YAML could tell.
 A system config can extend a module's profile library too, without
 touching the module's own `module.yaml` — see [Endpoint and device
 profiles](../profiles.md).
+
+## Sharing state between a module's devices
+
+A module often needs state shared by several of its own device instances:
+a connection or session, a cache, a registry that lets sibling devices
+coalesce their reads into one request. Put it in `self.context`, a plain
+dict shared by every device built from one system config, under a key
+named for your module:
+
+```python
+def setup(self):
+    state = self.context.get("mymodule")
+    if state is None:
+        state = self.context["mymodule"] = MyModuleState()
+    self._state = state
+```
+
+`self.context` is assigned before `setup()` runs, so it is available from
+there onwards. A directly-constructed `Device` (a test, a script) that
+passes no context simply gets its own empty dict.
+
+Do **not** keep this at module scope. A module-level dict is shared by
+every system loaded in the process, which is the wrong lifetime: it
+outlives the `System` it belongs to, leaks between two systems loaded
+together, and forces tests to reach in and reset your module's internals
+by hand. It is a particularly bad home for an `asyncio.Lock`, which binds
+to the first event loop that contends for it and then fails against any
+later one.
+
+[`phc/devices/zway/`](../../phc/devices/zway/) shows the pattern at full
+size (`_ZWayState`): a batched-fetch identifier registry, a response
+cache, session cookies and several locks, all shared between the devices
+of one system and isolated from any other.

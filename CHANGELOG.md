@@ -24,6 +24,19 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 **Internal structure**
 
+- `phc/core/config.py` (1469 lines, ~15 responsibilities) is now a package
+  with one module per stage of the load — `yamlio`, `descriptors`,
+  `params`, `endpoints`, `devices`, `extensions`, `tasks`, `hooks`,
+  `system` — arranged as a dependency DAG. Every name it previously
+  exposed is re-exported, so imports are unchanged.
+- Device modules can share per-instance state through a new
+  `Device.context`, a dict scoped to one loaded system. `devices/zway`
+  moves its nine module-level globals there: two systems loaded in one
+  process previously shared zway's batched-fetch registry, response cache,
+  session cookies and helper-loaded markers, which (among other things)
+  kept the response cache permanently invalid, since its freshness check
+  compares against the identifier count. See
+  [Sharing state between a module's devices](docs/developer/writing-a-device-module.md#sharing-state-between-a-modules-devices).
 - `ConfigError` moved to a new, dependency-free `phc.core.errors` (still
   re-exported from `phc.core.config`), alongside a new `PhcError` base.
   Naming the exception used to mean importing the whole config loader —
