@@ -114,6 +114,18 @@ def get_task_kind_class(kind: str) -> type:
         raise KeyError(f"no task action kind registered as {kind!r}") from None
 
 
+def registered_modules() -> list[str]:
+    """Every discovered device module name, sorted -- bundled, entry
+    point, and plugin_paths alike (run a discover_modules() first)."""
+    return sorted(_device_modules)
+
+
+def registered_extensions() -> list[str]:
+    """Every discovered extension name, sorted (run discover_extensions()
+    first)."""
+    return sorted(_extension_packages)
+
+
 def module_package(module_name: str) -> str:
     """The package holding `module_name`'s device.py and module.yaml.
 
