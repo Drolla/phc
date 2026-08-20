@@ -14,9 +14,10 @@ description: >
 parameters:
   - name: path
     override: required
+    path: true
     description: >
-      YAML timer-definitions file path, resolved relative to the current
-      working directory. Rewritten wholesale whenever a timer is added,
+      YAML timer-definitions file path. A relative path is resolved
+      against this system YAML file's own directory. Rewritten wholesale whenever a timer is added,
       edited, deleted, enabled/disabled, or fires, and read once at
       startup to restore every pending timer.
 

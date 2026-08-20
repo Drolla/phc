@@ -27,7 +27,8 @@ parameters:
 
   - name: path
     override: required
+    path: true
     description: >
-      YAML recovery file path, resolved relative to the current working
-      directory. Rewritten wholesale (not appended) whenever a selected
+      YAML recovery file path. A relative path is resolved against this
+      system YAML file's own directory. Rewritten wholesale (not appended) whenever a selected
       endpoint's value changes, and read once at startup to restore it.
