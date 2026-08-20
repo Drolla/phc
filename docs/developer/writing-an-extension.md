@@ -137,9 +137,10 @@ half-written file where a good one was.
 the pattern, including tolerating a missing or corrupt file on load rather
 than refusing to start.
 
-Note that an extension's own path parameters currently resolve against the
-process's working directory, unlike `log:` destinations and
-`plugin_paths:`, which resolve against the system YAML's directory.
+Declare a file parameter with `path: true` in `extension.yaml`, and PHC
+resolves a relative value against the system YAML's own directory before
+your `configure()` sees it — so a config directory stays self-contained,
+and you never handle the resolution (or the working directory) yourself.
 
 ## `extension.yaml`
 

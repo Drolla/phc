@@ -18,7 +18,11 @@ parameters:
 
   - name: csv_path
     override: required
-    description: CSV file path (resolved relative to the current working directory).
+    path: true
+    description: >
+      CSV file path. A relative path is resolved against this system YAML
+      file's own directory, so a config keeps its data alongside itself
+      wherever it is run from.
 
   - name: full_vector_interval
     override: allowed

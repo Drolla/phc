@@ -97,6 +97,23 @@ un-tagged example text (e.g. `smtp_host: "smtp.example.com"`) is just
 illustrative and isn't checked -- use `!placeholder` for anything that
 must not be left as-is.
 
+## Where relative paths point
+
+Every relative path in a system YAML resolves against **that file's own
+directory** — a `log:` file destination, `plugin_paths:`, and an
+extension's own file parameters (`logdb`'s `csv_path`, `recovery`'s and
+`timer`'s `path`).
+
+So a config directory is self-contained: it can be moved, copied or run as
+a service from any working directory and its data stays with it. Give an
+absolute path if you want data somewhere else deliberately.
+
+> **Changed:** extension paths previously resolved against the process's
+> working directory, so where an installation's history and recovery files
+> landed depended on where it was started from. If you have existing data,
+> move it next to your config — PHC logs a warning naming both locations
+> when it finds data at the old one and nothing at the new one.
+
 ## Using device modules and extensions from outside PHC
 
 `plugin_paths:` is a list of directories holding device modules or

@@ -157,7 +157,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     # _collect_history_records.
     history_records = _collect_history_records(flat)
 
-    extensions_registry = _load_extensions(raw, flat)
+    extensions_registry = _load_extensions(raw, flat, config_dir)
     # Lifecycle hooks are found by NAME on each instance (see
     # phc.core.extension for the contract and the timing of each), so a
     # misspelled one would silently never run -- checked here instead.

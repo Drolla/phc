@@ -2181,7 +2181,7 @@ def test_load_system_collects_on_start_on_stop_from_extension_instances(tmp_path
             calls["stop"].append(devices)
 
     monkeypatch.setattr(config_module, "_load_extensions",
-                         lambda raw, flat: {"fake.instance": FakeExtensionInstance()})
+                         lambda raw, flat, config_dir=None: {"fake.instance": FakeExtensionInstance()})
 
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2223,7 +2223,7 @@ def test_load_system_calls_on_bind_with_fully_built_system(tmp_path, monkeypatch
 
     monkeypatch.setattr(
         config_module, "_load_extensions",
-        lambda raw, flat: {"fake.instance": FakeExtensionInstance(),
+        lambda raw, flat, config_dir=None: {"fake.instance": FakeExtensionInstance(),
                             "fake.other": FakeExtensionInstanceWithoutOnBind()})
 
     system_yaml = tmp_path / "system.yaml"

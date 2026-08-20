@@ -151,6 +151,16 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 **Breaking changes**
 
+- **An extension's relative file paths now resolve against the system YAML
+  file's directory**, not the process's working directory — matching `log:`
+  destinations and `plugin_paths:`, which always did. Affects `logdb`'s
+  `csv_path` and `recovery`'s/`timer`'s `path`. Previously, where an
+  installation's history and recovery files landed depended on where it was
+  started from, so a service started from `/` wrote somewhere different
+  from a hand-started one. **If you have existing data, move it next to
+  your config**; PHC logs a warning naming both locations when it finds
+  data at the old one and nothing at the new one. Absolute paths are
+  unaffected.
 - `phc.core.task.register_task()` and `kill_tasks()` are replaced by
   `TaskRegistry.create()` and `TaskRegistry.kill()`. Affects only code
   driving PHC's task list directly; no system YAML changes.
