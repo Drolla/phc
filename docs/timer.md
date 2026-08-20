@@ -28,8 +28,9 @@ extensions:
                   timer_instance: "timer.house"
 ```
 
-- `path` (required) — YAML timer-definitions file path, resolved relative
-  to the current working directory. Rewritten whenever a timer is added,
+- `path` (required) — YAML timer-definitions file path, resolved relative to the
+  system YAML file's own directory (see
+  [configuration](configuration.md#where-relative-paths-point)). Rewritten whenever a timer is added,
   edited, deleted, enabled/disabled, or fires; read once at startup to
   restore every pending timer.
 - `selectors` (default `["*"]`) — a list of `"<device-glob>/<endpoint-glob>"`

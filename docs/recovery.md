@@ -28,7 +28,8 @@ extensions:
   nothing, fails at startup rather than silently persisting less than
   configured.
 - `path` (required) — YAML recovery file path, resolved relative to the
-  current working directory.
+  system YAML file's own directory (see
+  [configuration](configuration.md#where-relative-paths-point)).
 
 ## How restore interacts with hardware
 

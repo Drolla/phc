@@ -28,8 +28,9 @@ tasks:
   everything. Device globs match a device's qualified id (dot-joined, e.g.
   `"house.desk_lamp"`); `"*"` in a device glob matches across `.`
   boundaries too (i.e. matches at any depth), which is intentional.
-- `csv_path` (required) — CSV file path, resolved relative to the current
-  working directory.
+- `csv_path` (required) — CSV file path, resolved relative to the
+  system YAML file's own directory (see
+  [configuration](configuration.md#where-relative-paths-point)).
 - `full_vector_interval` (default `100`) — write a full snapshot row every
   N samples; rows in between store only changed columns. Bounds both
   restore-scan cost and how much history a header-growth event can ever
