@@ -109,7 +109,7 @@ def test_a_typo_in_a_real_extension_fails_the_load(tmp_path, monkeypatch):
             pass
 
     monkeypatch.setattr(system_module, "_load_extensions",
-                        lambda raw, flat: {"fake.instance": TypoInstance()})
+                        lambda raw, flat, config_dir=None: {"fake.instance": TypoInstance()})
 
     config = tmp_path / "system.yaml"
     config.write_text("""
