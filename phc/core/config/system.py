@@ -6,17 +6,16 @@ from pathlib import Path
 
 import yaml
 
+from phc.core.config.descriptors import ModuleDescriptor, _load_module_descriptor
 from phc.core.config.devices import _build_device
 from phc.core.config.extensions import _load_extensions
-from phc.core.config.hooks import (_collect_history_records, _make_history_tick_hook,
-                                    _make_sticky_tick_hook)
+from phc.core.config.hooks import _collect_history_records, _make_history_tick_hook, _make_sticky_tick_hook
 from phc.core.config.params import _build_effective_module, _ModuleConfig, _resolve_module_config
-from phc.core.config.descriptors import ModuleDescriptor, _load_module_descriptor
 from phc.core.config.tasks import _build_task
-from phc.core.config.yamlio import (_IncludeLoader, _find_placeholders, _flatten_list_entries,
-                                     _include_stack)
+from phc.core.config.yamlio import _find_placeholders, _flatten_list_entries, _include_stack, _IncludeLoader
 from phc.core.device import Device
 from phc.core.errors import ConfigError
+from phc.core.extension import check_lifecycle_hooks, collect_hook
 from phc.core.intervals import parse_duration
 from phc.core.logging_setup import configure_logging
 from phc.core.registry import discover_extensions, discover_modules
@@ -84,7 +83,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     destination's `levels:` -- see phc.core.logging_setup.configure_logging.
     """
     _include_stack.clear()
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.load(f, Loader=_IncludeLoader) or {}
 
     placeholders = _find_placeholders(raw)
@@ -159,16 +158,22 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     history_records = _collect_history_records(flat)
 
     extensions_registry = _load_extensions(raw, flat)
-    tick_hooks = [obj.on_tick for obj in extensions_registry.values() if hasattr(obj, "on_tick")]
+    # Lifecycle hooks are found by NAME on each instance (see
+    # phc.core.extension for the contract and the timing of each), so a
+    # misspelled one would silently never run -- checked here instead.
+    for instance_key, instance in extensions_registry.items():
+        check_lifecycle_hooks(instance, instance_key)
+
+    tick_hooks = collect_hook(extensions_registry, "on_tick")
     if history_records:
         tick_hooks.append(_make_history_tick_hook(history_records))
     # One-time async lifecycle hooks (see phc.core.scheduler.Scheduler's
-    # start_hooks/stop_hooks) -- same auto-collection idea as tick_hooks
-    # above, but for an extension instance that needs to start/stop a
-    # long-lived resource (e.g. phc.extensions.web_ui's aiohttp server) once,
-    # rather than every tick.
-    start_hooks = [obj.on_start for obj in extensions_registry.values() if hasattr(obj, "on_start")]
-    stop_hooks = [obj.on_stop for obj in extensions_registry.values() if hasattr(obj, "on_stop")]
+    # start_hooks/stop_hooks) -- same auto-collection as tick_hooks above,
+    # but for an extension instance that needs to start/stop a long-lived
+    # resource (e.g. phc.extensions.web_ui's aiohttp server) once, rather
+    # than every tick.
+    start_hooks = collect_hook(extensions_registry, "on_start")
+    stop_hooks = collect_hook(extensions_registry, "on_stop")
 
     # task_specs: entries are name -> raw dict, resolved lazily by a
     # `create_task` action's `template:` (see phc.core.task.CreateTaskAction) --
@@ -210,8 +215,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     # instance's own configure() ran, see _load_extensions) before the
     # Scheduler starts ticking. Unlike start_hooks, this runs synchronously
     # here, at load time -- no running event loop is required or assumed.
-    for obj in extensions_registry.values():
-        if hasattr(obj, "on_bind"):
-            obj.on_bind(system)
+    for on_bind in collect_hook(extensions_registry, "on_bind"):
+        on_bind(system)
 
     return system
