@@ -223,3 +223,26 @@ def test_snapshot_envelope_fields():
     assert snapshot["time"] == 1000.0
     assert snapshot["heartbeat"] == 2.5
     assert snapshot["period"] == 2.6
+
+
+def test_device_row_reports_health():
+    """A failing device keeps its last-good endpoint values, so without a
+    health column the portal gives no sign it has stopped answering."""
+    device = Device("sensor", endpoints=[Endpoint("value")], update_interval=10.0)
+    system = FakeSystem(tasks=[], heartbeat=1.0)
+
+    snapshot = build_snapshot(system, {"sensor": device}, [], tick=1, now=1000.0,
+                               period=1.0, now_mono=100.0)
+    row = snapshot["devices"][0]
+    assert row["healthy"] is True
+    assert row["failures"] == 0
+    assert row["last_error"] is None
+
+    device.health.record_failure("ConnectionError: refused")
+    device.health.record_failure("ConnectionError: refused")
+    snapshot = build_snapshot(system, {"sensor": device}, [], tick=2, now=1001.0,
+                               period=1.0, now_mono=101.0)
+    row = snapshot["devices"][0]
+    assert row["healthy"] is False
+    assert row["failures"] == 2
+    assert "refused" in row["last_error"]
