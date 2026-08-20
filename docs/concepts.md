@@ -33,6 +33,23 @@ and [`phc/extensions/random_light/`](../phc/extensions/random_light/), randomize
 light control), following the same package-plus-descriptor pattern as
 device modules.
 
+## Device health
+
+Polling fails sometimes — a controller reboots, WiFi drops, a sensor's
+battery dies. PHC never lets that stall the tick or affect other devices:
+the failure is recorded against that device and everything else carries
+on.
+
+What it does *not* do is throw away the last known values, so a device
+that has stopped answering keeps showing its final reading. Each device
+therefore tracks whether its most recent poll succeeded, and each endpoint
+tracks when it last produced an actual value. That is what
+`available()`/`age()` read in a task condition (see
+[scripting](scripting.md#is-this-reading-still-trustworthy)), what the
+web UI marks as "not responding", what the debug portal shows in its poll
+queue, and what the `phc.health` logger reports when a device starts
+failing or recovers.
+
 ## Endpoint types, units & text
 
 Unless otherwise specified, an endpoint's value is untyped and passes

@@ -106,6 +106,31 @@ If a plugin's own `device.py` fails to import (a missing dependency, say),
 that error is raised, naming what went wrong. It is not treated as "no
 such module".
 
+## Reporting I/O failures
+
+If your `receive()`/`receive_async()` lets an exception propagate, PHC
+records the failure for you: the device is marked unhealthy, shown as such
+in the web UI and debug portal, and `available()` goes false for its
+endpoints.
+
+Most real modules don't do that, though — they catch their own network
+errors and report every endpoint as `None`, so that one unreachable
+controller can't disturb the tick. From PHC's side that is
+indistinguishable from a completely successful fetch, so tell it:
+
+```python
+try:
+    payload = await self._get()
+except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+    self.report_failure(f"{type(exc).__name__}: {exc}")
+    payload = None
+```
+
+Call it where you catch the error. One fetch counts as one attempt no
+matter how many times you call it, and a fetch that reports nothing counts
+as a success. Every bundled network module (`zway`, `meteoswiss`,
+`open_meteo`, `waveplus_bridge`) does this.
+
 ## Sharing state between a module's devices
 
 A module often needs state shared by several of its own device instances:

@@ -43,8 +43,11 @@ never expose different capabilities by accident:
 - Always available: `state(ref)`, `changed(ref)`, `text(ref)`, `event(ref)`,
   `sticky(ref)` (see [Sticky values](#sticky-values), below), `history(ref)`,
   `fractile(ref, f)`, `median(ref)`, `average(ref)` (see [Value history &
-  fractiles](#value-history--fractiles), below), and `devices(pattern)` (a
-  glob, e.g. `"house.*/*"`, usable as a `for` target).
+  fractiles](#value-history--fractiles), below), `available(ref)` and
+  `age(ref)` (see [Is this reading still
+  trustworthy?](#is-this-reading-still-trustworthy), below), and
+  `devices(pattern)` (a glob, e.g. `"house.*/*"`, usable as a `for`
+  target).
 - Only in a `script` action (never in a condition or a `set` action's
   `expr`, both of which must stay side-effect-free): `set_state(ref,
   value)`, `create_task(spec)` (same shape as a top-level `tasks:` entry),
@@ -301,6 +304,50 @@ follow-ups out of a `script` action's `code:`, so a `create_task` call
 doesn't need a `code:` string embedded inside another `code:` string. See
 [`examples/virtual_surveillance-task_defs_3-coded.yaml`](../examples/virtual_surveillance-task_defs_3-coded.yaml)'s
 `surv_intrusion` template for a worked example of exactly that.
+
+## Is this reading still trustworthy?
+
+`state(ref)` returns the last value a device successfully reported. If
+that device has since stopped answering, the value is still there and
+still looks perfectly normal — which is the trap: a frozen reading is
+indistinguishable from a steady one.
+
+Two functions tell them apart:
+
+- `available(ref)` — `True` when the device's last poll succeeded **and**
+  this endpoint has produced at least one real reading. A device that has
+  never been polled is not "failing", but its endpoints aren't usable
+  either, so both halves matter.
+- `age(ref)` — seconds since this endpoint last produced a reading, or
+  `None` if it never has. Note this counts **reads, not changes**: a
+  thermostat sitting at 20.0 all afternoon has an age near zero, because
+  it is answering; it is a sensor that stops answering whose age climbs.
+
+```yaml
+tasks:
+  - tag: frost_warning
+    condition:
+      # Without available(), an outdoor sensor that died in mild weather
+      # would keep reporting its last reading forever -- and this task
+      # would never fire, silently, exactly when it is needed.
+      expr: 'available("outdoor.temperature") and state("outdoor.temperature") < 0'
+    action: { kind: log, message: "freezing outside" }
+
+  - tag: sensor_watchdog
+    condition:
+      expr: 'age("outdoor.temperature") > 1800'
+    min_interval: 1h
+    action: { kind: log, message: "outdoor sensor has been quiet for 30 minutes" }
+```
+
+Both are also available in the `refs:` attribute form
+(`sensor.available`, `sensor.age`).
+
+A device's health is visible outside the sandbox too: the
+[debug portal](debug-portal.md) marks a failing device in its poll queue,
+the [web UI](web-ui.md) marks affected widgets "not responding", and a
+device changing state is logged on the `phc.health` logger — once when it
+starts failing and once when it recovers, rather than on every tick.
 
 ## Sticky values & history
 
