@@ -23,12 +23,17 @@
   focuses something else.
 #}
 {% macro render_widget(ep, refresh_interval) %}
-<div class="widget widget-{{ ep.widget }}"
+<div class="widget widget-{{ ep.widget }}{% if not ep.healthy %} widget-unhealthy{% endif %}"
      data-device="{{ ep.device }}" data-endpoint="{{ ep.endpoint }}"
      hx-get="/widget/{{ ep.device }}/{{ ep.endpoint }}"
      hx-trigger="every {{ refresh_interval }}s [document.activeElement.closest('.widget')!==this && (!this.closest('details') || this.closest('details').open)]"
      hx-swap="outerHTML">
   <span class="widget-label">{{ ep.label }}</span>
+  {%- if not ep.healthy %}
+  {# The device stopped answering: the value below is the last one it
+     reported, not a current reading. #}
+  <span class="widget-stale" title="This device is not responding; the value shown is the last one received.">not responding</span>
+  {%- endif %}
   {% if ep.widget == "toggle" %}
     <div class="widget-input form-check form-switch">
       <input type="checkbox" class="form-check-input" role="switch" {% if ep.value %}checked{% endif %}

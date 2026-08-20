@@ -363,3 +363,25 @@ input[type="range"].widget-input {
 .nav-link:focus-visible {
   box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.25);
 }
+
+/* A device that has stopped answering. The widget still shows its last
+ * received value -- that is often still the most useful thing to display
+ * -- so this marks it as not current rather than hiding it. */
+.widget-stale {
+  color: #b3261e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.widget-unhealthy .widget-value {
+  opacity: 0.55;
+}
+
+@media (prefers-color-scheme: dark) {
+  .widget-stale {
+    color: #ff6b5e;
+  }
+}

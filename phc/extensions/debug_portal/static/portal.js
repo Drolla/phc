@@ -170,7 +170,8 @@
       var tr = deviceRows.get(device.id);
       if (!tr) {
         tr = document.createElement("tr");
-        tr.innerHTML = "<td class=\"c-due\"></td><td class=\"c-id\"></td><td class=\"c-interval\"></td>";
+        tr.innerHTML = "<td class=\"c-due\"></td><td class=\"c-id\"></td>" +
+          "<td class=\"c-interval\"></td><td class=\"c-health\"></td>";
         deviceRows.set(device.id, tr);
       }
 
@@ -179,6 +180,14 @@
       setCell(tr.querySelector(".c-due"), device.due_in.toFixed(1) + "s", dueReset);
       setCell(tr.querySelector(".c-id"), device.id, false);
       setCell(tr.querySelector(".c-interval"), device.interval + "s", false);
+      // A failing device keeps its last-good endpoint values, so without
+      // this the table gives no sign it has stopped answering at all.
+      var healthText = device.healthy
+        ? "ok"
+        : "FAILING (" + device.failures + ")";
+      setCell(tr.querySelector(".c-health"), healthText, false);
+      tr.querySelector(".c-health").title = device.last_error || "";
+      tr.classList.toggle("unhealthy", !device.healthy);
 
       tr.dataset.dueIn = String(device.due_in);
       tbody.appendChild(tr);

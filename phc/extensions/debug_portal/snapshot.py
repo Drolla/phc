@@ -62,10 +62,17 @@ def _describe_device(qualified_id: str, device: Device, now_mono: float) -> dict
     time.monotonic() (see phc.core.scheduler.Scheduler's class docstring).
     Subtracting a wall-clock reading from it would yield a meaningless
     difference of two unrelated epochs."""
+    health = device.health
     return {
         "id": qualified_id,
         "interval": device.update_interval,
         "due_in": max(0.0, device.next_due() - now_mono),
+        # A device whose fetches are failing keeps its last-good endpoint
+        # values, so the endpoint table alone cannot show that it has
+        # stopped answering -- see phc.core.health.
+        "healthy": health.healthy,
+        "failures": health.consecutive_failures,
+        "last_error": health.last_error,
     }
 
 
