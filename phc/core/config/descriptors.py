@@ -37,7 +37,7 @@ from phc.core.registry import (_device_modules, _extension_packages,
 _ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "name", "description",
                         "type", "unit", "values", "log_aggregation", "min", "max",
                         "default", "format", "endpoint_profile", "read_transform",
-                        "write_transform", "history"}
+                        "write_transform", "history", "on_invalid"}
 
 
 # Keys allowed on a `history: {size: ..., interval: ...}` long-form mapping.
