@@ -25,6 +25,13 @@ _DEFAULT_FLOAT_FORMAT = ".1f"
 # the one worth keeping, not whatever happened to be current at sample time.
 LOG_AGGREGATIONS = ("min", "max")
 
+# What to do with a write whose value falls outside a declared min/max.
+# "pass" is the default and preserves the historical behaviour exactly:
+# min/max were documented as a display hint only, never enforced, so
+# enforcing them by default would change the meaning of every config that
+# already declares them.
+ON_INVALID_MODES = ("pass", "reject", "clamp")
+
 
 class Endpoint:
     """Holds one piece of device state with a two-phase set/update_state model.
@@ -47,7 +54,7 @@ class Endpoint:
                  min: float | int | None = None, max: float | int | None = None,
                  format: str | None = None, read_transform: str | None = None,
                  write_transform: str | None = None, history: int = 0,
-                 history_interval: float | None = None):
+                 history_interval: float | None = None, on_invalid: str = "pass"):
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ValueError(f"endpoint {key!r}: invalid type {value_type!r}, "
                               f"expected one of {VALUE_TYPES}")
@@ -61,6 +68,13 @@ class Endpoint:
                               f"got {history!r}")
         if history_interval is not None and history == 0:
             raise ValueError(f"endpoint {key!r}: history_interval requires history to be set")
+        if on_invalid not in ON_INVALID_MODES:
+            raise ValueError(f"endpoint {key!r}: invalid on_invalid {on_invalid!r}, "
+                              f"expected one of {ON_INVALID_MODES}")
+        if on_invalid != "pass" and min is None and max is None:
+            raise ValueError(
+                f"endpoint {key!r}: on_invalid {on_invalid!r} needs a min and/or max to "
+                f"check against")
         self._read_transform = self._compile_transform(key, "read_transform", read_transform)
         self._write_transform = self._compile_transform(key, "write_transform", write_transform)
         self.key = key
@@ -78,6 +92,7 @@ class Endpoint:
         self.log_aggregation = log_aggregation
         self.min = min
         self.max = max
+        self.on_invalid = on_invalid
         self.format = format if format is not None else (
             _DEFAULT_FLOAT_FORMAT if value_type == "float" else None)
         self.history_size = history
@@ -88,6 +103,9 @@ class Endpoint:
         self._last_valid_state = None
         self._event = None
         self._update_time = 0.0
+        # Monotonic stamp of the last non-None reading -- see set_raw().
+        # None until the endpoint has produced an actual value.
+        self._last_read_time: float | None = None
         # Sticky log values: {subscriber_id: value | None}, one slot per
         # logger subscribed via subscribe_log() (see those methods below).
         # A plain dict, not a single value, because independently-scheduled
@@ -122,16 +140,87 @@ class Endpoint:
         """Like set(), but for a value freshly read from hardware (see
         Device.fetch()): applies `read_transform` first, if declared, to
         correct/invert it (e.g. a calibration offset). None (fetch failure)
-        passes through untransformed."""
+        passes through untransformed.
+
+        A non-None reading also stamps `last_read_time`, which is what
+        makes staleness measurable. Note this is deliberately NOT the same
+        as update_time: update_time moves only when the value CHANGES, so
+        a sensor reporting a steady 20.0 for an hour has an hour-old
+        update_time while being perfectly healthy -- indistinguishable,
+        from update_time alone, from one that stopped answering an hour
+        ago. A None reading (a device that caught its own I/O error and
+        reported no value, as the weather and zway modules do) leaves the
+        stamp alone, so age() keeps growing and reflects reality."""
         if self._read_transform is not None and raw_value is not None:
             raw_value = scripting.evaluate_expression(self._read_transform, {"value": raw_value})
+        if raw_value is not None:
+            self._last_read_time = time.monotonic()
         self.set(raw_value)
 
+    def get_last_read_time(self):
+        """Monotonic time of the most recent non-None reading, or None if
+        this endpoint has never produced one. Monotonic because it is only
+        ever used to measure elapsed time (see age() in
+        docs/scripting.md), never shown as an absolute timestamp."""
+        return self._last_read_time
+
+    def get_age(self, now: float | None = None):
+        """Seconds since the last non-None reading, or None if there has
+        never been one. `now` defaults to time.monotonic()."""
+        if self._last_read_time is None:
+            return None
+        return (time.monotonic() if now is None else now) - self._last_read_time
+
+    def check_write(self, value):
+        """Apply this endpoint's `on_invalid` rule to a value about to be
+        written, returning the value to actually write.
+
+        `min`/`max` have always been stored but never enforced -- fine as
+        a UI hint (it is what gives a slider its bounds), less fine when a
+        task computes a setpoint and sends 95 to a valve that accepts
+        0-100 but a thermostat that accepts 5-30. Enforcement is opt-in so
+        that existing configs, which declared min/max as a hint, keep
+        their exact behaviour:
+
+        - "pass" (default): write it unchanged, as before.
+        - "reject": raise ValueError, so the write never reaches hardware
+          and the failure is visible rather than silently clipped.
+        - "clamp": write the nearest in-range value.
+
+        Non-numeric and None values pass through untouched: a range check
+        is meaningless for them, and None is how a failed read is spelled."""
+        if self.on_invalid == "pass" or value is None:
+            return value
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return value
+        low, high = self.min, self.max
+        if low is not None and value < low:
+            return self._out_of_range(value, low, "below", low)
+        if high is not None and value > high:
+            return self._out_of_range(value, high, "above", high)
+        return value
+
+    def _out_of_range(self, value, bound, direction: str, clamped):
+        """Reject or clamp one out-of-range write (see check_write)."""
+        if self.on_invalid == "reject":
+            raise ValueError(
+                f"endpoint {self.key!r}: {value!r} is {direction} the allowed "
+                f"{'minimum' if direction == 'below' else 'maximum'} {bound!r}")
+        return clamped
+
     def to_raw(self, value):
-        """Apply `write_transform` to `value` (a logical value about to be
-        written, e.g. via Device.set()/set_text()), returning what should
-        actually be sent to hardware. Identity if unset or `value` is None.
-        The write-path counterpart to set_raw()."""
+        """Apply this endpoint's `on_invalid` range rule and then its
+        `write_transform` to `value` (a logical value about to be written,
+        e.g. via Device.set()/set_text()), returning what should actually
+        be sent to hardware. Identity if neither is declared, or `value` is
+        None. The write-path counterpart to set_raw().
+
+        The range check runs BEFORE the transform: min/max describe the
+        logical value a config author writes and a UI shows, while the
+        transform exists to convert that into whatever the hardware wants
+        (an inverted polarity, a calibration offset), so checking after it
+        would compare a raw protocol value against logical bounds."""
+        value = self.check_write(value)
         if self._write_transform is not None and value is not None:
             return scripting.evaluate_expression(self._write_transform, {"value": value})
         return value
@@ -291,3 +380,5 @@ class Endpoint:
     event = property(get_event)
     update_time = property(get_update_time)
     last_valid_state = property(get_last_valid_state)
+    last_read_time = property(get_last_read_time)
+    age = property(get_age)

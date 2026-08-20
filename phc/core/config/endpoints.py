@@ -13,7 +13,7 @@ import re
 from phc.core.config.descriptors import (ModuleDescriptor, _ENDPOINT_ENTRY_KEYS,
                                           _HISTORY_ENTRY_KEYS)
 from phc.core.config.params import _UNSET
-from phc.core.endpoint import LOG_AGGREGATIONS, VALUE_TYPES, Endpoint
+from phc.core.endpoint import LOG_AGGREGATIONS, ON_INVALID_MODES, VALUE_TYPES, Endpoint
 from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.registry import get_endpoint_class
@@ -217,6 +217,11 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             raise ConfigError(
                 f"device {device_id!r}: endpoint {spec['key']!r} has invalid log_aggregation "
                 f"{log_aggregation!r}, expected one of {LOG_AGGREGATIONS}")
+        on_invalid = spec.get("on_invalid", "pass")
+        if on_invalid not in ON_INVALID_MODES:
+            raise ConfigError(
+                f"device {device_id!r}: endpoint {spec['key']!r} has invalid on_invalid "
+                f"{on_invalid!r}, expected one of {ON_INVALID_MODES}")
         history_size, history_interval = 0, None
         if "history" in spec:
             if value_type == "str":
@@ -252,6 +257,7 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 write_transform=spec.get("write_transform"),
                 history=history_size,
                 history_interval=history_interval,
+                on_invalid=on_invalid,
             )
         except ValueError as exc:
             raise ConfigError(f"device {device_id!r}: {exc}") from None

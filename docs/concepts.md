@@ -33,6 +33,23 @@ and [`phc/extensions/random_light/`](../phc/extensions/random_light/), randomize
 light control), following the same package-plus-descriptor pattern as
 device modules.
 
+## Device health
+
+Polling fails sometimes — a controller reboots, WiFi drops, a sensor's
+battery dies. PHC never lets that stall the tick or affect other devices:
+the failure is recorded against that device and everything else carries
+on.
+
+What it does *not* do is throw away the last known values, so a device
+that has stopped answering keeps showing its final reading. Each device
+therefore tracks whether its most recent poll succeeded, and each endpoint
+tracks when it last produced an actual value. That is what
+`available()`/`age()` read in a task condition (see
+[scripting](scripting.md#is-this-reading-still-trustworthy)), what the
+web UI marks as "not responding", what the debug portal shows in its poll
+queue, and what the `phc.health` logger reports when a device starts
+failing or recovers.
+
 ## Endpoint types, units & text
 
 Unless otherwise specified, an endpoint's value is untyped and passes
@@ -42,9 +59,17 @@ through unchanged. An endpoint definition may opt into:
 - `unit` — a display unit, e.g. `"°C"`, appended when formatting a
   numeric value as text.
 - `values` — a raw value → text label mapping, e.g. `{ 0: "off", 1: "on" }`.
-- `min`/`max` — a numeric range hint, stored only (never enforced against
-  a write) — e.g. used by [`phc/extensions/web_ui/`](../phc/extensions/web_ui/) to
-  decide whether a writable numeric endpoint gets a bounded slider.
+- `min`/`max` — a numeric range. Used by
+  [`phc/extensions/web_ui/`](../phc/extensions/web_ui/) to decide whether a
+  writable numeric endpoint gets a bounded slider, and — only if
+  `on_invalid` asks for it — to check values on the way out.
+- `on_invalid` — what to do with a write outside `min`/`max`: `pass`
+  (the default: write it anyway, which is how `min`/`max` have always
+  behaved), `reject` (raise, so the value never reaches the hardware and
+  the mistake is visible rather than silently clipped), or `clamp` (write
+  the nearest in-range value). Checked before `write_transform`, since
+  `min`/`max` describe the logical value you write, not the raw one the
+  hardware receives. Non-numeric values and `None` are never checked.
 - `format` — a Python format-spec string (e.g. `".2f"`) applied by
   `to_text()`. Defaults to `".1f"` for a `float` endpoint, since `str()` on
   a raw float otherwise shows however many digits happen to round-trip

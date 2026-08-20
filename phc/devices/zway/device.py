@@ -145,12 +145,19 @@ class ZWayDevice(Device):
         since phc.core.scheduler only logs a bare "fetch failed" for an
         unhandled exception, not one caught and turned into empty values)."""
         if not await self._ensure_helper_loaded():
+            # Controller unreachable, or thc_zWay.js not installed on it.
+            self.report_failure(f"thc_zWay.js not loaded on {self._base_url}")
             return {key: None for key in self._idents}
         await self._ensure_tag_readers_configured()
         try:
             values = await self._get_values()
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+            # Caught rather than raised so one unreachable controller does
+            # not disturb the tick -- which also means the Scheduler sees a
+            # successful fetch, so the failure is reported explicitly (see
+            # Device.report_failure) for this device to show as unhealthy.
             logger.error("%s: fetch failed: %s", self._base_url, exc)
+            self.report_failure(f"{type(exc).__name__}: {exc}")
             values = {}
         return {key: values.get(ident) for key, ident in self._idents.items()}
 

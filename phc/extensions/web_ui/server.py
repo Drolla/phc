@@ -165,7 +165,8 @@ def _describe_timers_panel(panel, devices: dict[str, Device],
     if instance is None or not hasattr(instance, "list_timers"):
         return ({"kind": "timers", "id": panel.id, "title": panel.title,
                   "error": f"unknown timer instance {panel.timer_instance!r}"}, None)
-    targets = [describe_endpoint(qid, devices[qid].endpoint(key)) for qid, key in instance.target_pairs]
+    targets = [describe_endpoint(qid, devices[qid].endpoint(key), devices[qid])
+                for qid, key in instance.target_pairs]
     timers = [_describe_timer(t) for t in instance.list_timers()]
     return ({"kind": "timers", "id": panel.id, "title": panel.title,
               "targets": targets, "timers": timers}, instance)
@@ -239,7 +240,7 @@ async def handle_widget(request: web.Request) -> web.Response:
         endpoint = device.endpoint(endpoint_key)
     except KeyError:
         raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}")
-    ep = describe_endpoint(device_id, endpoint)
+    ep = describe_endpoint(device_id, endpoint, device)
     logger.debug("web_ui widget %s/%s -> value=%r text=%r", device_id, endpoint_key, ep["value"], ep["text"])
     template = request.app[JINJA_ENV].get_template("_widget_only.html")
     html = template.render(ep=ep, refresh_interval=request.app[REFRESH_INTERVAL])

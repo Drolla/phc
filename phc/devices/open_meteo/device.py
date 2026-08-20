@@ -43,9 +43,13 @@ class OpenMeteoDevice(Device):
         """Fetch current-weather block, return {endpoint_key: value}."""
         try:
             current = await self._get_current()
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             # Network/HTTP failure or the request's own 10s timeout: report
-            # every endpoint as unavailable, mirroring meteoswiss.
+            # every endpoint as unavailable, mirroring meteoswiss. The
+            # fetch itself still "succeeds", so the failure has to be
+            # reported explicitly for this device to register as unhealthy
+            # (see Device.report_failure).
+            self.report_failure(f"{type(exc).__name__}: {exc}")
             current = None
         return {key: self._extract(current, ep.params.get("field"))
                 for key, ep in self.endpoints.items()}

@@ -40,7 +40,12 @@ class MeteoSwissDevice(Device):
         """Fetch this station's row from CSV, return {endpoint_key: value}."""
         try:
             row = await self._fetch_station_row()
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            # The fetch itself still "succeeds" (every endpoint just
+            # reports None), so this device only registers as unhealthy
+            # if the failure is reported explicitly -- see
+            # Device.report_failure.
+            self.report_failure(f"{type(exc).__name__}: {exc}")
             row = None
         return {key: self._extract(row, ep.params.get("column"))
                 for key, ep in self.endpoints.items()}

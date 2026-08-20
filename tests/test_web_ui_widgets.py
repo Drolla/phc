@@ -72,6 +72,10 @@ def test_describe_endpoint_shape():
         "max": 100,
         "values": None,
         "update_time": ep.get_update_time(),
+        # A bare Endpoint has no device to ask, so it reports healthy --
+        # see describe_endpoint. `age` is None until something reads it.
+        "healthy": True,
+        "age": None,
     }
 
 
@@ -141,3 +145,18 @@ def test_describe_device_filters_endpoints_not_in_visible_pairs():
     ])
     described = describe_device(lamp, visible_pairs={("lamp", "state")})
     assert [e["endpoint"] for e in described["endpoints"]] == ["state"]
+
+
+def test_describe_endpoint_reports_its_devices_health():
+    """Without this a widget shows the last value a dead device reported,
+    indefinitely and indistinguishably from a live one -- the worst
+    failure mode for a UI someone glances at to check the house."""
+    from phc.core.device import Device
+
+    device = Device("lamp", endpoints=[Endpoint("state")])
+    endpoint = device.endpoint("state")
+
+    assert describe_endpoint("lamp", endpoint, device)["healthy"] is True
+
+    device.health.record_failure("ConnectionError: refused")
+    assert describe_endpoint("lamp", endpoint, device)["healthy"] is False

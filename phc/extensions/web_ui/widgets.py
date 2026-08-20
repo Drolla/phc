@@ -23,11 +23,20 @@ def infer_widget_kind(endpoint: Endpoint) -> str:
     return "text"
 
 
-def describe_endpoint(qualified_id: str, endpoint: Endpoint) -> dict:
+def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | None = None) -> dict:
     """The one JSON-serializable shape shared by the JSON read API
     (GET /api/tree) and every Jinja2 render (full page and single
     /widget/{device}/{endpoint} fragment alike) -- a single source of truth
-    for "what a widget needs to know"."""
+    for "what a widget needs to know".
+
+    `device` supplies the health of the device this endpoint belongs to
+    (see phc.core.health). Without it a widget shows the last value the
+    device successfully reported, indefinitely and indistinguishably from
+    a live one -- which for a UI someone glances at to decide whether the
+    house is fine is the worst possible failure mode. Optional only so a
+    caller holding a bare Endpoint can still describe it; such a widget
+    reports healthy, since it has nothing to say otherwise."""
+    healthy = device.health.healthy if device is not None else True
     return {
         "device": qualified_id,
         "endpoint": endpoint.key,
@@ -43,6 +52,11 @@ def describe_endpoint(qualified_id: str, endpoint: Endpoint) -> dict:
         "max": endpoint.max,
         "values": ({str(k): v for k, v in endpoint.values.items()} if endpoint.values else None),
         "update_time": endpoint.get_update_time(),
+        # Whether the owning device's last I/O attempt succeeded, and how
+        # long since this endpoint last produced an actual reading (None
+        # if it never has) -- see phc.core.endpoint.Endpoint.get_age.
+        "healthy": healthy,
+        "age": endpoint.get_age(),
     }
 
 
@@ -57,7 +71,7 @@ def describe_device(device: Device, visible_pairs: set[tuple[str, str]]) -> dict
     children = [described for described in
                 (describe_device(child, visible_pairs) for child in device.children.values())
                 if described is not None]
-    endpoints = [describe_endpoint(device.qualified_id, ep) for ep in device.endpoints.values()
+    endpoints = [describe_endpoint(device.qualified_id, ep, device) for ep in device.endpoints.values()
                  if (device.qualified_id, ep.key) in visible_pairs]
     if not endpoints and not children:
         return None

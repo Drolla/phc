@@ -117,19 +117,23 @@ def test_fetch_timeout_bounds_the_tick(caplog):
     fast = _read_device("fast", delay=0.05, value=5)
     scheduler = Scheduler({"slow": slow, "fast": fast}, fetch_timeout=0.2)
 
-    # Attach caplog's handler directly to "phc.scheduler": once any earlier
-    # test's load_system() has run configure_logging(), that logger has
-    # propagate=False, so caplog's root handler would otherwise miss it (same
-    # workaround as test_scheduler.py's task_log fixture).
-    sched_logger = logging.getLogger("phc.scheduler")
-    sched_logger.addHandler(caplog.handler)
-    sched_logger.setLevel(logging.WARNING)
+    # Attach caplog's handler directly to the loggers involved: once any
+    # earlier test's load_system() has run configure_logging(), they have
+    # propagate=False, so caplog's root handler would otherwise miss them
+    # (same workaround as test_scheduler.py's task_log fixture). A device
+    # I/O failure is reported on "phc.health", not "phc.scheduler" -- see
+    # Scheduler._record_failure.
+    attached = [logging.getLogger("phc.scheduler"), logging.getLogger("phc.health")]
+    for target in attached:
+        target.addHandler(caplog.handler)
+        target.setLevel(logging.WARNING)
     try:
         start = time.perf_counter()
         scheduler.tick(now=0.0)
         elapsed = time.perf_counter() - start
     finally:
-        sched_logger.removeHandler(caplog.handler)
+        for target in attached:
+            target.removeHandler(caplog.handler)
 
     assert elapsed < 0.8, f"fetch_timeout did not bound the tick: {elapsed:.3f}s"
     assert fast.get("value") == 5          # fast device unaffected

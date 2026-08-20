@@ -24,6 +24,27 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 **New features**
 
+- Device health is now first-class. A failed poll was logged and swallowed
+  so one flaky device could not stall the tick — which also made a dead
+  device invisible, since its endpoints keep their last-good values and a
+  frozen reading looks exactly like a steady one. Each device now records
+  whether its most recent I/O succeeded, and each endpoint when it last
+  produced an actual reading (distinct from `update_time`, which only moves
+  when the value *changes*). Surfaced four ways: `available(ref)` and
+  `age(ref)` in task conditions and scripts, a "not responding" marker on
+  affected web UI widgets, a health column in the debug portal's poll
+  queue, and a `phc.health` logger that reports a device starting to fail
+  or recovering — once per transition, not once per tick. Modules that
+  catch their own network errors report them via the new
+  `Device.report_failure()`; all four bundled network modules do. See
+  [Is this reading still trustworthy?](docs/scripting.md#is-this-reading-still-trustworthy).
+- Endpoints can enforce their declared `min`/`max` on writes, via a new
+  `on_invalid:` of `pass` (default, unchanged behaviour), `reject` or
+  `clamp`. The bounds were previously stored but never checked — fine as
+  the UI hint they were added for, less fine when a task computes a
+  setpoint and sends 95 to something that accepts 5-30. Checked before
+  `write_transform`, since the bounds describe the logical value, not the
+  raw one the hardware receives.
 - New CLI subcommands. `phc validate --config FILE` performs the entire
   load — discovery, parameter and endpoint resolution, task and action
   building — and reports what it built, without starting the scheduler,

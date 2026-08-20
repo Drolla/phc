@@ -456,8 +456,9 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
     expose and a new function only needs to be added once. See
     docs/scripting.md for the full expr:/code: API reference.
 
-    Always available (read-only): state/changed/text/event/sticky/history
-    (each takes a "device.endpoint" ref string), fractile/median/average
+    Always available (read-only): state/changed/text/event/sticky/history/
+    available/age (each takes a "device.endpoint" ref string),
+    fractile/median/average
     (each takes one ref OR a list of refs, pooling their recorded history --
     see _pool), and devices(pattern) (a selector, see phc.core.selectors). Only
     when `writable` (scripted actions): set_state, create_task/kill_task,
@@ -476,6 +477,8 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
         "text": lambda ref: _ref(ref).text,
         "event": lambda ref: _ref(ref).event,
         "sticky": lambda ref: _ref(ref).sticky,
+        "available": lambda ref: _ref(ref).available,
+        "age": lambda ref: _ref(ref).age,
         "history": lambda refs: _pool(refs, devices, task_tag),
         "fractile": lambda refs, f: _fractile(_pool(refs, devices, task_tag), f),
         "median": lambda refs: _fractile(_pool(refs, devices, task_tag), 0.5),

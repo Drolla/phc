@@ -198,3 +198,16 @@ td.changed {
   background: var(--changed-bg);
   color: var(--changed-fg);
 }
+
+/* A device whose fetches are failing. Deliberately NOT the ".changed"
+ * red, which flashes for one tick and fades: this is a standing
+ * condition, so it stays until the device recovers. Reuses --changed-bg
+ * as a foreground rather than introducing a fourth status colour. */
+tr.unhealthy td.c-health {
+  color: var(--changed-bg);
+  font-weight: 600;
+}
+
+tr.unhealthy td.c-id {
+  color: var(--changed-bg);
+}

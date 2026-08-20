@@ -10,6 +10,11 @@ from phc.core.device import Device, _write_collector
 from phc.core.task import Task
 
 logger = logging.getLogger("phc.scheduler")
+# Device availability gets its own logger so an installation can raise or
+# lower the volume of "this sensor stopped answering" independently of
+# everything else the scheduler says -- it is the one scheduler-level
+# message a user actually wants to see, and to be able to route.
+health_logger = logging.getLogger("phc.health")
 
 
 class Scheduler:
@@ -226,7 +231,13 @@ class Scheduler:
     async def _await_io(self, awaitable, device: Device, kind: str):
         """Await one device I/O with per-device isolation (a failure/timeout is
         logged and never propagates, so it can't cancel other devices' I/O in
-        the same gather) and an optional bound (fetch_timeout)."""
+        the same gather) and an optional bound (fetch_timeout).
+
+        This is the single place an I/O attempt is seen to succeed or fail,
+        so it is also where each device's health is recorded (see
+        phc.core.health.DeviceHealth). Swallowing the failure keeps one
+        flaky device from stalling the tick, but used to make it invisible
+        too -- the health record is what makes it observable instead."""
         try:
             if self.fetch_timeout is not None:
                 async with asyncio.timeout(self.fetch_timeout):
@@ -234,10 +245,40 @@ class Scheduler:
             else:
                 await awaitable
         except TimeoutError:
-            logger.warning("device %s %s timed out after %.3fs",
-                           device.qualified_id, kind, self.fetch_timeout)
-        except Exception:
-            logger.exception("device %s %s failed", device.qualified_id, kind)
+            self._record_failure(device, kind,
+                                  f"{kind} timed out after {self.fetch_timeout:.3f}s")
+        except Exception as exc:
+            self._record_failure(device, kind, f"{type(exc).__name__}: {exc}", traceback=True)
+        else:
+            # The I/O did not raise -- but a module that catches its own
+            # network errors and reports None values (most of them do) says
+            # so here instead. See Device.report_failure.
+            reported = device.consume_reported_failure()
+            if reported is not None:
+                self._record_failure(device, kind, reported)
+            elif device.health.record_success():
+                health_logger.warning("device %s recovered (%s ok after %d failure(s))",
+                                       device.qualified_id, kind, device.health.total_failures)
+
+    def _record_failure(self, device: Device, kind: str, error: str, traceback: bool = False) -> None:
+        """Record one failed I/O attempt and log it -- in full the first
+        time, then quietly.
+
+        A device that has been unreachable for hours would otherwise repeat
+        the same traceback on every tick, burying everything else; but
+        dropping the repeats entirely would leave no evidence it is still
+        failing. So the transition into failure is a WARNING (with the
+        traceback, when there is one), and continued failure stays at DEBUG
+        with a running count."""
+        first = device.health.record_failure(error)
+        if first:
+            health_logger.warning("device %s %s failed: %s", device.qualified_id, kind, error)
+            if traceback:
+                logger.debug("device %s %s failed", device.qualified_id, kind, exc_info=True)
+        else:
+            health_logger.debug("device %s %s still failing (%d consecutive): %s",
+                                 device.qualified_id, kind,
+                                 device.health.consecutive_failures, error)
 
     def _log_task_countdown(self, now: float):
         """At DEBUG level, log an in-place status line of seconds-until-due
