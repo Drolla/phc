@@ -15,6 +15,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
 ]
 
 [project.scripts]
@@ -34,6 +37,58 @@ include = ["phc*"]
 [tool.setuptools.package-data]
 "phc.devices" = ["*/module.yaml"]
 "phc.extensions" = ["*/extension.yaml", "*/templates/*", "*/static/*"]
+
+[tool.ruff]
+# 110 rather than the more usual 88/100: the code sits at 97 characters at
+# the 99th percentile, so a tighter limit would mean reflowing hundreds of
+# lines that are not actually hard to read, for no gain.
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/W (pycodestyle), F (pyflakes), I (import order), UP (pyupgrade for a
+# >=3.11 baseline), B (bugbear: the mutable-default and
+# raise-without-from class of real bug).
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# This module re-exports the names the flat config.py used to expose --
+# including private ones the test suite imports -- so that the split into
+# a package broke no imports. They are unused *here* by definition.
+"phc/core/config/__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["phc"]
+# Third-party packages here ship no stubs; their absence is not a finding
+# about this code.
+ignore_missing_imports = true
+
+# A ratchet, not a wall. The codebase was never type-checked, so a strict
+# run reports ~44 pre-existing findings -- gating CI on that would mean
+# either a large speculative refactor or a permanently red build. Instead
+# every module below the line is exempt, everything else must stay clean,
+# and tightening is done by DELETING a name from this list (and fixing
+# what it then reports). Adding a name back should need a reason.
+[[tool.mypy.overrides]]
+module = [
+    "phc.cli",
+    "phc.core.config.tasks",
+    "phc.core.logging_setup",
+    "phc.core.scheduler",
+    "phc.core.task",
+    "phc.devices.sun.device",
+    "phc.extensions.debug_portal.extension",
+    "phc.extensions.debug_portal.snapshot",
+    "phc.extensions.logdb.logdb",
+    "phc.extensions.mail_alert.mail_alert",
+    "phc.extensions.random_light.extension",
+    "phc.extensions.random_light.random_light",
+    "phc.extensions.timer.extension",
+    "phc.extensions.web_ui.extension",
+    "phc.extensions.web_ui.server",
+]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 # testpaths keeps a bare `pytest` from also walking examples/ and fusion18/.
