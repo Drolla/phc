@@ -4,8 +4,12 @@ a Device, pulling together the descriptor, parameter, and endpoint layers.
 
 from phc.core.config.descriptors import _DEVICE_ENTRY_KEYS, ModuleDescriptor, _load_module_descriptor
 from phc.core.config.endpoints import _expand_endpoint_specs, _merge_endpoints, _resolve_interval
-from phc.core.config.params import (_ModuleConfig, _build_effective_module, _merge_params,
-                                     _resolve_module_config)
+from phc.core.config.params import (
+    _build_effective_module,
+    _merge_params,
+    _ModuleConfig,
+    _resolve_module_config,
+)
 from phc.core.config.yamlio import _flatten_list_entries
 from phc.core.device import Device
 from phc.core.errors import ConfigError

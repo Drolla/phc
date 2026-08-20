@@ -10,8 +10,8 @@ picked up at startup."""
 import re
 import time
 
-from phc.core.errors import ConfigError
 from phc.core.device import Device
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.registry import register_task_kind
 from phc.core.task import Action, resolve_endpoint_ref
@@ -102,7 +102,8 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
             raise ConfigError(f"random_light instance {instance_key!r}: light device {device_id!r} not found")
         endpoint = flat[device_id].endpoint(endpoint_key)
         if not endpoint.writable:
-            raise ConfigError(f"random_light instance {instance_key!r}: light endpoint {ref!r} is not writable")
+            raise ConfigError(
+                f"random_light instance {instance_key!r}: light endpoint {ref!r} is not writable")
 
         if "windows" in entry:
             windows, light_needs_sun = _parse_windows(entry["windows"], f"light {ref!r}")
@@ -110,7 +111,8 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
             windows, light_needs_sun = default_windows, default_needs_sun
         needs_sun = needs_sun or light_needs_sun
 
-        min_interval = parse_duration(entry["min_interval"]) if "min_interval" in entry else default_min_interval
+        min_interval = (parse_duration(entry["min_interval"]) if "min_interval" in entry
+                         else default_min_interval)
         probability_on = (_parse_probability(entry["probability_on"], f"light {ref!r}")
                            if "probability_on" in entry else default_probability_on)
 

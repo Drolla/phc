@@ -13,8 +13,7 @@ import importlib.resources
 import yaml
 
 from phc.core.errors import ConfigError
-from phc.core.registry import (_device_modules, _extension_packages,
-                                extension_package, module_package)
+from phc.core.registry import _device_modules, _extension_packages, extension_package, module_package
 
 # Descriptor lookup goes through importlib.resources, not a path derived
 # from this file's own location: a module.yaml/extension.yaml is package

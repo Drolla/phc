@@ -3,8 +3,8 @@
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Awaitable, Callable
 
 from phc.core.device import Device, _write_collector
 from phc.core.task import Task

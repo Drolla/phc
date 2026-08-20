@@ -17,8 +17,8 @@ templates/_macros.html's render_panel macro."""
 
 import logging
 
-from phc.core.errors import ConfigError
 from phc.core.device import Device
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.selectors import resolve_selectors
 
@@ -84,7 +84,8 @@ def _parse_decimation(decimation_spec: list[dict]) -> list[tuple[float, int]]:
                 f"expected {{older_than: <duration>, factor: <int>}}")
         factor = entry["factor"]
         if not isinstance(factor, int) or factor < 1:
-            raise ConfigError(f"web_ui graph panel: decimation factor must be a positive integer, got {factor!r}")
+            raise ConfigError(
+                f"web_ui graph panel: decimation factor must be a positive integer, got {factor!r}")
         tiers.append((parse_duration(entry["older_than"]), factor))
     return tiers
 

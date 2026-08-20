@@ -17,8 +17,8 @@ phc.core.task.Task.run()/phc.core.scheduler.Scheduler exactly like a hand-author
 import logging
 import time
 
-from phc.core.errors import ConfigError
 from phc.core.device import Device
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration, parse_time
 from phc.core.selectors import resolve_selectors
 from phc.core.task import TaskRegistry

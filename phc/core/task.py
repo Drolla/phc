@@ -260,7 +260,7 @@ class TaskRegistry:
                  extensions: dict[str, object] | None = None,
                  sticky_endpoints: set | None = None,
                  task_specs: dict[str, dict] | None = None):
-        self._tasks: list["Task"] = list(tasks or [])
+        self._tasks: list[Task] = list(tasks or [])
         # callable(spec, registry) -> Task; supplied by the config loader.
         # None means this registry can hold tasks but not build new ones --
         # which is all a hand-constructed registry in a unit test needs.

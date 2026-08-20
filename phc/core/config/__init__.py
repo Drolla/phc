@@ -24,25 +24,36 @@ suite reaches for) keeps working unchanged. Import from a submodule
 directly when you want to be explicit about which stage you mean.
 """
 
-from phc.core.errors import ConfigError
-
-from phc.core.config.descriptors import (ExtensionDescriptor, ModuleDescriptor,
-                                          _load_extension_descriptor, _load_module_descriptor,
-                                          _parse_profile_library, _read_descriptor_yaml)
+from phc.core.config.descriptors import (
+                                          ExtensionDescriptor,
+                                          ModuleDescriptor,
+                                          _load_extension_descriptor,
+                                          _load_module_descriptor,
+                                          _parse_profile_library,
+                                          _read_descriptor_yaml,
+)
 from phc.core.config.devices import _build_device
-from phc.core.config.endpoints import (_expand_endpoint_specs, _merge_endpoints,
-                                        _overlay_endpoint_spec, _parse_history_spec,
-                                        _parse_interval_value, _resolve_interval,
-                                        _substitute_endpoint_spec, _substitute_templates)
+from phc.core.config.endpoints import (
+                                          _expand_endpoint_specs,
+                                          _merge_endpoints,
+                                          _overlay_endpoint_spec,
+                                          _parse_history_spec,
+                                          _parse_interval_value,
+                                          _resolve_interval,
+                                          _substitute_endpoint_spec,
+                                          _substitute_templates,
+)
 from phc.core.config.extensions import _load_extensions, _merge_extension_params
-from phc.core.config.hooks import (_collect_history_records, _make_history_tick_hook,
-                                    _make_sticky_tick_hook)
-from phc.core.config.params import (_build_effective_module, _merge_params,
-                                     _resolve_module_config)
+from phc.core.config.hooks import _collect_history_records, _make_history_tick_hook, _make_sticky_tick_hook
+from phc.core.config.params import _build_effective_module, _merge_params, _resolve_module_config
 from phc.core.config.system import System, load_system
-from phc.core.config.tasks import (_build_action, _build_condition, _build_task,
-                                    _subscribe_referenced_endpoints)
-from phc.core.config.yamlio import (_find_placeholders, _flatten_list_entries, _IncludeLoader,
-                                     _Placeholder)
+from phc.core.config.tasks import (
+                                          _build_action,
+                                          _build_condition,
+                                          _build_task,
+                                          _subscribe_referenced_endpoints,
+)
+from phc.core.config.yamlio import _find_placeholders, _flatten_list_entries, _IncludeLoader, _Placeholder
+from phc.core.errors import ConfigError
 
 __all__ = ["ConfigError", "System", "load_system"]
