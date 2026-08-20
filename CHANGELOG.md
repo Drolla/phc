@@ -103,6 +103,23 @@ Changes merged into `main` since the 0.1.0 release, in order.
   time of day. See
   [Which clock each schedule runs on](docs/configuration.md#which-clock-each-schedule-runs-on).
 
+**Developer experience**
+
+- Added an architecture overview
+  ([`docs/developer/architecture.md`](docs/developer/architecture.md)) and
+  a guide to writing an extension
+  ([`docs/developer/writing-an-extension.md`](docs/developer/writing-an-extension.md)),
+  the counterpart to the existing device-module guide.
+- The extension lifecycle is now an explicit contract
+  (`phc.core.extension`) rather than four `hasattr` checks, and a
+  misspelled hook (`on_tik`) is rejected at load. Hooks are found by name,
+  so such a method was not a broken hook but simply never called — the
+  extension loaded fine and silently never did its job.
+- Added `ruff` and `mypy` configuration and a CI lint job, plus coverage
+  reporting (currently 96%). mypy is set up as a ratchet: modules with
+  pre-existing findings are listed as exempt so the gate is green today
+  and tightens by deleting entries.
+
 **Internal structure**
 
 - `phc/core/config.py` (1469 lines, ~15 responsibilities) is now a package

@@ -24,7 +24,9 @@ state, all on a fixed-heartbeat scheduler.
   [Razberry/zWay Z-Wave integration](docs/zway.md). See also
   [installing PHC on a Raspberry Pi](docs/raspberry-pi-install.md).
 - **Developer guide** — [`docs/developer/`](docs/developer/):
-  [writing a device module](docs/developer/writing-a-device-module.md), plus
+  [architecture](docs/developer/architecture.md),
+  [writing a device module](docs/developer/writing-a-device-module.md),
+  [writing an extension](docs/developer/writing-an-extension.md), plus
   internals for [zway](docs/developer/zway.md), the
   [web UI](docs/developer/web-ui.md), the
   [timer](docs/developer/timer.md), and the

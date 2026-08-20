@@ -5,7 +5,17 @@
 ```
 pip install -e ".[dev]"
 pytest
+ruff check phc tests
+mypy
 ```
+
+All three run in CI. `ruff` and `mypy` are configured in `pyproject.toml`.
+
+`mypy` is a **ratchet**: the codebase was never type-checked, so the
+modules that still have findings are listed as exempt under
+`[[tool.mypy.overrides]]`. Everything else must stay clean. Tighten by
+deleting a name from that list and fixing what it then reports — adding
+one back should need a reason.
 
 ## Workflow
 
@@ -34,10 +44,12 @@ pytest
 
 ## Adding a device module or extension
 
-See [`docs/developer/writing-a-device-module.md`](docs/developer/writing-a-device-module.md)
-for the module.yaml + device.py pattern; extensions follow the same
-package-plus-descriptor shape under `phc/extensions/` (`extension.yaml` +
-`extension.py`).
+See [`docs/developer/architecture.md`](docs/developer/architecture.md) for
+how the pieces fit together,
+[`writing-a-device-module.md`](docs/developer/writing-a-device-module.md)
+for the module.yaml + device.py pattern, and
+[`writing-an-extension.md`](docs/developer/writing-an-extension.md) for the
+extension.yaml + extension.py one.
 
 A descriptor (`module.yaml`/`extension.yaml`) and any web assets are
 package *data*, not code, so a new one must also be covered by
