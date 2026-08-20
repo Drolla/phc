@@ -38,6 +38,13 @@ Changes merged into `main` since the 0.1.0 release, in order.
   catch their own network errors report them via the new
   `Device.report_failure()`; all four bundled network modules do. See
   [Is this reading still trustworthy?](docs/scripting.md#is-this-reading-still-trustworthy).
+- Endpoints can enforce their declared `min`/`max` on writes, via a new
+  `on_invalid:` of `pass` (default, unchanged behaviour), `reject` or
+  `clamp`. The bounds were previously stored but never checked — fine as
+  the UI hint they were added for, less fine when a task computes a
+  setpoint and sends 95 to something that accepts 5-30. Checked before
+  `write_transform`, since the bounds describe the logical value, not the
+  raw one the hardware receives.
 - New CLI subcommands. `phc validate --config FILE` performs the entire
   load — discovery, parameter and endpoint resolution, task and action
   building — and reports what it built, without starting the scheduler,
