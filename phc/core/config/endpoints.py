@@ -10,14 +10,12 @@ Device (see devices.py).
 import copy
 import re
 
-from phc.core.config.descriptors import (ModuleDescriptor, _ENDPOINT_ENTRY_KEYS,
-                                          _HISTORY_ENTRY_KEYS)
+from phc.core.config.descriptors import _ENDPOINT_ENTRY_KEYS, _HISTORY_ENTRY_KEYS, ModuleDescriptor
 from phc.core.config.params import _UNSET
 from phc.core.endpoint import LOG_AGGREGATIONS, ON_INVALID_MODES, VALUE_TYPES, Endpoint
 from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.registry import get_endpoint_class
-
 
 # Matches a bare {name} template field (no format-spec/conversion syntax --
 # these templates only ever need to substitute a plain param value, e.g.

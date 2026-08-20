@@ -6,8 +6,8 @@ endpoints (currently phc.extensions.logdb; see phc/extensions/logdb/extension.py
 
 import fnmatch
 
-from phc.core.errors import ConfigError
 from phc.core.device import Device
+from phc.core.errors import ConfigError
 
 
 def resolve_selectors(patterns: list[str], flat: dict[str, Device]) -> list[tuple[str, str]]:

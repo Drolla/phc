@@ -12,6 +12,7 @@ tests/test_web_ui_extension.py's own docstring)."""
 import asyncio
 import json
 
+import aiohttp
 import pytest
 from aiohttp import ClientSession
 from aiohttp.test_utils import TestClient, TestServer
@@ -237,7 +238,9 @@ def test_on_start_binds_a_real_port_and_on_stop_releases_it():
         finally:
             await instance.on_stop(flat)
 
-        with pytest.raises(Exception):
+        # The port is closed, so connecting fails -- the same pair the
+        # device modules catch for a network failure.
+        with pytest.raises((aiohttp.ClientError, asyncio.TimeoutError)):
             async with ClientSession() as session:
                 async with session.get(f"http://127.0.0.1:{port}/", timeout=1) as resp:
                     pass

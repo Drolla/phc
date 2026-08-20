@@ -8,8 +8,8 @@ this module's @register_task_kind decorator gets imported at startup."""
 
 import time
 
-from phc.core.errors import ConfigError
 from phc.core.device import Device
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.registry import register_task_kind
 from phc.core.selectors import resolve_selectors

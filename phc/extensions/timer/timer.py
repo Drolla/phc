@@ -96,7 +96,7 @@ class TimerStore:
         if not self.path.exists():
             return 1, []
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
+            with open(self.path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
         except (OSError, yaml.YAMLError) as exc:
             logger.warning("timer: %s is missing or corrupt (%s); starting with no timers",

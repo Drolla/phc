@@ -151,7 +151,7 @@ class ZWayDevice(Device):
         await self._ensure_tag_readers_configured()
         try:
             values = await self._get_values()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+        except (TimeoutError, aiohttp.ClientError, ValueError) as exc:
             # Caught rather than raised so one unreachable controller does
             # not disturb the tick -- which also means the Scheduler sees a
             # successful fetch, so the failure is reported explicitly (see
@@ -176,7 +176,7 @@ class ZWayDevice(Device):
             expr = f'Set([["{command_group}","{address}"]],{json.dumps(value)})'
             try:
                 await self._js_run(expr)
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            except (TimeoutError, aiohttp.ClientError) as exc:
                 logger.error("%s: write failed for %s: %s", self._base_url, key, exc)
                 continue
             self._state.response_cache.pop(self._base_url, None)
@@ -275,7 +275,7 @@ class ZWayDevice(Device):
         # zWay reports a node with no value yet (unresponsive/asleep) as ""
         # rather than null. Normalize to None so it's indistinguishable from
         # any other fetch failure (see receive_async).
-        return {ident: (value if value != "" else None) for ident, value in zip(idents, raw)}
+        return {ident: (value if value != "" else None) for ident, value in zip(idents, raw, strict=True)}
 
     # ---------- helper script (thc_zWay.js) one-time load ----------
 
@@ -297,7 +297,7 @@ class ZWayDevice(Device):
                 return True
             try:
                 await self._js_run('executeFile("thc_zWay.js")')
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            except (TimeoutError, aiohttp.ClientError) as exc:
                 logger.error("%s: could not reach zWay server to load thc_zWay.js: %s",
                              self._base_url, exc)
                 return False
@@ -316,7 +316,7 @@ class ZWayDevice(Device):
         (script not loaded, or not loaded yet)."""
         try:
             result = await self._js_run(f"Get_IndexArray({_HELPER_PROBE_IDENT})")
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (TimeoutError, aiohttp.ClientError):
             return False
         return result == _HELPER_PROBE_RESPONSE
 
@@ -335,7 +335,7 @@ class ZWayDevice(Device):
             return
         try:
             await self._js_run(f"Configure_TagReader({node})")
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (TimeoutError, aiohttp.ClientError):
             return
         self._state.configured_tag_readers.add(key)
         logger.info("tag reader registered for node %s on %s", node, self._base_url)

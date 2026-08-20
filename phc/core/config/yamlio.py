@@ -12,7 +12,6 @@ import yaml
 
 from phc.core.errors import ConfigError
 
-
 _include_stack: list[Path] = []
 
 
@@ -72,7 +71,7 @@ def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
         raise ConfigError(f"!include: circular include: {chain}")
     _include_stack.append(include_path)
     try:
-        with open(include_path, "r", encoding="utf-8") as f:
+        with open(include_path, encoding="utf-8") as f:
             return yaml.load(f, Loader=_IncludeLoader)
     finally:
         _include_stack.pop()

@@ -239,7 +239,7 @@ async def handle_widget(request: web.Request) -> web.Response:
     try:
         endpoint = device.endpoint(endpoint_key)
     except KeyError:
-        raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}")
+        raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}") from None
     ep = describe_endpoint(device_id, endpoint, device)
     logger.debug("web_ui widget %s/%s -> value=%r text=%r", device_id, endpoint_key, ep["value"], ep["text"])
     template = request.app[JINJA_ENV].get_template("_widget_only.html")
@@ -300,7 +300,7 @@ async def handle_api_set(request: web.Request) -> web.Response:
     try:
         endpoint = device.endpoint(endpoint_key)
     except KeyError:
-        raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}")
+        raise web.HTTPNotFound(text=f"unknown endpoint {endpoint_key!r}") from None
     if not endpoint.writable:
         raise web.HTTPForbidden(text=f"endpoint {endpoint_key!r} is read-only")
 
@@ -309,7 +309,7 @@ async def handle_api_set(request: web.Request) -> web.Response:
         await device.set_text_async(text, endpoint_key)
     except (ValueError, TypeError) as exc:
         logger.debug("web_ui set %s/%s failed: %s", device_id, endpoint_key, exc)
-        raise web.HTTPBadRequest(text=str(exc))
+        raise web.HTTPBadRequest(text=str(exc)) from None
     logger.debug("web_ui set %s/%s succeeded", device_id, endpoint_key)
     return web.Response(status=204)
 
@@ -393,7 +393,7 @@ async def handle_api_timers_set(request: web.Request) -> web.Response:
         else:
             instance.add_timer(**fields)
     except (ValueError, TypeError) as exc:
-        raise web.HTTPBadRequest(text=str(exc))
+        raise web.HTTPBadRequest(text=str(exc)) from None
     return _timers_response(request, panel)
 
 
@@ -406,7 +406,7 @@ async def handle_api_timers_delete(request: web.Request) -> web.Response:
     try:
         instance.delete_timer(int(data.get("id")))
     except (ValueError, TypeError) as exc:
-        raise web.HTTPBadRequest(text=str(exc))
+        raise web.HTTPBadRequest(text=str(exc)) from None
     return _timers_response(request, panel)
 
 
@@ -421,5 +421,5 @@ async def handle_api_timers_enable(request: web.Request) -> web.Response:
     try:
         instance.set_enabled(int(data.get("id")), data.get("enabled") == "true")
     except (ValueError, TypeError) as exc:
-        raise web.HTTPBadRequest(text=str(exc))
+        raise web.HTTPBadRequest(text=str(exc)) from None
     return _timers_response(request, panel)

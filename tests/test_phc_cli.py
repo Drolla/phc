@@ -1,13 +1,14 @@
 """Tests for phc.cli: command-line argument parsing and the subcommands."""
 
+import argparse
 from pathlib import Path
 
 import pytest
 
+from phc.cli import _parse_log_level_module, _resolve_debug_portal_instance, main
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
 from phc.devices.virtual.device import VirtualDevice
-from phc.cli import _parse_log_level_module, _resolve_debug_portal_instance, main
 
 
 def test_parse_log_level_module_splits_name_and_level():
@@ -15,7 +16,7 @@ def test_parse_log_level_module_splits_name_and_level():
 
 
 def test_parse_log_level_module_rejects_missing_equals():
-    with pytest.raises(Exception):
+    with pytest.raises(argparse.ArgumentTypeError):
         _parse_log_level_module("scheduler")
 
 

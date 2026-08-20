@@ -43,7 +43,7 @@ class OpenMeteoDevice(Device):
         """Fetch current-weather block, return {endpoint_key: value}."""
         try:
             current = await self._get_current()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, aiohttp.ClientError) as exc:
             # Network/HTTP failure or the request's own 10s timeout: report
             # every endpoint as unavailable, mirroring meteoswiss. The
             # fetch itself still "succeeds", so the failure has to be

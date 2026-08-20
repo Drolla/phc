@@ -5,8 +5,12 @@ import pytest
 
 from phc.core.endpoint import Endpoint
 from phc.core.scripting import (
-    EndpointRef, ScriptError, compile_expression, compile_script,
-    evaluate_expression, run_script,
+    EndpointRef,
+    ScriptError,
+    compile_expression,
+    compile_script,
+    evaluate_expression,
+    run_script,
 )
 from phc.devices.virtual.device import VirtualDevice
 from tests.conftest import fetch_sync
@@ -233,7 +237,9 @@ def test_endpoint_ref_history_raises_without_declaration():
     sensor = _sensor(history=0)
     ref = EndpointRef("temp_sensor", "temp", {"temp_sensor": sensor})
     with pytest.raises(ValueError):
-        ref.history
+        # A bare attribute access on purpose: `history` is a property, and
+        # accessing it is what raises.
+        _ = ref.history
 
 
 # ---------- history()/fractile()/median()/average() sandbox wiring ----------

@@ -11,8 +11,8 @@ import logging
 
 from aiohttp import web
 
-from phc.core.errors import ConfigError
 from phc.core.device import Device
+from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.extensions.web_ui.panels import DevicesPanel, Panel, get_panel_kind_class
 from phc.extensions.web_ui.server import build_app
@@ -55,7 +55,8 @@ def _build_panel(panel_spec: dict, flat: dict[str, Device], instance_key: str, l
 def _build_section(section_spec: dict, flat: dict[str, Device], instance_key: str, page_id: str) -> Section:
     section_id = section_spec.get("id")
     if not section_id:
-        raise ConfigError(f"web_ui instance {instance_key!r}: page {page_id!r}: section missing required 'id'")
+        raise ConfigError(
+            f"web_ui instance {instance_key!r}: page {page_id!r}: section missing required 'id'")
     label = f"page {page_id!r} section {section_id!r}"
     title = section_spec.get("title", section_id)
     collapsed = bool(section_spec.get("collapsed", True))
@@ -93,7 +94,8 @@ def _build_page(page_spec: dict, flat: dict[str, Device], instance_key: str) -> 
     duplicates = {i for i in section_ids if section_ids.count(i) > 1}
     if duplicates:
         raise ConfigError(
-            f"web_ui instance {instance_key!r}: page {page_id!r}: duplicate section id(s): {sorted(duplicates)}")
+            f"web_ui instance {instance_key!r}: page {page_id!r}: "
+            f"duplicate section id(s): {sorted(duplicates)}")
 
     return Page(id=page_id, title=title, sections=sections)
 

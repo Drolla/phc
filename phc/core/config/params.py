@@ -9,10 +9,13 @@ top of a module's own.
 
 import copy
 
-from phc.core.config.descriptors import (ModuleDescriptor, _DEVICE_ENTRY_KEYS,
-                                          _MODULES_ENTRY_KEYS, _parse_profile_library)
+from phc.core.config.descriptors import (
+    _DEVICE_ENTRY_KEYS,
+    _MODULES_ENTRY_KEYS,
+    ModuleDescriptor,
+    _parse_profile_library,
+)
 from phc.core.errors import ConfigError
-
 
 # Sentinel distinguishing "modules.<name>.update was not set" from a stored
 # None ("this module's devices never poll by default") -- plain dict.get()

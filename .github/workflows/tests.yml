@@ -24,7 +24,29 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run test suite
-        run: pytest
+        run: pytest --cov=phc --cov-report=term-missing
+
+  # Style and typing are their own job: a lint failure should be
+  # distinguishable at a glance from a broken test, and it need not run
+  # once per Python version.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install package with dev extras
+        run: pip install -e ".[dev]"
+
+      - name: ruff
+        run: ruff check phc tests
+
+      - name: mypy
+        run: mypy
 
   # The test suite runs against the source tree, so it cannot notice a
   # packaging mistake: for most of this project's life the wheel shipped

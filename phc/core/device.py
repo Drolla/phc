@@ -48,7 +48,7 @@ class Device:
         # test, a script) still works with no ceremony.
         self.context = context if context is not None else {}
         self.endpoints: dict[str, Endpoint] = {e.key: e for e in (endpoints or [])}
-        self.children: dict[str, "Device"] = {c.id: c for c in (children or [])}
+        self.children: dict[str, Device] = {c.id: c for c in (children or [])}
         self.update_interval = update_interval
         # Negative infinity so a freshly built device is immediately due on
         # the scheduler's first tick, rather than waiting a full interval.

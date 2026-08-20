@@ -42,7 +42,7 @@ class WavePlusBridgeDevice(Device):
         return {endpoint_key: value}."""
         try:
             payload = await self._get_payload()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, aiohttp.ClientError) as exc:
             # The fetch itself still "succeeds" (every endpoint just
             # reports None), so this device only registers as unhealthy
             # if the failure is reported explicitly -- see

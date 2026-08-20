@@ -23,7 +23,6 @@ from phc.core.scheduler import Scheduler
 from phc.core.task import SetAction, Task
 from phc.devices.zway.device import ZWayDevice
 
-
 # The per-system device context every device this module builds shares
 # (see phc.core.device.Device.context) -- one System's worth of zway state,
 # reset between tests by the fixture below. load_system() creates one of

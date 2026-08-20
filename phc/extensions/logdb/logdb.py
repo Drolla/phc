@@ -342,7 +342,7 @@ class LogDb:
         """Write a brand-new info + label header to csv_path.
 
         Replaces any existing content."""
-        info = f"{_INFO_LINE_PREFIX}{_VERSION}\n".encode("utf-8")
+        info = f"{_INFO_LINE_PREFIX}{_VERSION}\n".encode()
         content = "type,time," + ",".join(labels)
         width = self._desired_header_width(len(content.encode("utf-8")) + 1)
         with open(self.csv_path, "wb") as f:
@@ -405,7 +405,7 @@ class LogDb:
         header_text = header_line.decode("utf-8").rstrip("\n").rstrip(" ")
         persisted_labels = header_text.split(",")[2:]
 
-        new_labels = [l for l in configured_labels if l not in persisted_labels]
+        new_labels = [label for label in configured_labels if label not in persisted_labels]
         combined_labels = persisted_labels + new_labels
 
         if not new_labels:
@@ -526,7 +526,9 @@ class LogDb:
                     lines.pop()
                 f_positions = [i for i, line in enumerate(lines) if line.startswith("F,")]
                 reached_start = start <= self._data_start
-                if reached_start or (f_positions and self._window_covered(lines, f_positions[0], reference_time)):
+                covered = f_positions and self._window_covered(
+                    lines, f_positions[0], reference_time)
+                if reached_start or covered:
                     break
                 chunk_size *= 2
 
@@ -547,7 +549,7 @@ class LogDb:
         cutoff = self._retention_cutoff(times, reference_time)
         times, rows = times[cutoff:], rows[cutoff:]
 
-        for t, row in zip(times, rows):
+        for t, row in zip(times, rows, strict=True):
             self._times.append(t)
             for label in self.labels:
                 self._columns[label].append(row[label])

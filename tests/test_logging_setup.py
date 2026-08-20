@@ -6,8 +6,13 @@ import logging
 
 import pytest
 
-from phc.core.logging_setup import (InPlaceLineHandler, NewlineSafeStreamHandler, _InPlaceLineState,
-                                 _LevelMapFilter, configure_logging)
+from phc.core.logging_setup import (
+    InPlaceLineHandler,
+    NewlineSafeStreamHandler,
+    _InPlaceLineState,
+    _LevelMapFilter,
+    configure_logging,
+)
 
 
 def test_in_place_record_writes_no_trailing_newline():

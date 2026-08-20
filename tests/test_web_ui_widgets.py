@@ -6,7 +6,6 @@ from phc.core.endpoint import Endpoint
 from phc.devices.virtual.device import VirtualDevice
 from phc.extensions.web_ui.widgets import describe_device, describe_endpoint, infer_widget_kind
 
-
 # ---------- infer_widget_kind ----------
 
 def test_read_only_endpoint_is_always_a_label():

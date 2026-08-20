@@ -37,3 +37,8 @@ CLAUDE.md
 # Personal home automation config (may become a symlink to a backed-up
 # location outside the repo) -- never commit, see CLAUDE.md.
 fusion18/
+
+# Coverage output
+.coverage
+coverage.xml
+htmlcov/

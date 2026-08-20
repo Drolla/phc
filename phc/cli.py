@@ -15,8 +15,14 @@ import yaml
 
 from phc.core.config import ConfigError, System, load_system
 from phc.core.config.descriptors import _load_extension_descriptor, _load_module_descriptor
-from phc.core.registry import (discover_extensions, discover_modules, extension_package,
-                                module_package, registered_extensions, registered_modules)
+from phc.core.registry import (
+    discover_extensions,
+    discover_modules,
+    extension_package,
+    module_package,
+    registered_extensions,
+    registered_modules,
+)
 from phc.core.scheduler import Scheduler
 from phc.extensions.debug_portal.extension import DebugPortalInstance
 from phc.extensions.debug_portal.extension import configure as configure_debug_portal

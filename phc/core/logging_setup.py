@@ -191,7 +191,9 @@ def configure_logging(log_config: list | None, log_levels_override: dict | None 
         all_levels.append(default_level)
         all_levels.extend(_parse_level(v, default_level) for k, v in levels.items() if k != "default")
         level_filter = _LevelMapFilter(levels, default_level)
-        not_in_place = lambda record: not getattr(record, "in_place", False)
+        def not_in_place(record):
+            """Keep every record except the scheduler's in-place status line."""
+            return not getattr(record, "in_place", False)
 
         if is_stream:
             stream = sys.stderr if dest == "stderr" else sys.stdout

@@ -5,9 +5,9 @@ back a plain {light_id: 0|1} target dict. See phc/extensions/random_light/
 extension.py for the phc.core.config/phc.core.task wiring."""
 
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable
 
 
 @dataclass(frozen=True)
