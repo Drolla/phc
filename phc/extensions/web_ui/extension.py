@@ -41,6 +41,40 @@ class Section:
         self.panels = panels
 
 
+def _reject_duplicates(ids: list[str], what: str, instance_key: str, context: str = "") -> None:
+    """Raise if `ids` repeats. A page, section or panel id is an address --
+    a URL, or the key a fragment/CRUD route is looked up by -- so a
+    duplicate does not merely look untidy, it makes one of the two
+    unreachable."""
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        where = f"{context}: " if context else ""
+        raise ConfigError(
+            f"web_ui instance {instance_key!r}: {where}duplicate {what} id(s): {duplicates}")
+
+
+def _reject_duplicate_panel_ids(pages: list["Page"], instance_key: str) -> None:
+    """Check every panel kind that has an id, rather than naming the kinds
+    that currently have one.
+
+    A panel id addresses that panel's own route (GET /api/graph/{id}, the
+    /timers/{panel_id} set), and the app indexes panels by it -- so a
+    duplicate silently shadows one panel with another. This used to be two
+    hand-written checks, one per addressable kind, which meant a new kind
+    with an id had to remember to add a third. Grouping by kind closes
+    that: ids only have to be unique within a kind, since each kind is
+    indexed separately."""
+    by_kind: dict[str, list[str]] = {}
+    for page in pages:
+        for section in page.sections:
+            for panel in section.panels:
+                panel_id = getattr(panel, "id", None)
+                if panel_id is not None:
+                    by_kind.setdefault(panel.kind, []).append(panel_id)
+    for kind, ids in by_kind.items():
+        _reject_duplicates(ids, f"{kind} panel", instance_key)
+
+
 def _build_panel(panel_spec: dict, flat: dict[str, Device], instance_key: str, label: str) -> Panel:
     kind = panel_spec.get("kind", "devices")
     panel_cls = get_panel_kind_class(kind)
@@ -90,12 +124,8 @@ def _build_page(page_spec: dict, flat: dict[str, Device], instance_key: str) -> 
             f"web_ui instance {instance_key!r}: page {page_id!r}: 'sections' must be a non-empty list")
     sections = [_build_section(spec, flat, instance_key, page_id) for spec in sections_spec]
 
-    section_ids = [s.id for s in sections]
-    duplicates = {i for i in section_ids if section_ids.count(i) > 1}
-    if duplicates:
-        raise ConfigError(
-            f"web_ui instance {instance_key!r}: page {page_id!r}: "
-            f"duplicate section id(s): {sorted(duplicates)}")
+    _reject_duplicates([s.id for s in sections], "section", instance_key,
+                        context=f"page {page_id!r}")
 
     return Page(id=page_id, title=title, sections=sections)
 
@@ -107,24 +137,8 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
         if not isinstance(pages_spec, list):
             raise ConfigError(f"web_ui instance {instance_key!r}: 'pages' must be a list")
         pages = [_build_page(spec, flat, instance_key) for spec in pages_spec]
-        page_ids = [p.id for p in pages]
-        duplicates = {i for i in page_ids if page_ids.count(i) > 1}
-        if duplicates:
-            raise ConfigError(f"web_ui instance {instance_key!r}: duplicate page id(s): {sorted(duplicates)}")
-
-        graph_ids = [panel.id for page in pages for section in page.sections
-                     for panel in section.panels if panel.kind == "graph"]
-        duplicates = {i for i in graph_ids if graph_ids.count(i) > 1}
-        if duplicates:
-            raise ConfigError(
-                f"web_ui instance {instance_key!r}: duplicate graph panel id(s): {sorted(duplicates)}")
-
-        timer_panel_ids = [panel.id for page in pages for section in page.sections
-                            for panel in section.panels if panel.kind == "timers"]
-        duplicates = {i for i in timer_panel_ids if timer_panel_ids.count(i) > 1}
-        if duplicates:
-            raise ConfigError(
-                f"web_ui instance {instance_key!r}: duplicate timers panel id(s): {sorted(duplicates)}")
+        _reject_duplicates([p.id for p in pages], "page", instance_key)
+        _reject_duplicate_panel_ids(pages, instance_key)
     else:
         # No `pages:` at all: single-page shorthand off the top-level
         # `selectors:` param -- one always-expanded, untitled section

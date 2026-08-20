@@ -156,3 +156,52 @@ def test_timers_panel_describe_shape_omits_internal_wiring():
     # timer_instance is internal wiring, resolved lazily at request time --
     # see TimersPanel's own docstring.
     assert "timer_instance" not in described
+
+
+# ---------- duplicate panel ids ----------
+
+def test_duplicate_ids_are_rejected_for_any_panel_kind():
+    """The check used to be written out once per addressable kind (graph,
+    timers), so a new kind with an id had to remember to add a third. It
+    now covers every kind that has an id -- verified with a panel kind
+    that did not exist when the check was written."""
+    from phc.extensions.web_ui import extension as web_ui_extension
+    from phc.extensions.web_ui.panels import Panel, _panel_kinds, register_panel_kind
+
+    @register_panel_kind("gauge")
+    class GaugePanel(Panel):
+        kind = "gauge"
+
+        def __init__(self, flat, id):
+            self.id = id
+
+        def describe(self):
+            return {"kind": self.kind, "id": self.id}
+
+    try:
+        section = web_ui_extension.Section(
+            id="s", title="", collapsed=False,
+            panels=[GaugePanel(flat={}, id="dupe"), GaugePanel(flat={}, id="dupe")])
+        page = web_ui_extension.Page(id="p", title="", sections=[section])
+
+        with pytest.raises(ConfigError) as excinfo:
+            web_ui_extension._reject_duplicate_panel_ids([page], "web_ui.home")
+        assert "gauge panel" in str(excinfo.value)
+        assert "dupe" in str(excinfo.value)
+    finally:
+        _panel_kinds.pop("gauge", None)
+
+
+def test_the_same_id_on_two_different_panel_kinds_is_allowed():
+    """Each kind is indexed separately (GRAPH_PANELS_BY_ID vs
+    TIMER_PANELS_BY_ID), so ids only have to be unique within a kind --
+    requiring global uniqueness would reject a valid config."""
+    from phc.extensions.web_ui import extension as web_ui_extension
+
+    graph = GraphPanel(flat={}, id="house", logdb_instance="logdb.x", selectors=[])
+    timers = TimersPanel(flat={}, id="house", timer_instance="timer.x")
+    section = web_ui_extension.Section(id="s", title="", collapsed=False,
+                                        panels=[graph, timers])
+    page = web_ui_extension.Page(id="p", title="", sections=[section])
+
+    web_ui_extension._reject_duplicate_panel_ids([page], "web_ui.home")   # must not raise
