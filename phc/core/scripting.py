@@ -36,7 +36,8 @@ def _snippet(source: str) -> str:
 
 # Endpoint properties reachable via `.attr` on a bound EndpointRef (see below)
 # -- the only attribute names this sandbox permits at all.
-_ALLOWED_ATTRIBUTES = frozenset({"state", "changed", "text", "event", "sticky", "history"})
+_ALLOWED_ATTRIBUTES = frozenset({"state", "changed", "text", "event", "sticky", "history",
+                                  "available", "age"})
 
 # Namespace functions whose first argument -- if a string literal -- names a
 # "<device>.<endpoint>" path. compile_expression()/compile_script() collect
@@ -46,7 +47,7 @@ _ALLOWED_ATTRIBUTES = frozenset({"state", "changed", "text", "event", "sticky", 
 # phc.core.task._build_rule_namespace) -- only the single-string-ref call shape
 # is harvested here; a list argument is not (see _validate below).
 _PATH_TAKING_FUNCTIONS = frozenset({"state", "changed", "text", "event", "sticky",
-                                     "set_state", "reset_sticky",
+                                     "set_state", "reset_sticky", "available", "age",
                                      "history", "fractile", "median", "average"})
 
 # A small, fixed subset of real builtins -- no eval/exec/getattr/open/
@@ -224,6 +225,26 @@ class EndpointRef:
     @property
     def sticky(self):
         return self._endpoint().get_log_value(self._subscriber_id)
+
+    @property
+    def available(self) -> bool:
+        """Whether this endpoint currently has a trustworthy reading.
+
+        True when its device's last I/O attempt succeeded AND the endpoint
+        has produced at least one non-None value. Both halves matter: a
+        healthy device whose endpoint has never read is not usable yet,
+        and a stale last-good value on a device that has since stopped
+        answering is worse than no value, because it looks live."""
+        device = self._devices[self._device_id]
+        return device.health.healthy and self._endpoint().get_last_read_time() is not None
+
+    @property
+    def age(self):
+        """Seconds since this endpoint last produced a reading, or None if
+        it never has. Note this measures READS, not changes -- a sensor
+        reporting a steady value has an age near zero, not the time since
+        it last moved."""
+        return self._endpoint().get_age()
 
     @property
     def history(self) -> list:

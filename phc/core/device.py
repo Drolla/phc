@@ -4,6 +4,7 @@ import asyncio
 from contextvars import ContextVar
 
 from phc.core.endpoint import Endpoint
+from phc.core.health import DeviceHealth
 
 # When a tick is active the Scheduler installs a write collector here so that
 # transmit()s issued via set() during the tick are batched and flushed
@@ -57,12 +58,48 @@ class Device:
         # of fetch() -- see fetch()'s docstring for why it lives there rather
         # than inside receive_async() itself.
         self._fetch_thread_running = False
+        # Whether this device's I/O is currently working (see
+        # phc.core.health.DeviceHealth). Updated by the Scheduler, which is
+        # the one place that sees an I/O attempt succeed or fail.
+        self.health = DeviceHealth()
+        # Set by report_failure() during a fetch, consumed by the Scheduler
+        # right after it -- see report_failure() for why this indirection
+        # exists rather than the device writing to self.health directly.
+        self._reported_failure: str | None = None
 
         self.setup()
 
     def setup(self):
         """Optional one-time init hook (e.g. open a connection). No-op by default."""
         pass
+
+    def report_failure(self, error: str) -> None:
+        """Report an I/O failure this device handled itself.
+
+        The Scheduler records health from whether fetch() raised, which
+        covers a device that lets errors propagate. But most real modules
+        catch their own network errors and report every endpoint as None
+        instead (see devices/zway, meteoswiss, open_meteo,
+        waveplus_bridge), precisely so one unreachable controller cannot
+        take down a tick -- and from the Scheduler's side that is
+        indistinguishable from a completely successful fetch. Without this,
+        health would never trip for exactly the network-backed modules it
+        matters most for.
+
+        Call it from receive_async()/receive() at the point the error is
+        caught. The Scheduler consumes it immediately after awaiting the
+        fetch, so it counts as that attempt's outcome; reporting it here
+        rather than writing to self.health directly is what keeps
+        "one attempt, one outcome" true -- a device that reports several
+        failures during one fetch (several endpoints, one dead controller)
+        still counts as one failed attempt."""
+        self._reported_failure = error
+
+    def consume_reported_failure(self) -> str | None:
+        """Return and clear any failure reported during the last fetch.
+        Called by the Scheduler; not part of a device module's API."""
+        reported, self._reported_failure = self._reported_failure, None
+        return reported
 
     # ---------- 1. Physical device interface (async; the Scheduler's only path) ----------
     #
@@ -162,6 +199,7 @@ class Device:
         fetch_timeout -- no orphaned call to guard against)."""
         if self._fetch_thread_running:
             return
+        self._reported_failure = None
         raw = await self.receive_async()
         for key, value in raw.items():
             if key in self.endpoints:

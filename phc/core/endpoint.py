@@ -88,6 +88,9 @@ class Endpoint:
         self._last_valid_state = None
         self._event = None
         self._update_time = 0.0
+        # Monotonic stamp of the last non-None reading -- see set_raw().
+        # None until the endpoint has produced an actual value.
+        self._last_read_time: float | None = None
         # Sticky log values: {subscriber_id: value | None}, one slot per
         # logger subscribed via subscribe_log() (see those methods below).
         # A plain dict, not a single value, because independently-scheduled
@@ -122,10 +125,36 @@ class Endpoint:
         """Like set(), but for a value freshly read from hardware (see
         Device.fetch()): applies `read_transform` first, if declared, to
         correct/invert it (e.g. a calibration offset). None (fetch failure)
-        passes through untransformed."""
+        passes through untransformed.
+
+        A non-None reading also stamps `last_read_time`, which is what
+        makes staleness measurable. Note this is deliberately NOT the same
+        as update_time: update_time moves only when the value CHANGES, so
+        a sensor reporting a steady 20.0 for an hour has an hour-old
+        update_time while being perfectly healthy -- indistinguishable,
+        from update_time alone, from one that stopped answering an hour
+        ago. A None reading (a device that caught its own I/O error and
+        reported no value, as the weather and zway modules do) leaves the
+        stamp alone, so age() keeps growing and reflects reality."""
         if self._read_transform is not None and raw_value is not None:
             raw_value = scripting.evaluate_expression(self._read_transform, {"value": raw_value})
+        if raw_value is not None:
+            self._last_read_time = time.monotonic()
         self.set(raw_value)
+
+    def get_last_read_time(self):
+        """Monotonic time of the most recent non-None reading, or None if
+        this endpoint has never produced one. Monotonic because it is only
+        ever used to measure elapsed time (see age() in
+        docs/scripting.md), never shown as an absolute timestamp."""
+        return self._last_read_time
+
+    def get_age(self, now: float | None = None):
+        """Seconds since the last non-None reading, or None if there has
+        never been one. `now` defaults to time.monotonic()."""
+        if self._last_read_time is None:
+            return None
+        return (time.monotonic() if now is None else now) - self._last_read_time
 
     def to_raw(self, value):
         """Apply `write_transform` to `value` (a logical value about to be
@@ -291,3 +320,5 @@ class Endpoint:
     event = property(get_event)
     update_time = property(get_update_time)
     last_valid_state = property(get_last_valid_state)
+    last_read_time = property(get_last_read_time)
+    age = property(get_age)
