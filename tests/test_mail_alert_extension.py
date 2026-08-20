@@ -10,7 +10,7 @@ import pytest
 from phc.core.config import ConfigError, load_system
 from phc.core.registry import discover_extensions
 from phc.core.scheduler import Scheduler
-from phc.extensions.mail_alert.extension import MailAlertAction, MailAlertInstance, configure
+from phc.extensions.mail_alert.extension import MailAlertAction, configure
 from tests.conftest import fetch_sync
 
 

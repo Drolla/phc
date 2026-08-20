@@ -16,7 +16,6 @@ from phc.core.scheduler import Scheduler
 from phc.devices.meteoswiss import device as meteoswiss_device
 from phc.devices.meteoswiss.device import MeteoSwissDevice
 
-
 CSV = (
     "Station/Location;tre200s0;ure200s0\n"
     "BER;12.3;65\n"

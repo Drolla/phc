@@ -249,7 +249,7 @@ def test_on_tick_does_not_persist_when_nothing_changed(tmp_path, monkeypatch):
 def test_on_tick_skips_disabled_timers(tmp_path):
     flat = _house()
     instance = _configure(flat, tmp_path)
-    system = _bind(instance, flat)
+    _bind(instance, flat)
     t = instance.add_timer(time_spec=str(int(time.time() + 3600)), device="house.desk_lamp",
                             endpoint="power", action="set", value="on", enabled=False)
 

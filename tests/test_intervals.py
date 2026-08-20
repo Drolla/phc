@@ -6,7 +6,6 @@ import pytest
 
 from phc.core.intervals import parse_duration, parse_time
 
-
 # ---------- parse_duration ----------
 
 def test_parse_duration_plain_number_passthrough():

@@ -2,15 +2,14 @@
 
 import logging
 import time
+from pathlib import Path
 
 import pytest
 
 from phc.core.config import load_system
 from phc.core.scheduler import Scheduler
 from phc.core.task import Condition, LogAction, Task, ToggleAction
-from pathlib import Path
 from tests.conftest import fetch_sync
-
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_system.yaml"
 SURVEILLANCE_EXAMPLE = (Path(__file__).resolve().parent.parent / "examples"
@@ -43,8 +42,8 @@ def task_log(caplog):
 
 
 def test_scheduler_only_runs_due_devices():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     fast = VirtualDevice("fast", endpoints=[Endpoint("state", writable=True)],
                           update_interval=1.0)
@@ -227,8 +226,8 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
 
 
 def test_scheduler_runs_blink_task_and_reschedules():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -265,8 +264,8 @@ def test_scheduler_runs_blink_task_and_reschedules():
 
 
 def test_scheduler_removes_one_shot_task_after_it_fires():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -298,8 +297,8 @@ def test_scheduler_removes_one_shot_task_after_it_fires():
 
 
 def test_scheduler_runs_condition_task_only_on_change_tick(task_log):
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -375,9 +374,9 @@ def test_scheduler_runs_condition_task_for_nested_device(task_log):
 
 
 def test_scheduler_create_task_action_spawns_task_that_later_fires():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
     from phc.core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -420,9 +419,9 @@ def test_scheduler_create_task_template_spawns_task_that_later_fires():
     literal `specs:` -- the spec is looked up by name in task_specs at fire
     time (see phc.core.task.register_task/CreateTaskAction), everything else
     about spawning/firing the resulting task is identical."""
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
     from phc.core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -466,9 +465,9 @@ def test_scheduler_create_task_unknown_template_raises_at_fire_time():
     create_task action fires -- an unknown name surfaces as a ValueError
     from perform() then, not at construction/config-load time (see
     phc.core.task.register_task)."""
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
     from phc.core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -481,9 +480,9 @@ def test_scheduler_create_task_unknown_template_raises_at_fire_time():
 
 
 def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
     from phc.core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -518,9 +517,9 @@ def test_scheduler_create_task_replaces_prior_same_tag_task_on_retrigger():
 
 
 def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
     from phc.core.task import CreateTaskAction
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -559,9 +558,9 @@ def test_scheduler_newly_created_task_not_visible_until_next_tick(task_log):
 
 
 def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log):
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
     from phc.core.task import ScriptAction
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -609,8 +608,8 @@ def test_scheduler_same_tick_create_and_kill_only_take_effect_next_tick(task_log
 # ---------- tick_hooks ----------
 
 def test_tick_hook_runs_once_per_tick_with_devices():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -626,8 +625,8 @@ def test_tick_hook_runs_once_per_tick_with_devices():
 
 
 def test_tick_hook_observes_this_ticks_freshly_committed_state():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -644,9 +643,9 @@ def test_tick_hook_observes_this_ticks_freshly_committed_state():
 
 
 def test_history_hook_records_this_ticks_committed_state():
-    from phc.devices.virtual.device import VirtualDevice
-    from phc.core.endpoint import Endpoint
     from phc.core.config import _collect_history_records, _make_history_tick_hook
+    from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     sensor = VirtualDevice("sensor", endpoints=[
         Endpoint("temp", writable=True, value_type="float", history=4)],
@@ -667,8 +666,8 @@ def test_history_hook_records_this_ticks_committed_state():
 
 
 def test_tick_hook_exception_is_caught_and_does_not_stop_other_hooks():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -702,8 +701,8 @@ def _run_forever_in_thread(scheduler: Scheduler, *, timeout: float = 2.0):
 
 
 def test_tick_never_runs_start_or_stop_hooks():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -726,8 +725,8 @@ def test_tick_never_runs_start_or_stop_hooks():
 
 
 def test_run_forever_runs_start_and_stop_hooks_exactly_once():
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -755,8 +754,8 @@ def test_run_forever_runs_start_and_stop_hooks_exactly_once():
 
 
 def test_start_and_stop_hook_exceptions_are_caught_and_do_not_block_siblings_or_crash(caplog):
-    from phc.devices.virtual.device import VirtualDevice
     from phc.core.endpoint import Endpoint
+    from phc.devices.virtual.device import VirtualDevice
 
     light = VirtualDevice("living_light", endpoints=[Endpoint("state", writable=True)],
                            update_interval=1.0)
@@ -804,8 +803,8 @@ def test_run_forever_holds_the_heartbeat_grid_despite_slow_ticks():
     `heartbeat + tick duration`. A device that takes ~40ms to read on a
     50ms heartbeat used to yield a ~90ms period (80% slow, compounding
     forever); the deadline grid should keep it near 50ms."""
-    from phc.core.endpoint import Endpoint
     from phc.core.device import Device
+    from phc.core.endpoint import Endpoint
 
     class SlowDevice(Device):
         def receive(self) -> dict:
@@ -827,7 +826,9 @@ def test_run_forever_holds_the_heartbeat_grid_despite_slow_ticks():
     assert not thread.is_alive()
 
     assert len(ticks) >= 5, f"too few ticks to judge the grid: {len(ticks)}"
-    periods = [b - a for a, b in zip(ticks, ticks[1:])]
+    # zip of a list with its own tail: the lengths differ by one by
+    # construction, which is exactly the intent.
+    periods = [b - a for a, b in zip(ticks, ticks[1:], strict=False)]
     average = sum(periods) / len(periods)
     # Serial (pre-fix) behaviour would sit at ~0.09s. Allow generous slack
     # for CI scheduling jitter while still failing the old implementation.

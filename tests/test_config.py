@@ -6,12 +6,26 @@ from pathlib import Path
 
 import pytest
 
-from phc.core.config import (ConfigError, ExtensionDescriptor, ModuleDescriptor, _build_effective_module,
-                          _collect_history_records, _expand_endpoint_specs, _find_placeholders,
-                          _load_extensions, _make_history_tick_hook, _merge_endpoints,
-                          _merge_extension_params, _merge_params, _parse_history_spec,
-                          _Placeholder, _resolve_interval, _resolve_module_config,
-                          _substitute_endpoint_spec, load_system)
+from phc.core.config import (
+    ConfigError,
+    ExtensionDescriptor,
+    ModuleDescriptor,
+    _build_effective_module,
+    _collect_history_records,
+    _expand_endpoint_specs,
+    _find_placeholders,
+    _load_extensions,
+    _make_history_tick_hook,
+    _merge_endpoints,
+    _merge_extension_params,
+    _merge_params,
+    _parse_history_spec,
+    _Placeholder,
+    _resolve_interval,
+    _resolve_module_config,
+    _substitute_endpoint_spec,
+    load_system,
+)
 from phc.core.device import Device
 from phc.core.endpoint import Endpoint
 
@@ -1791,7 +1805,8 @@ tasks:
     time: "+1s"
     action:
       kind: create_task
-      specs: { tag: clear_alert, time: "+1s", action: { kind: set, device: "living_light.state", value: "off" } }
+      specs: { tag: clear_alert, time: "+1s",
+               action: { kind: set, device: "living_light.state", value: "off" } }
       template: clear_alert
 """)
     with pytest.raises(ConfigError):

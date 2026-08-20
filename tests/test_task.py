@@ -7,8 +7,17 @@ import pytest
 from phc.core.endpoint import Endpoint
 from phc.core.scripting import compile_expression
 from phc.core.task import (
-    Condition, CreateTaskAction, ExprCondition, KillTaskAction, LogAction, ScriptAction,
-    SetAction, Task, TaskRegistry, ToggleAction, _build_rule_namespace,
+    Condition,
+    CreateTaskAction,
+    ExprCondition,
+    KillTaskAction,
+    LogAction,
+    ScriptAction,
+    SetAction,
+    Task,
+    TaskRegistry,
+    ToggleAction,
+    _build_rule_namespace,
     resolve_endpoint_ref,
 )
 from phc.devices.virtual.device import VirtualDevice

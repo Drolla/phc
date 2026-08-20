@@ -11,6 +11,7 @@ fetch_sync)."""
 import asyncio
 import types
 
+import aiohttp
 import pytest
 from aiohttp import ClientSession
 from aiohttp.test_utils import TestClient, TestServer
@@ -44,7 +45,8 @@ def _flat():
     fan = VirtualDevice("fan", endpoints=[
         Endpoint("speed", writable=True, value_type="int", values={0: "off", 1: "low", 2: "high"}),
     ])
-    sensor = VirtualDevice("sensor", endpoints=[Endpoint("temp", writable=False, value_type="float", unit="C")])
+    sensor = VirtualDevice(
+        "sensor", endpoints=[Endpoint("temp", writable=False, value_type="float", unit="C")])
     return {"lamp": lamp, "dimmer": dimmer, "fan": fan, "sensor": sensor}
 
 
@@ -682,7 +684,9 @@ def test_on_start_binds_a_real_port_and_on_stop_releases_it():
         finally:
             await instance.on_stop(flat)
 
-        with pytest.raises(Exception):
+        # The port is closed, so connecting fails -- the same pair the
+        # device modules catch for a network failure.
+        with pytest.raises((aiohttp.ClientError, asyncio.TimeoutError)):
             async with ClientSession() as session:
                 async with session.get(f"http://127.0.0.1:{port}/page/home", timeout=1) as resp:
                     pass

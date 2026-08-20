@@ -12,8 +12,6 @@ import logging
 import threading
 import time
 
-import pytest
-
 from phc.core.device import Device, _write_collector
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
