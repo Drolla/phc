@@ -25,7 +25,8 @@ state, all on a fixed-heartbeat scheduler.
   [installing PHC on a Raspberry Pi](docs/raspberry-pi-install.md).
 - **Developer guide** — [`docs/developer/`](docs/developer/):
   [architecture](docs/developer/architecture.md),
-  [writing a device module](docs/developer/writing-a-device-module.md),
+  [writing a device module](docs/developer/writing-a-device-module.md)
+  ([adding one with an AI assistant](docs/developer/agentic-adding-a-device.md)),
   [writing an extension](docs/developer/writing-an-extension.md),
   [writing a skill](docs/developer/agentic-creating-a-skill.md),
   plus internals for [zway](docs/developer/zway.md), the
@@ -108,7 +109,21 @@ Useful flags:
 
 Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
 
-## Tests
+## Development
+
+PHC was nearly entirely developed with AI coding assistants — see
+[CONTRIBUTING.md](CONTRIBUTING.md) and
+[`.agentic_flowspace/`](.agentic_flowspace/) for the shared conventions one
+should follow in this repo. Beyond general-purpose assistance,
+[`docs/developer/agentic-creating-a-skill.md`](docs/developer/agentic-creating-a-skill.md)
+walks through having an assistant draft a new AI skill for a PHC-specific
+development workflow, and the
+[`agentic-adding-a-device-module`](.agentic_flowspace/skills/agentic-adding-a-device-module.md)
+skill scaffolds a new device module end to end — see
+[`docs/developer/agentic-adding-a-device.md`](docs/developer/agentic-adding-a-device.md)
+for a worked example.
+
+Run the test suite with:
 
 ```
 pytest
