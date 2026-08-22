@@ -54,7 +54,10 @@ system configurations, and the `module.yaml` file in each
 [`phc/devices/`](phc/devices/) subfolder for what parameters/endpoints a given
 device module supports. [`phc/extensions/`](phc/extensions/) is the home for
 non-device PHC extensions, following the same package-plus-descriptor
-pattern as device modules.
+pattern as device modules. Both patterns are consistent enough to build
+with an LLM coding assistant — see [CONTRIBUTING.md](CONTRIBUTING.md) and
+[`.agentic_flowspace/`](.agentic_flowspace/) for the shared conventions one
+should follow in this repo.
 
 ## Requirements
 
