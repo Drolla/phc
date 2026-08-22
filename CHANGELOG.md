@@ -16,6 +16,17 @@ Changes merged into `main` since the 0.1.0 release, in order.
   build with an LLM coding assistant, and pointed `README.md` and
   `CONTRIBUTING.md` at `.agentic_flowspace/` for the shared conventions one
   should follow in this repo.
+- Added `.agentic_flowspace/skills/agentic-adding-a-device-module.md`, a workflow
+  for scaffolding a new device module that has the assistant clarify the
+  target physical device and its endpoints with the user before writing
+  code, and propose an example config demonstrating it once the module
+  works.
+- Documented how to have an AI assistant draft a new
+  `.agentic_flowspace/skills/` workflow in
+  `docs/developer/agentic-creating-a-skill.md`, using the conversation
+  that produced the device-module skill above as the worked example.
+- Documented the general workflow for adding a new device module with an AI
+  assistant in `docs/developer/agentic-adding-a-device.md`.
 
 **Internal changes**
 
