@@ -3,7 +3,11 @@
 ## Shared conventions
 
 See [.agentic_flowspace/README.md](.agentic_flowspace/README.md) for this
-repo's shared conventions and how to use them.
+repo's shared conventions and how to use them. This is also the only home
+for this repo's skills, agents, and prompts
+([.agentic_flowspace/skills/](.agentic_flowspace/skills/),
+[.agentic_flowspace/agents/](.agentic_flowspace/agents/)) — read and follow
+them from there; do not add or duplicate one under `.claude/`.
 
 # Model & Effort Guidance
 
