@@ -19,6 +19,129 @@ a fuller, network-backed example, or [`phc/devices/zway/`](../../phc/devices/zwa
 for one using `endpoint_parameters:` and a two-axis endpoint/device profile
 library.
 
+## `device.py`
+
+A device module's Python half is one `Device` subclass, decorated with
+`@register_module("<name>")`. Its endpoints are **not** declared here —
+they're built entirely from `module.yaml` (see [`module.yaml`
+schema](#moduleyaml-schema) below) by the time `setup()` runs, and available
+from then on as `self.endpoints` (an `{key: Endpoint}` dict) and
+`self.params` (this device's resolved parameters, already merged against
+`module.yaml`'s declared defaults).
+
+```python
+"""AcmeWidgetDevice: polls an AcmeWidget controller's local REST API."""
+
+import aiohttp
+
+from phc.core.device import Device
+from phc.core.registry import register_module
+
+
+@register_module("acme_widget")
+class AcmeWidgetDevice(Device):
+    """One AcmeWidget controller, polled over its local REST API."""
+
+    def setup(self):
+        """Read this device's resolved params."""
+        self._host = self.params["host"]
+
+    async def receive_async(self) -> dict:
+        """Fetch current state -> {endpoint_key: raw_value}."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"http://{self._host}/status") as resp:
+                    resp.raise_for_status()
+                    payload = await resp.json()
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            self.report_failure(f"{type(exc).__name__}: {exc}")
+            return {key: None for key in self.endpoints}
+        return {"power": payload["power"], "brightness": payload["brightness"]}
+
+    async def transmit_async(self, state: dict) -> None:
+        """Push a write to hardware. `state` is {endpoint_key: value}."""
+        async with aiohttp.ClientSession() as session:
+            await session.post(f"http://{self._host}/set", json=state)
+```
+
+- `setup()` — optional one-time init (open a connection, read `self.params`
+  into instance attributes). No-op by default.
+- `receive()`/`transmit(state)` — the default, synchronous I/O pair. Write
+  plain blocking code here (a serial port, a sync SDK); PHC bridges it onto
+  a worker thread automatically. `receive()` returns
+  `{endpoint_key: raw_value}`; a key not declared as an endpoint in
+  `module.yaml` is silently ignored, so a typo there looks like a value
+  that never arrives. `transmit(state)` receives `{endpoint_key: value}`
+  for whichever writable endpoints were just written.
+- `receive_async()`/`transmit_async(state)` — override these instead of
+  `receive()`/`transmit()` when the I/O is genuinely async-friendly (an
+  `aiohttp` client, as above). Unlike a thread-bridged blocking call, a
+  native coroutine is actually cancellable on timeout. Override one pair
+  or the other, not both, for the same direction.
+- A read-only device implements only the receive side; a write-only or
+  group/"host" device (no endpoints of its own, just children) can skip
+  both and rely on the no-op base implementations.
+- `self.context` — see [Sharing state between a module's
+  devices](#sharing-state-between-a-modules-devices) below.
+
+### Reporting I/O failures
+
+If your `receive()`/`receive_async()` lets an exception propagate, PHC
+records the failure for you: the device is marked unhealthy, shown as such
+in the web UI and debug portal, and `available()` goes false for its
+endpoints.
+
+Most real modules don't do that, though — they catch their own network
+errors and report every endpoint as `None`, so that one unreachable
+controller can't disturb the tick. From PHC's side that is
+indistinguishable from a completely successful fetch, so tell it:
+
+```python
+try:
+    payload = await self._get()
+except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+    self.report_failure(f"{type(exc).__name__}: {exc}")
+    payload = None
+```
+
+Call it where you catch the error. One fetch counts as one attempt no
+matter how many times you call it, and a fetch that reports nothing counts
+as a success. Every bundled network module (`zway`, `meteoswiss`,
+`open_meteo`, `waveplus_bridge`) does this.
+
+### Sharing state between a module's devices
+
+A module often needs state shared by several of its own device instances:
+a connection or session, a cache, a registry that lets sibling devices
+coalesce their reads into one request. Put it in `self.context`, a plain
+dict shared by every device built from one system config, under a key
+named for your module:
+
+```python
+def setup(self):
+    state = self.context.get("mymodule")
+    if state is None:
+        state = self.context["mymodule"] = MyModuleState()
+    self._state = state
+```
+
+`self.context` is assigned before `setup()` runs, so it is available from
+there onwards. A directly-constructed `Device` (a test, a script) that
+passes no context simply gets its own empty dict.
+
+Do **not** keep this at module scope. A module-level dict is shared by
+every system loaded in the process, which is the wrong lifetime: it
+outlives the `System` it belongs to, leaks between two systems loaded
+together, and forces tests to reach in and reset your module's internals
+by hand. It is a particularly bad home for an `asyncio.Lock`, which binds
+to the first event loop that contends for it and then fails against any
+later one.
+
+[`phc/devices/zway/`](../../phc/devices/zway/) shows the pattern at full
+size (`_ZWayState`): a batched-fetch identifier registry, a response
+cache, session cookies and several locks, all shared between the devices
+of one system and isolated from any other.
+
 ## `module.yaml` schema
 
 `parameters:` declares the module's device-level params: a list of `{name,
@@ -37,7 +160,9 @@ description}` entries, mirroring `parameters:`'s schema but with no
 `default`/`override`/`scope` (an endpoint has no equivalent of
 `modules.<name>` to resolve against). A declared name becomes a legal
 top-level key on any endpoint spec of this module, folded into
-`Endpoint.params` once every profile/overlay/`{param}` step has resolved.
+`Endpoint.params` once every profile/overlay/`{param}` step has resolved —
+read it back in `device.py` via `self.endpoints[key].params.get("name")`
+(see `meteoswiss`'s `column`, above).
 
 `endpoint_profiles`/`device_profiles` are an optional reusable-endpoint
 library a module can ship: an **endpoint profile** is a full endpoint spec
@@ -105,61 +230,3 @@ imported as ordinary top-level packages — give them distinctive names.
 If a plugin's own `device.py` fails to import (a missing dependency, say),
 that error is raised, naming what went wrong. It is not treated as "no
 such module".
-
-## Reporting I/O failures
-
-If your `receive()`/`receive_async()` lets an exception propagate, PHC
-records the failure for you: the device is marked unhealthy, shown as such
-in the web UI and debug portal, and `available()` goes false for its
-endpoints.
-
-Most real modules don't do that, though — they catch their own network
-errors and report every endpoint as `None`, so that one unreachable
-controller can't disturb the tick. From PHC's side that is
-indistinguishable from a completely successful fetch, so tell it:
-
-```python
-try:
-    payload = await self._get()
-except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-    self.report_failure(f"{type(exc).__name__}: {exc}")
-    payload = None
-```
-
-Call it where you catch the error. One fetch counts as one attempt no
-matter how many times you call it, and a fetch that reports nothing counts
-as a success. Every bundled network module (`zway`, `meteoswiss`,
-`open_meteo`, `waveplus_bridge`) does this.
-
-## Sharing state between a module's devices
-
-A module often needs state shared by several of its own device instances:
-a connection or session, a cache, a registry that lets sibling devices
-coalesce their reads into one request. Put it in `self.context`, a plain
-dict shared by every device built from one system config, under a key
-named for your module:
-
-```python
-def setup(self):
-    state = self.context.get("mymodule")
-    if state is None:
-        state = self.context["mymodule"] = MyModuleState()
-    self._state = state
-```
-
-`self.context` is assigned before `setup()` runs, so it is available from
-there onwards. A directly-constructed `Device` (a test, a script) that
-passes no context simply gets its own empty dict.
-
-Do **not** keep this at module scope. A module-level dict is shared by
-every system loaded in the process, which is the wrong lifetime: it
-outlives the `System` it belongs to, leaks between two systems loaded
-together, and forces tests to reach in and reset your module's internals
-by hand. It is a particularly bad home for an `asyncio.Lock`, which binds
-to the first event loop that contends for it and then fails against any
-later one.
-
-[`phc/devices/zway/`](../../phc/devices/zway/) shows the pattern at full
-size (`_ZWayState`): a batched-fetch identifier registry, a response
-cache, session cookies and several locks, all shared between the devices
-of one system and isolated from any other.
