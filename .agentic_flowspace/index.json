@@ -21,6 +21,12 @@
       "description": "CHANGELOG.md format, grouping, and update-commit rules."
     }
   ],
-  "skills": [],
+  "skills": [
+    {
+      "id": "agentic-adding-a-device-module",
+      "path": "skills/agentic-adding-a-device-module.md",
+      "description": "Workflow for adding a new PHC device module: clarify the physical device/endpoints with the user first, then scaffold device.py + module.yaml, an example config, and tests."
+    }
+  ],
   "agents": []
 }

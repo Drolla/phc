@@ -26,8 +26,9 @@ state, all on a fixed-heartbeat scheduler.
 - **Developer guide** — [`docs/developer/`](docs/developer/):
   [architecture](docs/developer/architecture.md),
   [writing a device module](docs/developer/writing-a-device-module.md),
-  [writing an extension](docs/developer/writing-an-extension.md), plus
-  internals for [zway](docs/developer/zway.md), the
+  [writing an extension](docs/developer/writing-an-extension.md),
+  [writing a skill](docs/developer/agentic-creating-a-skill.md),
+  plus internals for [zway](docs/developer/zway.md), the
   [web UI](docs/developer/web-ui.md), the
   [timer](docs/developer/timer.md), and the
   [debug portal](docs/developer/debug-portal.md).
