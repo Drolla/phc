@@ -866,9 +866,9 @@ def test_endpoint_entry_keys_accepts_history():
 
 
 def test_instance_endpoint_overlay_adds_history_to_module_endpoint():
-    # The exact _overlay_endpoint_spec mechanism the fusion18 radon config
-    # relies on: an instance-level `history:` overlay must add history
-    # without disturbing the module-declared endpoint's other fields.
+    # The exact _overlay_endpoint_spec mechanism a real per-instance history
+    # override relies on: an instance-level `history:` overlay must add
+    # history without disturbing the module-declared endpoint's other fields.
     module = ModuleDescriptor("m", {
         "endpoints": [{"key": "temperature", "type": "float", "column": "x"}],
         "endpoint_parameters": [{"name": "column"}],

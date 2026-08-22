@@ -1,0 +1,26 @@
+{
+  "instructions": [
+    {
+      "id": "git-workflow",
+      "path": "instructions/git-workflow.md",
+      "description": "Branching, merging, and commit-phasing rules for this repo."
+    },
+    {
+      "id": "documentation",
+      "path": "instructions/documentation.md",
+      "description": "Docstring, module.yaml/extension.yaml, and docs/ organization conventions."
+    },
+    {
+      "id": "code-style",
+      "path": "instructions/code-style.md",
+      "description": "Deduplication judgment, line-count preference, and change-scope discipline."
+    },
+    {
+      "id": "changelog",
+      "path": "instructions/changelog.md",
+      "description": "CHANGELOG.md format, grouping, and update-commit rules."
+    }
+  ],
+  "skills": [],
+  "agents": []
+}

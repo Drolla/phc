@@ -4,10 +4,9 @@
 # then open http://127.0.0.1:8080/ in a browser (or http://127.0.0.1:8081/
 # for the live debug view -- see extensions.debug_portal below).
 #
-# This is the single-file, fictional-devices counterpart to fusion18/ (this
-# project's real home automation config, split across several per-module
-# files and gitignored for privacy -- see fusion18/README.md). Ties
-# together:
+# This is a single-file, fictional-devices example standing in for a real
+# home automation config, which would typically be split across several
+# per-module files and gitignored for privacy. Ties together:
 #   - zway            -- physical Z-Wave devices behind a Razberry/zWay
 #                         controller (light_corridor/sensor_garage/
 #                         tag_reader_front/siren below share one controller,
