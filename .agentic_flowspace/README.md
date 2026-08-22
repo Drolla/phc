@@ -15,3 +15,11 @@ Before making changes:
    (`.claude/skills/`, `.claude/agents/`) when one is defined there; other
    tools have no built-in invocation mechanism and should follow the
    guidance manually, as part of normal reasoning, when a task matches.
+
+PHC itself is developed nearly entirely with AI coding assistants, using
+this shared setup rather than one-off prompting. See
+[`docs/developer/agentic-creating-a-skill.md`](../docs/developer/agentic-creating-a-skill.md)
+for how a new `skills/` workflow gets drafted with an assistant, and
+[`docs/developer/agentic-adding-a-device.md`](../docs/developer/agentic-adding-a-device.md)
+for a worked example of the `agentic-adding-a-device-module` skill
+scaffolding a new device module end to end.
