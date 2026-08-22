@@ -25,6 +25,8 @@ Changes merged into `main` since the 0.1.0 release, in order.
   `.agentic_flowspace/skills/` workflow in
   `docs/developer/agentic-creating-a-skill.md`, using the conversation
   that produced the device-module skill above as the worked example.
+- Documented the general workflow for adding a new device module with an AI
+  assistant in `docs/developer/agentic-adding-a-device.md`.
 
 **Internal changes**
 
