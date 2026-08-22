@@ -84,14 +84,17 @@ def test_on_tick_populates_last_snapshot_from_bound_system():
 
 
 def test_on_tick_period_defaults_to_heartbeat_then_measures_elapsed(monkeypatch):
-    import phc.extensions.debug_portal.extension as ext_module
+    from phc.core.clock import Now
 
     flat = _flat()
     instance = configure(_base_params(), flat, "debug_portal.demo")
     instance.on_bind(FakeSystem(heartbeat=3.0))
 
-    times = iter([1000.0, 1001.5])
-    monkeypatch.setattr(ext_module.time, "time", lambda: next(times))
+    # Stub the whole tick timestamp rather than the raw clock: `period` is a
+    # wall-clock delta, so the monotonic readings are deliberately given an
+    # unrelated origin -- a period computed off .mono would not be 1.5.
+    nows = iter([Now(1000.0, 10.0), Now(1001.5, 99.0)])
+    monkeypatch.setattr(Now, "capture", classmethod(lambda cls: next(nows)))
 
     instance.on_tick(flat)
     assert instance._app[LAST_SNAPSHOT].value["period"] == 3.0  # no prior tick -- falls back to heartbeat
