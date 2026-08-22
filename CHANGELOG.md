@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-08-22
+
+**Developer experience**
+
+- Documented that a new device module or extension is templated enough to
+  build with an LLM coding assistant, and pointed `README.md` and
+  `CONTRIBUTING.md` at `.agentic_flowspace/` for the shared conventions one
+  should follow in this repo.
+
+**Internal changes**
+
+- Project conventions (git workflow, documentation, code style, changelog)
+  now live once in `.agentic_flowspace/instructions/`, with a single shared
+  usage guide (`.agentic_flowspace/README.md`) referenced by every
+  coding-assistant tool's own root file (`CLAUDE.md`, `AGENTS.md` for
+  Codex, `GEMINI.md` for Gemini CLI, `.github/copilot-instructions.md` for
+  Copilot) instead of duplicating the guidance per tool.
+  `.agentic_flowspace/index.json` indexes the shared instructions plus
+  placeholder `skills/`/`agents/` folders for future project-specific work.
+
 ### 2026-08-21
 
 **Internal changes**
