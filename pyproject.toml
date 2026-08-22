@@ -91,7 +91,8 @@ module = [
 ignore_errors = true
 
 [tool.pytest.ini_options]
-# testpaths keeps a bare `pytest` from also walking examples/ and fusion18/.
+# testpaths keeps a bare `pytest` from also walking examples/ and any
+# gitignored local directories.
 testpaths = ["tests"]
 # --strict-markers/--strict-config turn a typo'd marker or an unknown
 # setting in this section into an error rather than a silently ignored
