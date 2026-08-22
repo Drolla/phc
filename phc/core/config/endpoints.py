@@ -1,10 +1,12 @@
-"""Endpoint construction: expanding profiles, overlaying instance
-overrides, substituting `{param}` templates, and building the Endpoint
-objects themselves -- plus the interval/history parsing that goes with
-them.
+"""Endpoint construction: expanding profiles and building Endpoint objects.
+
+Overlays instance overrides, substitutes `{param}` templates, and parses
+the interval/history fields that go with them.
 
 The stage between a resolved parameter set (see params.py) and a real
-Device (see devices.py).
+Device (see devices.py). Every `intervals_map` parameter below is the
+system YAML's top-level `intervals:` section, used to resolve a named
+duration before parsing it.
 """
 
 import copy
@@ -35,28 +37,30 @@ _TEMPLATE_EXCLUDED_FIELDS = {"key", "kind", "type", "log_aggregation",
 
 
 def _overlay_endpoint_spec(base: dict, over: dict) -> dict:
-    """Shallow-overlay `over` onto `base` (a plain dict.update). A declared
-    endpoint parameter (e.g. zway's command_group/address) is an ordinary
-    top-level field at this stage -- not folded into `params:` until
-    _merge_endpoints, once every spec is fully resolved -- so tweaking just
-    one of them (e.g. `endpoints: [{key: battery, address: "16.0"}]`) only
-    replaces that one key; a sibling like command_group, untouched by
-    `over`, survives automatically. No field needs special-case merging."""
+    """Shallow-overlay `over` onto `base` (a plain dict.update).
+
+    A declared endpoint parameter (e.g. zway's command_group/address) is
+    an ordinary top-level field at this stage -- not folded into
+    `params:` until _merge_endpoints, once every spec is fully resolved
+    -- so tweaking just one of them (e.g. `endpoints: [{key: battery,
+    address: "16.0"}]`) only replaces that one key; a sibling like
+    command_group, untouched by `over`, survives automatically. No field
+    needs special-case merging."""
     return {**base, **over}
 
 
 def _substitute_templates(value, params: dict, device_id: str, endpoint_key: str, field: str = ""):
-    """Recursively substitute `{param}` templates in every string found in
-    `value` (an endpoint spec, or a nested dict/value within one, e.g.
-    `params:`/`values:`) from the device's already-resolved `params` (e.g.
-    `address: "{node}.0.1"` -> "11.0.1" when params["node"] == 11). Dicts are
-    walked key-by-key; non-string, non-dict values (int, bool, list, None)
-    pass through untouched. Raises ConfigError if a template references a
+    """Recursively substitute `{param}` templates in `value`'s strings.
+
+    `value` is an endpoint spec, or a nested dict/value within one (e.g.
+    `params:`/`values:`), substituted from the device's already-resolved
+    `params` (e.g. `address: "{node}.0.1"` -> "11.0.1" when
+    params["node"] == 11). Raises ConfigError if a template references a
     param that is missing or None -- a forgotten `node:` would otherwise
     format to the literal string "7.None" via plain str.format_map, which
-    phc/devices/zway/device.py's setup() accepts as a real (if wrong) value_id
-    and then reports None forever with no error -- or if the template
-    itself is malformed."""
+    phc/devices/zway/device.py's setup() accepts as a real (if wrong)
+    value_id and then reports None forever with no error -- or if the
+    template itself is malformed."""
     if isinstance(value, dict):
         return {k: _substitute_templates(v, params, device_id, endpoint_key, field=k)
                 for k, v in value.items()}
@@ -75,16 +79,16 @@ def _substitute_templates(value, params: dict, device_id: str, endpoint_key: str
 
 
 def _substitute_endpoint_spec(spec: dict, params: dict, device_id: str) -> dict:
-    """Substitute `{param}` templates throughout one endpoint spec's fields
-    (a declared endpoint parameter like address, description, unit,
-    values:, ...) from the device's resolved `params` -- see
-    _substitute_templates. Runs on every endpoint of every device regardless
-    of whether it came from a profile, a hand-written instance override, or
-    a module's own unconditional `endpoints:` -- a spec with no `{...}`
-    anywhere passes through unchanged, so this is a no-op for every module
-    that declares no templates. Skips fields in _TEMPLATE_EXCLUDED_FIELDS
-    (key, kind, type, ...), which are structural metadata rather than
-    display/protocol data."""
+    """Substitute `{param}` templates throughout one endpoint spec's fields.
+
+    A declared endpoint parameter like address, description, unit,
+    values:, etc., from the device's resolved `params` -- see
+    _substitute_templates. Runs on every endpoint of every device
+    regardless of whether it came from a profile, a hand-written instance
+    override, or a module's own unconditional `endpoints:` -- a spec with
+    no `{...}` anywhere passes through unchanged, so this is a no-op for
+    every module that declares no templates. Skips fields in
+    _TEMPLATE_EXCLUDED_FIELDS (see comment above)."""
     endpoint_key = spec.get("key", "")
     return {
         field: value if field in _TEMPLATE_EXCLUDED_FIELDS
@@ -94,33 +98,23 @@ def _substitute_endpoint_spec(spec: dict, params: dict, device_id: str) -> dict:
 
 
 def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, device_id: str) -> list:
-    """Expand a device entry's `endpoints:` (and its own top-level
-    `device_profile:`, if any) against the module's endpoint_profiles/
-    device_profiles library (see ModuleDescriptor). Returns a plain list of
-    endpoint dicts in the same shape a user writes by hand, ready for
-    _merge_endpoints -- which needs no awareness that profiles exist.
-    `{param}` templating is a separate, later step (see
-    _substitute_endpoint_spec, called from _merge_endpoints) -- this
-    function only resolves which endpoints exist and how they overlay, not
-    their template values.
+    """Expand a device entry's `endpoints:` against its module's profiles.
 
-    A device that uses no `device_profile:` anywhere (neither its own
-    top-level `device_profile:` nor any endpoint's `endpoint_profile:`) gets
-    its `endpoints:` list back completely unchanged -- this identity case is
-    what guarantees writing endpoints fully explicitly keeps working exactly
-    as before.
+    Also expands the entry's own top-level `device_profile:`, if any
+    (see ModuleDescriptor's endpoint_profiles/device_profiles library).
+    Returns a plain list of endpoint dicts, ready for _merge_endpoints,
+    which needs no awareness that profiles exist. `{param}` templating
+    is a later, separate step (_substitute_endpoint_spec, called from
+    _merge_endpoints).
 
-    Resolution order: the device's own `device_profile:` (if set) expands
-    into a base endpoints list first, in the profile's `endpoints:` order;
-    the device's own `endpoints:` then overlays that list by `key` (via
-    _overlay_endpoint_spec, so e.g. an `address:` tweak doesn't clobber a
-    profile-derived command_group) and appends any key the profile didn't
-    already provide. An `endpoints:` entry may set its own
-    `endpoint_profile:` too (with or without a device-level
-    `device_profile:`), for a single profile-derived endpoint on a device
-    that otherwise writes everything out by hand. Final order:
-    device-profile order, then extra/overlaid instance endpoints in
-    `endpoints:` list order."""
+    A device with no `device_profile:`/`endpoint_profile:` anywhere gets
+    its `endpoints:` list back unchanged. Otherwise: the device's own
+    `device_profile:` (if set) expands into a base list first, in the
+    profile's order; `endpoints:` then overlays that by `key` (so e.g. an
+    `address:` tweak doesn't clobber a profile-derived command_group) and
+    appends any key the profile didn't provide. An `endpoints:` entry may
+    set its own `endpoint_profile:` too, for a single profile-derived
+    endpoint on an otherwise hand-written device."""
     instance_endpoints = entry.get("endpoints") or []
     device_profile_name = entry.get("device_profile")
 
@@ -168,19 +162,20 @@ def _expand_endpoint_specs(module: ModuleDescriptor, entry: dict, device_id: str
 def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_id: str,
                       params: dict, intervals_map: dict | None = None
                       ) -> tuple[list[Endpoint], list[tuple[Endpoint, object]]]:
-    """Build this device instance's Endpoint objects: start from the module's
-    declared endpoints, overlay any instance-level overrides (by `key`) and
-    append instance-only endpoints not declared by the module. Returns
-    (endpoints, seeds), where `seeds` are (Endpoint, default_value) pairs to
-    apply once the device is constructed. `instance_endpoints` is normally
-    the device's raw `endpoints:` list, already expanded against any
-    device_profile:/endpoint_profile: by _expand_endpoint_specs -- this
-    function itself has no awareness that profiles exist. `params` is the
-    device's already-resolved params, used only to substitute `{param}`
-    templates (see _substitute_endpoint_spec) in the fully-merged specs --
-    templating is independent of whether an endpoint came from a profile.
-    `intervals_map` (the system YAML's top-level `intervals:`) is only used
-    to resolve a named `history.interval` -- see _parse_history_spec."""
+    """Build this device instance's Endpoint objects.
+
+    Starts from the module's declared endpoints, overlays any
+    instance-level overrides (by `key`), and appends instance-only
+    endpoints the module didn't declare. Returns (endpoints, seeds),
+    where `seeds` are (Endpoint, default_value) pairs to apply once the
+    device is constructed.
+
+    `instance_endpoints` is normally the device's `endpoints:` list,
+    already expanded against any profile by _expand_endpoint_specs --
+    this function has no awareness that profiles exist. `params`
+    substitutes `{param}` templates in the merged specs
+    (_substitute_endpoint_spec). `intervals_map` only resolves a named
+    `history.interval`."""
     allowed_keys = _ENDPOINT_ENTRY_KEYS | module.endpoint_param_names
     for spec in instance_endpoints or []:
         unknown = set(spec) - allowed_keys
@@ -229,11 +224,8 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             history_size, history_interval = _parse_history_spec(
                 spec["history"], intervals_map or {}, device_id, spec["key"])
         cls = get_endpoint_class(spec.get("kind"))
-        # Declared endpoint parameters (e.g. zway's command_group/address)
-        # are ordinary top-level fields on `spec` all the way through
-        # profile expansion, instance overlay, and {param} templating (see
-        # _overlay_endpoint_spec/_substitute_endpoint_spec) -- folded into
-        # Endpoint.params only here, once the spec is fully resolved.
+        # Declared endpoint parameters become Endpoint.params only here,
+        # once the spec is fully resolved (see _overlay_endpoint_spec).
         endpoint_params = {name: spec[name] for name in module.endpoint_param_names
                            if name in spec}
         try:
@@ -267,11 +259,11 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
 
 
 def _parse_interval_value(value, intervals_map: dict) -> float:
-    """Resolve one duration value: a name is looked up in `intervals_map`
-    (the system YAML's top-level `intervals:`) before being parsed as a
-    duration string (see phc.core.intervals.parse_duration). Shared by
-    _resolve_interval (a device's `update:`) and _parse_history_spec (a
-    history's `interval:`), so the two named-interval lookups can't drift."""
+    """Resolve one duration value via phc.core.intervals.parse_duration.
+
+    Looks `value` up in `intervals_map` first if it names a known
+    interval. Shared by _resolve_interval and _parse_history_spec, so
+    the two named-interval lookups can't drift."""
     if isinstance(value, str) and value in intervals_map:
         value = intervals_map[value]
     return parse_duration(value)
@@ -279,13 +271,13 @@ def _parse_interval_value(value, intervals_map: dict) -> float:
 
 def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_map: dict,
                        module_update=_UNSET) -> float | None:
-    """Resolve a device's update interval: the device's own `update:` ->
-    `module_update` (_ModuleConfig.update, from modules.<name>.update) ->
-    the module's own `update:` default. A named value is looked up in
-    `intervals_map` (the system YAML's top-level `intervals:`) before being
-    parsed as a duration. Returns None if unset (the device is then never
-    auto-polled) -- an explicit `update: null` at any of the three levels
-    means exactly that, distinct from the key being absent there."""
+    """Resolve a device's update interval.
+
+    Priority: the device's own `update:` -> `module_update`
+    (_ModuleConfig.update, from modules.<name>.update) -> the module's
+    own `update:` default. Returns None if unset (the device is then
+    never auto-polled) -- an explicit `update: null` at any of the three
+    levels means exactly that, distinct from the key being absent."""
     if "update" in instance_entry:
         value = instance_entry["update"]
     elif module_update is not _UNSET:
@@ -299,17 +291,14 @@ def _resolve_interval(module: ModuleDescriptor, instance_entry: dict, intervals_
 
 def _parse_history_spec(raw, intervals_map: dict, device_id: str, endpoint_key: str
                          ) -> tuple[int, float | None]:
-    """Parse an endpoint spec's `history:` field into (size, interval),
-    where interval is a duration in seconds or None (meaning "default to
-    the owning device's resolved update interval" -- see
+    """Parse an endpoint spec's `history:` field into (size, interval).
+
+    `interval` is a duration in seconds or None (meaning "default to the
+    owning device's resolved update interval", see
     _collect_history_records). Accepts either a bare positive int
-    (shorthand for {size: N}) or a {size, interval} mapping; `interval`
-    accepts a name from `intervals_map` before being parsed as a duration,
-    exactly like a device's own `update:` (see _parse_interval_value).
-    Raises ConfigError for anything that cannot work: an unrecognized
-    mapping key, a missing/non-integer/non-positive size, or a malformed
-    interval. No upper bound on size -- see docs/scripting.md for the
-    memory/CPU cost this implies for a very large history."""
+    (shorthand for {size: N}) or a {size, interval} mapping. No upper
+    bound on size -- see docs/scripting.md for the memory/CPU cost this
+    implies for a very large history."""
     if isinstance(raw, dict):
         unknown = set(raw) - _HISTORY_ENTRY_KEYS
         if unknown:

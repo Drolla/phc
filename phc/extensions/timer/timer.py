@@ -1,8 +1,11 @@
-"""Timer data model and persistence: pure definitions and file I/O for
-user-programmable timers, decoupled from phc.core.device/phc.core.task -- a
-TimerDef is a plain record of what to do and when. phc/extensions/timer/
-extension.py turns a set of these into live phc.core.task.Task objects (via
-phc.core.task.register_task) and exposes the CRUD API a web UI panel drives.
+"""Timer data model and persistence.
+
+Pure definitions and file I/O for user-programmable timers, decoupled
+from phc.core.device/phc.core.task -- a TimerDef is a plain record of
+what to do and when. phc/extensions/timer/extension.py turns a set of
+these into live phc.core.task.Task objects (via
+phc.core.task.register_task) and exposes the CRUD API a web UI panel
+drives.
 
 TimerStore mirrors phc.extensions.recovery.recovery.RecoveryStore's atomic
 whole-file YAML rewrite (temp file + os.replace, tolerate a missing/corrupt
@@ -25,13 +28,14 @@ _ACTIONS = ("set", "toggle")
 
 @dataclass
 class TimerDef:
-    """One user-defined timer: fire `action` against `device`/`endpoint` at
-    `time` (a Unix timestamp -- the next/last-computed trigger), optionally
-    repeating every `repeat` (a phc.core.intervals.parse_duration string, e.g.
-    "1D"/"1h30m"; None means one-shot). `value` is only meaningful for
-    action "set" (the raw or display-text value to write, e.g. 1 or "on").
-    `enabled=False` keeps the definition persisted but not scheduled -- see
-    extension.py's TimerInstance."""
+    """One user-defined timer: fire `action` against `device`/`endpoint`.
+
+    At `time` (a Unix timestamp -- the next/last-computed trigger),
+    optionally repeating every `repeat` (a phc.core.intervals.parse_duration
+    string, e.g. "1D"/"1h30m"; None means one-shot). `value` is only
+    meaningful for action "set" (the raw or display-text value to
+    write, e.g. 1 or "on"). `enabled=False` keeps the definition
+    persisted but not scheduled -- see extension.py's TimerInstance."""
 
     id: int
     time: float
@@ -50,19 +54,22 @@ class TimerDef:
             raise ValueError("timer: action 'set' requires a value")
 
     def tag(self, instance_key: str) -> str:
-        """This timer's phc.core.task.Task tag, e.g. "timer.house.4" -- unique
-        within one timer instance, stable across edits (only deleting and
-        re-adding changes it), used to replace/kill its Task by tag (see
-        phc.core.task.register_task/kill_tasks)."""
+        """This timer's phc.core.task.Task tag, e.g. "timer.house.4".
+
+        Unique within one timer instance, stable across edits (only
+        deleting and re-adding changes it), used to replace/kill its
+        Task by tag (see phc.core.task.register_task/kill_tasks)."""
         return f"{instance_key}.{self.id}"
 
 
 def expired_one_shot(timer: TimerDef, now: float, catch_up: float) -> bool:
-    """True if `timer` is a one-shot (repeat is None) whose trigger time is
-    more than `catch_up` seconds in the past relative to `now` -- i.e. it
-    was missed by more than the configured grace window and should be
-    dropped at startup rather than fired immediately. A repeating timer is
-    never "expired" this way: phc.core.intervals.parse_time's own repeat
+    """True if `timer` is an expired one-shot, missed by more than `catch_up`.
+
+    (repeat is None) whose trigger time is more than `catch_up` seconds
+    in the past relative to `now` -- i.e. it was missed by more than
+    the configured grace window and should be dropped at startup
+    rather than fired immediately. A repeating timer is never
+    "expired" this way: phc.core.intervals.parse_time's own repeat
     catch-up logic (invoked when the timer's Task is built) rolls its
     due_time forward to the next future slot instead of ever asking this
     question."""
@@ -76,9 +83,11 @@ class TimerStore:
         self.path = Path(path)
 
     def write(self, next_id: int, timers: list[TimerDef]) -> None:
-        """Atomically rewrite the whole file (see
-        phc.extensions.recovery.recovery.RecoveryStore.write for the same
-        temp-file + os.replace() pattern and its crash-safety rationale)."""
+        """Atomically rewrite the whole file.
+
+        See phc.extensions.recovery.recovery.RecoveryStore.write for
+        the same temp-file + os.replace() pattern and its
+        crash-safety rationale."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data = {"next_id": next_id, "timers": [asdict(t) for t in timers]}
         tmp_path = self.path.with_name(self.path.name + ".tmp")
@@ -87,9 +96,11 @@ class TimerStore:
         os.replace(tmp_path, self.path)
 
     def load(self) -> tuple[int, list[TimerDef]]:
-        """Read back (next_id, timers). Returns (1, []) if the file doesn't
-        exist yet, is empty, or can't be parsed as a YAML mapping with the
-        expected shape -- logged as a warning, never raised, mirroring
+        """Read back (next_id, timers).
+
+        Returns (1, []) if the file doesn't exist yet, is empty, or
+        can't be parsed as a YAML mapping with the expected shape --
+        logged as a warning, never raised, mirroring
         RecoveryStore.load()'s tolerate-and-start-fresh behaviour. Any
         single malformed timer entry is skipped (logged) rather than
         aborting the whole load."""

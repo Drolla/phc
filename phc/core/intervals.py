@@ -1,5 +1,7 @@
-"""Parsing for duration ("10m", "1h30m") and time ("+1D", "11:30", ISO 8601)
-strings used throughout system YAML (update intervals, task `time`/`repeat`)."""
+"""Parsing for duration and time strings used throughout system YAML.
+
+Duration like "10m"/"1h30m"; time like "+1D"/"11:30"/ISO 8601 (update
+intervals, task `time`/`repeat`)."""
 
 import calendar
 import math
@@ -23,9 +25,10 @@ _HHMMSS_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*$")
 
 
 def _tokenize_compact(spec: str) -> list[tuple[int, str]]:
-    """Parse a compact "1Y2M3D4h5m6s"-style string into (amount, unit)
-    pairs. The whole string must be consumed by consecutive tokens (no
-    leftover characters), and each unit may appear at most once."""
+    """Parse a compact "1Y2M3D4h5m6s"-style string into (amount, unit) pairs.
+
+    The whole string must be consumed by consecutive tokens (no leftover
+    characters), and each unit may appear at most once."""
     tokens = []
     seen_units = set()
     pos = 0
@@ -44,11 +47,12 @@ def _tokenize_compact(spec: str) -> list[tuple[int, str]]:
 
 
 def parse_duration(value) -> float:
-    """Parse a duration into seconds. Accepts a plain int/float (seconds),
-    or a compact string combining fixed-length units: ms, s, m, h, D
-    (day), W (week) -- e.g. "10s", "1h30m", "2D12h". Calendar units (Y, M)
-    are not valid here since they aren't a fixed number of seconds; use
-    parse_time for those."""
+    """Parse a duration into seconds.
+
+    Accepts a plain int/float (seconds), or a compact string combining
+    fixed-length units: ms, s, m, h, D (day), W (week) -- e.g. "10s",
+    "1h30m", "2D12h". Calendar units (Y, M) are not valid here since
+    they aren't a fixed number of seconds; use parse_time for those."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     if not isinstance(value, str):
@@ -63,9 +67,11 @@ def parse_duration(value) -> float:
 
 
 def _add_calendar(dt: datetime, years: int = 0, months: int = 0) -> datetime:
-    """Add a number of calendar years/months to dt, preserving time-of-day
-    and clamping the day to the last valid day of the resulting month
-    (e.g. adding 1 month to Jan 31 yields Feb 28/29, not an error)."""
+    """Add a number of calendar years/months to dt.
+
+    Preserves time-of-day and clamps the day to the last valid day of
+    the resulting month (e.g. adding 1 month to Jan 31 yields Feb 28/29,
+    not an error)."""
     total_months = dt.month - 1 + months
     year = dt.year + years + total_months // 12
     month = total_months % 12 + 1
@@ -74,8 +80,9 @@ def _add_calendar(dt: datetime, years: int = 0, months: int = 0) -> datetime:
 
 
 def _parse_hhmmss(spec: str) -> tuple[int, int, int] | None:
-    """Parse an "HH:MM[:SS]" string into (hour, minute, second), or None if
-    `spec` doesn't match that shape."""
+    """Parse an "HH:MM[:SS]" string into (hour, minute, second).
+
+    None if `spec` doesn't match that shape."""
     match = _HHMMSS_RE.match(spec)
     if not match:
         return None
@@ -84,10 +91,11 @@ def _parse_hhmmss(spec: str) -> tuple[int, int, int] | None:
 
 
 def parse_time(spec: str, repeat=None) -> float:
-    """Parse an absolute or relative time into a Unix timestamp -- see
-    docs/configuration.md for the accepted spec syntax (plain timestamp,
-    "+<compact>" offset, "<compact h/m/s>"/"HH:MM[:SS]" time-of-day, ISO
-    8601).
+    """Parse an absolute or relative time into a Unix timestamp.
+
+    See docs/configuration.md for the accepted spec syntax (plain
+    timestamp, "+<compact>" offset, "<compact h/m/s>"/"HH:MM[:SS]"
+    time-of-day, ISO 8601).
 
     If `repeat` is given (anything parse_duration accepts) and the
     resulting timestamp is already in the past, it is advanced by whole

@@ -1,8 +1,10 @@
-"""web_ui extension wiring: parses an extensions.web_ui.<instance>'s
-page/section/panel layout against the live device tree (or, absent
-`pages:`, synthesizes a single flat page from the top-level `selectors:`
-shorthand), builds an aiohttp.web server (server.py) that renders it via
-Jinja2 and serves a per-widget HTML fragment/write endpoint for HTMX. See
+"""web_ui extension wiring: builds the pages/sections/panels layout.
+
+Parses an extensions.web_ui.<instance>'s page/section/panel layout
+against the live device tree (or, absent `pages:`, synthesizes a
+single flat page from the top-level `selectors:` shorthand), builds an
+aiohttp.web server (server.py) that renders it via Jinja2 and serves a
+per-widget HTML fragment/write endpoint for HTMX. See
 phc.core.config._load_extensions for configure()'s call site, and
 phc.core.scheduler.Scheduler for how on_start/on_stop get invoked
 (start_hooks/stop_hooks -- see phc/core/scheduler.py)."""
@@ -21,8 +23,9 @@ logger = logging.getLogger("phc.web_ui")
 
 
 class Page:
-    """One top-level page (its own URL, `/page/{id}`), holding an ordered
-    list of Sections."""
+    """One top-level page (its own URL, `/page/{id}`).
+
+    Holds an ordered list of Sections."""
 
     def __init__(self, id: str, title: str, sections: list["Section"]):
         self.id = id
@@ -31,8 +34,10 @@ class Page:
 
 
 class Section:
-    """One collapsible group within a page (native <details>, folded by
-    default unless collapsed=False), holding an ordered list of Panels."""
+    """One collapsible group within a page.
+
+    Native <details>, folded by default unless collapsed=False. Holds
+    an ordered list of Panels."""
 
     def __init__(self, id: str, title: str, collapsed: bool, panels: list[Panel]):
         self.id = id
@@ -42,10 +47,11 @@ class Section:
 
 
 def _reject_duplicates(ids: list[str], what: str, instance_key: str, context: str = "") -> None:
-    """Raise if `ids` repeats. A page, section or panel id is an address --
-    a URL, or the key a fragment/CRUD route is looked up by -- so a
-    duplicate does not merely look untidy, it makes one of the two
-    unreachable."""
+    """Raise if `ids` repeats.
+
+    A page, section or panel id is an address -- a URL, or the key a
+    fragment/CRUD route is looked up by -- so a duplicate does not
+    merely look untidy, it makes one of the two unreachable."""
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
         where = f"{context}: " if context else ""
@@ -54,16 +60,17 @@ def _reject_duplicates(ids: list[str], what: str, instance_key: str, context: st
 
 
 def _reject_duplicate_panel_ids(pages: list["Page"], instance_key: str) -> None:
-    """Check every panel kind that has an id, rather than naming the kinds
-    that currently have one.
+    """Check every panel kind that has an id.
+
+    Rather than naming the kinds that currently have one -- so a new
+    panel kind with an id is covered automatically, with no separate
+    check to remember to add.
 
     A panel id addresses that panel's own route (GET /api/graph/{id}, the
     /timers/{panel_id} set), and the app indexes panels by it -- so a
-    duplicate silently shadows one panel with another. This used to be two
-    hand-written checks, one per addressable kind, which meant a new kind
-    with an id had to remember to add a third. Grouping by kind closes
-    that: ids only have to be unique within a kind, since each kind is
-    indexed separately."""
+    duplicate silently shadows one panel with another. Grouped by kind:
+    ids only have to be unique within a kind, since each kind is indexed
+    separately."""
     by_kind: dict[str, list[str]] = {}
     for page in pages:
         for section in page.sections:
@@ -76,6 +83,9 @@ def _reject_duplicate_panel_ids(pages: list["Page"], instance_key: str) -> None:
 
 
 def _build_panel(panel_spec: dict, flat: dict[str, Device], instance_key: str, label: str) -> Panel:
+    """Build one `panels:` entry into a Panel.
+
+    Dispatches on `kind` (default "devices") via the panel-kind registry."""
     kind = panel_spec.get("kind", "devices")
     panel_cls = get_panel_kind_class(kind)
     extra = {k: v for k, v in panel_spec.items() if k != "kind"}
@@ -87,6 +97,10 @@ def _build_panel(panel_spec: dict, flat: dict[str, Device], instance_key: str, l
 
 
 def _build_section(section_spec: dict, flat: dict[str, Device], instance_key: str, page_id: str) -> Section:
+    """Build one `sections:` entry into a Section.
+
+    Requires exactly one of 'selectors' (the single-DevicesPanel
+    shorthand) or 'panels'."""
     section_id = section_spec.get("id")
     if not section_id:
         raise ConfigError(
@@ -113,6 +127,7 @@ def _build_section(section_spec: dict, flat: dict[str, Device], instance_key: st
 
 
 def _build_page(page_spec: dict, flat: dict[str, Device], instance_key: str) -> Page:
+    """Build one `pages:` entry into a Page, rejecting duplicate section ids."""
     page_id = page_spec.get("id")
     if not page_id:
         raise ConfigError(f"web_ui instance {instance_key!r}: page missing required 'id'")
@@ -132,6 +147,11 @@ def _build_page(page_spec: dict, flat: dict[str, Device], instance_key: str) -> 
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "WebUiInstance":
+    """Extension entry point (see phc.core.config._load_extensions).
+
+    Builds every page/section/panel from `params["pages"]`, or --
+    absent `pages:` -- synthesizes a single flat page from the
+    top-level `selectors:` shorthand."""
     pages_spec = params.get("pages")
     if pages_spec:
         if not isinstance(pages_spec, list):
@@ -160,11 +180,13 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
 
 
 class WebUiInstance:
-    """One configured web_ui instance. build_app()/the Jinja2 Environment
-    (safe with no running loop) are constructed in __init__, at
-    configure()-time; the actual AppRunner/TCPSite (which DO require a
-    running loop) are created in on_start(), invoked by the Scheduler on
-    its own loop -- see phc.core.scheduler.Scheduler.start_hooks/stop_hooks."""
+    """One configured web_ui instance.
+
+    build_app()/the Jinja2 Environment (safe with no running loop) are
+    constructed in __init__, at configure()-time; the actual
+    AppRunner/TCPSite (which DO require a running loop) are created in
+    on_start(), invoked by the Scheduler on its own loop -- see
+    phc.core.scheduler.Scheduler.start_hooks/stop_hooks."""
 
     def __init__(self, devices: dict[str, Device], pages: list[Page], host: str, port: int,
                  shutdown_timeout: float, refresh_interval: float, instance_key: str,
@@ -186,9 +208,10 @@ class WebUiInstance:
         self._runner: web.AppRunner | None = None
 
     def on_bind(self, system) -> None:
-        """Check every panel's reference to another extension instance now
-        that all of them exist -- see phc.core.config.load_system's on_bind
-        pass.
+        """Check every panel's reference to another extension instance.
+
+        Now that all of them exist -- see phc.core.config.load_system's
+        on_bind pass.
 
         A `kind: graph` panel names an extensions.logdb instance and a
         `kind: timers` panel an extensions.timer instance. Neither can be
@@ -238,6 +261,10 @@ class WebUiInstance:
                     f"{kind} instance (no {'.'.join(path)})")
 
     async def on_start(self, devices: dict[str, Device]) -> None:
+        """Start this instance's aiohttp server.
+
+        On the Scheduler's own event loop (see
+        phc.core.scheduler.Scheduler.start_hooks)."""
         self._runner = web.AppRunner(self._app, shutdown_timeout=self._shutdown_timeout)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
@@ -245,6 +272,9 @@ class WebUiInstance:
         logger.info("%s listening on http://%s:%d", self._instance_key, self._host, self._port)
 
     async def on_stop(self, devices: dict[str, Device]) -> None:
+        """Stop this instance's aiohttp server.
+
+        See phc.core.scheduler.Scheduler.stop_hooks."""
         if self._runner is not None:
             await self._runner.cleanup()
         logger.info("%s stopped", self._instance_key)

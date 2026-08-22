@@ -1,5 +1,6 @@
-"""OpenMeteoDevice: reads current weather conditions for one location from
-the free Open-Meteo forecast API."""
+"""OpenMeteoDevice: current weather conditions for one location.
+
+From the free Open-Meteo forecast API."""
 
 import asyncio
 import time
@@ -21,8 +22,9 @@ _response_cache_lock = asyncio.Lock()
 
 @register_module("open_meteo")
 class OpenMeteoDevice(Device):
-    """One location's current weather from the free Open-Meteo API. Async,
-    cached to avoid re-downloading on rapid polls. Read-only.
+    """One location's current weather from the free Open-Meteo API.
+
+    Async, cached to avoid re-downloading on rapid polls. Read-only.
     """
 
     def setup(self):
@@ -56,18 +58,19 @@ class OpenMeteoDevice(Device):
 
     async def _get_current(self) -> dict | None:
         """Return `current` dict, reusing cached copy if fresh.
+
         Uses double-checked locking."""
-        now = time.monotonic()
+        mono = time.monotonic()
         cached = _response_cache.get(self._url)
-        if cached is not None and (now - cached[0]) < self._cache_time:
+        if cached is not None and (mono - cached[0]) < self._cache_time:
             return cached[1]
         async with _response_cache_lock:
-            now = time.monotonic()
+            mono = time.monotonic()
             cached = _response_cache.get(self._url)
-            if cached is not None and (now - cached[0]) < self._cache_time:
+            if cached is not None and (mono - cached[0]) < self._cache_time:
                 return cached[1]
             current = await self._download_current()
-            _response_cache[self._url] = (now, current)
+            _response_cache[self._url] = (mono, current)
             return current
 
     async def _download_current(self) -> dict:

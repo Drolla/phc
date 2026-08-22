@@ -1,5 +1,7 @@
-"""ZWayDevice: one physical Z-Wave node's values, read/written via a
-Razberry/zWay controller's thc_zWay.js helper script over HTTP."""
+"""ZWayDevice: one physical Z-Wave node's values.
+
+Read/written via a Razberry/zWay controller's thc_zWay.js helper script
+over HTTP."""
 
 import asyncio
 import json
@@ -16,9 +18,10 @@ from phc.core.registry import register_module
 logger = logging.getLogger("phc.zway")
 
 class _ZWayState:
-    """State shared by every ZWayDevice of ONE system, held in the shared
-    device context (see phc.core.device.Device.context) rather than at
-    module scope.
+    """State shared by every ZWayDevice of ONE system.
+
+    Held in the shared device context (see phc.core.device.Device.context)
+    rather than at module scope.
 
     Devices sharing a base_url register their endpoints' (command_group,
     address) identifiers in `identifiers` during setup(). Before the first
@@ -80,11 +83,13 @@ _HELPER_PROBE_RESPONSE = [257, 1, 0]
 
 @register_module("zway")
 class ZWayDevice(Device):
-    """One physical Z-Wave node's values (e.g. a switch's state, sensor
-    reading, battery level), read/written via Get/Set commands to a
-    Razberry/zWay controller, using thc_zWay.js (see _ensure_helper_loaded
-    -- installed in the zWay server's automation folder by the user, then
-    loaded there automatically on first use). Each endpoint maps to a zWay
+    """One physical Z-Wave node's values.
+
+    E.g. a switch's state, sensor reading, battery level -- read/written
+    via Get/Set commands to a Razberry/zWay controller, using
+    thc_zWay.js (see _ensure_helper_loaded -- installed in the zWay
+    server's automation folder by the user, then loaded there
+    automatically on first use). Each endpoint maps to a zWay
     identifier: `command_group` (one of
     SwitchBinary/SwitchMultilevel/SwitchMultiBinary/SensorBinary/
     SensorMultilevel/Battery/TagReader) and `address` (an opaque
@@ -98,8 +103,9 @@ class ZWayDevice(Device):
     """
 
     def setup(self):
-        """Register this device's readable endpoints' identifiers into the
-        shared per-base_url registry for batching. Sync/no-I/O because all
+        """Register this device's readable endpoints into the shared registry.
+
+        Per-base_url identifiers, for batching. Sync/no-I/O because all
         devices are setup() before the Scheduler starts."""
         # One _ZWayState per system, shared by every zway device in it --
         # setdefault would build (and throw away) a fresh set of Locks on
@@ -138,12 +144,13 @@ class ZWayDevice(Device):
         self._tag_reader_node: str | None = str(node) if has_tag_reader and node is not None else None
 
     async def receive_async(self) -> dict:
-        """Ensure thc_zWay.js is loaded on the controller, configure any
-        unconfigured TagReader nodes, fetch batched values, return
-        {endpoint_key: value} for this device's endpoints (None on any
-        failure, like other weather/sensor modules -- logged at ERROR here,
-        since phc.core.scheduler only logs a bare "fetch failed" for an
-        unhandled exception, not one caught and turned into empty values)."""
+        """Ensure thc_zWay.js is loaded, configure TagReaders, fetch values.
+
+        Returns {endpoint_key: value} for this device's endpoints (None
+        on any failure, like other weather/sensor modules -- logged at
+        ERROR here, since phc.core.scheduler only logs a bare "fetch
+        failed" for an unhandled exception, not one caught and turned
+        into empty values)."""
         if not await self._ensure_helper_loaded():
             # Controller unreachable, or thc_zWay.js not installed on it.
             self.report_failure(f"thc_zWay.js not loaded on {self._base_url}")
@@ -162,10 +169,12 @@ class ZWayDevice(Device):
         return {key: values.get(ident) for key, ident in self._idents.items()}
 
     async def transmit_async(self, state: dict) -> None:
-        """Write each endpoint via Set() individually (not batched; writes
-        are sporadic, not periodic). A successful write clears the shared
-        read cache so the next poll reflects it immediately. Failed writes
-        are silently ignored; the next poll reports the real state."""
+        """Write each endpoint via Set() individually.
+
+        Not batched; writes are sporadic, not periodic. A successful
+        write clears the shared read cache so the next poll reflects it
+        immediately. Failed writes are silently ignored; the next poll
+        reports the real state."""
         if not await self._ensure_helper_loaded():
             return
         for key, value in state.items():
@@ -184,25 +193,25 @@ class ZWayDevice(Device):
     # ---------- shared batched fetch ----------
 
     async def _get_values(self) -> dict:
-        """Return {identifier: value} for this base_url, reusing cached
-        results if still fresh and covering all registered identifiers.
-        Identifiers with a poll_interval override are left out of the
-        combined Get() request -- and served from their own last-fetched
-        value instead -- until that interval has elapsed, so a slow-changing
-        value doesn't ride along on every fast sibling's poll. Uses
-        double-checked locking to avoid cache stampedes (see
+        """Return {identifier: value} for this base_url.
+
+        Reuses cached results if still fresh and covering all
+        registered identifiers. Throttled identifiers are
+        selected/served separately (see
+        _select_fetch_idents/_merge_throttled, and _ZWayState for why).
+        Uses double-checked locking to avoid cache stampedes (see
         waveplus_bridge). Failed fetches are never cached; callers retry."""
-        now = time.monotonic()
+        mono = time.monotonic()
         registry = self._state.identifiers[self._base_url]
         cached = self._state.response_cache.get(self._base_url)
-        if cached is not None and (now - cached[0]) < self._cache_time and cached[2] == len(registry):
+        if cached is not None and (mono - cached[0]) < self._cache_time and cached[2] == len(registry):
             return self._merge_throttled(cached[1], registry)
         async with self._state.response_cache_lock:
-            now = time.monotonic()
+            mono = time.monotonic()
             cached = self._state.response_cache.get(self._base_url)
-            if cached is not None and (now - cached[0]) < self._cache_time and cached[2] == len(registry):
+            if cached is not None and (mono - cached[0]) < self._cache_time and cached[2] == len(registry):
                 return self._merge_throttled(cached[1], registry)
-            idents = self._select_fetch_idents(registry, now)
+            idents = self._select_fetch_idents(registry, mono)
             # Nothing due (e.g. a controller with only throttled identifiers,
             # none of them elapsed yet) -- skip the request rather than
             # issuing an empty Get().
@@ -211,11 +220,13 @@ class ZWayDevice(Device):
             self._record_throttled(values, registry)
             return self._merge_throttled(values, registry)
 
-    def _select_fetch_idents(self, registry: dict, now: float) -> list[tuple[str, str]]:
-        """Return the identifiers to actually request this fetch: every
-        identifier without a poll_interval override, plus any overridden one
-        whose poll_interval has elapsed since it was last fetched (or was
-        never fetched yet -- always due on the first fetch)."""
+    def _select_fetch_idents(self, registry: dict, mono: float) -> list[tuple[str, str]]:
+        """Return the identifiers to actually request this fetch.
+
+        Every identifier without a poll_interval override, plus any
+        overridden one whose poll_interval has elapsed since it was
+        last fetched (or was never fetched yet -- always due on the
+        first fetch)."""
         throttled = self._state.throttled_values.get(self._base_url, {})
         idents = []
         for ident, poll_interval in registry.items():
@@ -223,23 +234,26 @@ class ZWayDevice(Device):
                 idents.append(ident)
                 continue
             last = throttled.get(ident)
-            if last is None or (now - last[0]) >= poll_interval:
+            if last is None or (mono - last[0]) >= poll_interval:
                 idents.append(ident)
         return idents
 
     def _record_throttled(self, values: dict, registry: dict) -> None:
-        """Remember the just-fetched value of every throttled identifier
-        that was actually included in this fetch, so later fetches where
-        it's not due can still serve it (see _merge_throttled)."""
+        """Remember the just-fetched value of every throttled identifier.
+
+        That was actually included in this fetch, so later fetches
+        where it's not due can still serve it (see _merge_throttled)."""
         throttled = self._state.throttled_values.setdefault(self._base_url, {})
-        now = time.monotonic()
+        mono = time.monotonic()
         for ident, poll_interval in registry.items():
             if poll_interval is not None and ident in values:
-                throttled[ident] = (now, values[ident])
+                throttled[ident] = (mono, values[ident])
 
     def _merge_throttled(self, values: dict, registry: dict) -> dict:
-        """Fill in identifiers missing from `values` (throttled, not due
-        this fetch) from their last actually-fetched value, if any."""
+        """Fill in identifiers missing from `values`.
+
+        Throttled, not due this fetch -- from their last actually-fetched
+        value, if any."""
         throttled = self._state.throttled_values.get(self._base_url, {})
         merged = dict(values)
         for ident, poll_interval in registry.items():
@@ -250,9 +264,11 @@ class ZWayDevice(Device):
         return merged
 
     async def _download(self, idents: list[tuple[str, str]]) -> dict:
-        """Issue one combined Get() for all identifiers, return
-        {identifier: value}. Raises ValueError if response isn't a
-        same-length JSON array (total failure, no partial trust)."""
+        """Issue one combined Get() for all identifiers.
+
+        Returns {identifier: value}. Raises ValueError if response
+        isn't a same-length JSON array (total failure, no partial
+        trust)."""
         args = json.dumps([[group, address] for group, address in idents], separators=(",", ":"))
         raw = await self._js_run(f"Get({args})")
         # thc_zWay.js's Get() result comes back double-JSON-encoded: /JS/Run/
@@ -280,13 +296,14 @@ class ZWayDevice(Device):
     # ---------- helper script (thc_zWay.js) one-time load ----------
 
     async def _ensure_helper_loaded(self) -> bool:
-        """Confirm thc_zWay.js is loaded on this base_url's zWay server,
-        loading it via executeFile() first if a Get_IndexArray() probe
-        shows it's missing (ported from THC's thc_zWay.tcl Init). Returns
-        False if the controller is unreachable or the file isn't present
-        in its automation folder -- callers treat that like any other
-        fetch/write failure, so it's simply retried on the next poll
-        instead of blocking startup (see _ensure_tag_readers_configured)."""
+        """Confirm thc_zWay.js is loaded on this base_url's zWay server.
+
+        Loading it via executeFile() first if a Get_IndexArray() probe
+        shows it's missing. Returns False if the controller is
+        unreachable or the file isn't present in its automation folder
+        -- callers treat that like any other fetch/write failure, so
+        it's simply retried on the next poll instead of blocking
+        startup (see _ensure_tag_readers_configured)."""
         if self._base_url in self._state.helper_loaded:
             return True
         async with self._state.helper_lock:
@@ -311,9 +328,10 @@ class ZWayDevice(Device):
             return True
 
     async def _probe_helper(self) -> bool:
-        """True if Get_IndexArray() responds as expected, i.e. thc_zWay.js
-        is already loaded. False on any HTTP failure or mismatched reply
-        (script not loaded, or not loaded yet)."""
+        """True if Get_IndexArray() responds as expected.
+
+        I.e. thc_zWay.js is already loaded. False on any HTTP failure
+        or mismatched reply (script not loaded, or not loaded yet)."""
         try:
             result = await self._js_run(f"Get_IndexArray({_HELPER_PROBE_IDENT})")
         except (TimeoutError, aiohttp.ClientError):
@@ -323,10 +341,11 @@ class ZWayDevice(Device):
     # ---------- TagReader one-time configure ----------
 
     async def _ensure_tag_readers_configured(self) -> None:
-        """Call Configure_TagReader(node) once per device/base_url pair
-        (deferred here instead of setup() since setup is sync/no-I/O).
-        Only added to self._state.configured_tag_readers on success, so transient
-        failures retry on the next poll."""
+        """Call Configure_TagReader(node) once per device/base_url pair.
+
+        Deferred here instead of setup() since setup is sync/no-I/O.
+        Only added to self._state.configured_tag_readers on success, so
+        transient failures retry on the next poll."""
         node = self._tag_reader_node
         if node is None:
             return
@@ -343,12 +362,14 @@ class ZWayDevice(Device):
     # ---------- HTTP + session/auth ----------
 
     async def _js_run(self, expr: str):
-        """GET {base_url}/JS/Run/{expr}, return parsed JSON. Attaches cached
-        session cookie; on 401/403, drops it and retries with fresh login.
-        Opens a fresh aiohttp.ClientSession per request (not reused as a
-        module-level session) to avoid lifecycle issues across Scheduler
-        instances. Only the extracted cookie string is cached, preserving
-        correctness (survives session cookie jar reset) without lifecycle debt.
+        """GET {base_url}/JS/Run/{expr}, return parsed JSON.
+
+        Attaches cached session cookie; on 401/403, drops it and
+        retries with fresh login. Opens a fresh aiohttp.ClientSession
+        per request (not reused as a module-level session) to avoid
+        lifecycle issues across Scheduler instances. Only the extracted
+        cookie string is cached, preserving correctness (survives
+        session cookie jar reset) without lifecycle debt.
 
         The one call site for every physical-device interaction (Get/Set/
         Configure_TagReader alike), so it's logged here at DEBUG rather than
@@ -373,6 +394,7 @@ class ZWayDevice(Device):
 
     async def _ensure_cookie(self) -> str | None:
         """Return cached session cookie, logging in first if uncached.
+
         Returns None when no user is configured (unauthenticated server)."""
         if self._user is None:
             return None

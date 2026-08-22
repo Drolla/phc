@@ -1,8 +1,9 @@
-"""Panel kind registry: a section's content is a list of panels, each
-dispatched by `kind` (default "devices"). Local to phc/extensions/web_ui --
-phc/core/registry.py is not involved, since only this extension's own
-configure() (see extension.py) ever dispatches on panel kind; nothing in
-core needs to know panels exist.
+"""Panel kind registry: a section's content dispatched by `kind`.
+
+Each panel dispatched by `kind` (default "devices"). Local to
+phc/extensions/web_ui -- phc/core/registry.py is not involved, since
+only this extension's own configure() (see extension.py) ever
+dispatches on panel kind; nothing in core needs to know panels exist.
 
 v1 ships DevicesPanel (the selector-matched device/endpoint subtree,
 rendered via phc.extensions.web_ui.widgets), GraphPanel (a time-series chart
@@ -28,8 +29,9 @@ _panel_kinds: dict[str, type["Panel"]] = {}
 
 
 def register_panel_kind(kind: str):
-    """Class decorator: registers a Panel subclass under a `kind` name, so
-    a section's `panels:` entries can reference it via `kind: <kind>`."""
+    """Class decorator: registers a Panel subclass under a `kind` name.
+
+    So a section's `panels:` entries can reference it via `kind: <kind>`."""
     def decorator(cls):
         _panel_kinds[kind] = cls
         return cls
@@ -37,6 +39,7 @@ def register_panel_kind(kind: str):
 
 
 def get_panel_kind_class(kind: str) -> type["Panel"]:
+    """Return the Panel subclass registered under `kind`."""
     try:
         cls = _panel_kinds[kind]
     except KeyError:
@@ -58,10 +61,12 @@ class Panel:
 
 @register_panel_kind("devices")
 class DevicesPanel(Panel):
-    """The default (and, in v1, only) panel kind: every endpoint matched by
-    `selectors` (same "<device-glob>/<endpoint-glob>" syntax as
-    phc.extensions.logdb), rendered as widgets inferred from their own
-    metadata (see phc.extensions.web_ui.widgets)."""
+    """The default (and, in v1, only) panel kind.
+
+    Every endpoint matched by `selectors` (same
+    "<device-glob>/<endpoint-glob>" syntax as phc.extensions.logdb),
+    rendered as widgets inferred from their own metadata (see
+    phc.extensions.web_ui.widgets)."""
 
     kind = "devices"
 
@@ -73,9 +78,10 @@ class DevicesPanel(Panel):
 
 
 def _parse_decimation(decimation_spec: list[dict]) -> list[tuple[float, int]]:
-    """Parse a `decimation:` list of {older_than, factor} mappings (see
-    GraphPanel) into the (age_seconds, factor) tuples LogDb.get_decimated()
-    expects."""
+    """Parse a `decimation:` list of {older_than, factor} mappings.
+
+    See GraphPanel. Into the (age_seconds, factor) tuples
+    LogDb.get_decimated() expects."""
     tiers = []
     for entry in decimation_spec:
         if not isinstance(entry, dict) or "older_than" not in entry or "factor" not in entry:
@@ -92,9 +98,11 @@ def _parse_decimation(decimation_spec: list[dict]) -> list[tuple[float, int]]:
 
 @register_panel_kind("graph")
 class GraphPanel(Panel):
-    """A time-series chart over one or more endpoints, backed by a named
-    phc.extensions.logdb instance (`logdb_instance`, e.g. "logdb.house_log").
-    The referenced instance is *not* resolved here: phc.extensions.web_ui's own
+    """A time-series chart over one or more endpoints.
+
+    Backed by a named phc.extensions.logdb instance (`logdb_instance`,
+    e.g. "logdb.house_log"). The referenced instance is *not* resolved
+    here: phc.extensions.web_ui's own
     configure() may run before that logdb instance has been configured (see
     phc.core.config._load_extensions), so resolution is deferred to request
     time, in phc/extensions/web_ui/server.py's handle_graph_data -- an
@@ -136,9 +144,11 @@ class GraphPanel(Panel):
 
 @register_panel_kind("timers")
 class TimersPanel(Panel):
-    """A timer create/edit/delete UI, backed by a named phc.extensions.timer
-    instance (`timer_instance`, e.g. "timer.house"). Like GraphPanel's
-    logdb_instance, the reference is *not* resolved here: phc.extensions.timer's
+    """A timer create/edit/delete UI.
+
+    Backed by a named phc.extensions.timer instance (`timer_instance`,
+    e.g. "timer.house"). Like GraphPanel's logdb_instance, the
+    reference is *not* resolved here: phc.extensions.timer's
     own configure() may run before or after this web_ui instance (see
     phc.core.config._load_extensions), so resolution is deferred to request
     time -- see phc/extensions/web_ui/server.py's _describe_timers_panel. Unlike

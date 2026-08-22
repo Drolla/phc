@@ -1,5 +1,7 @@
-"""VirtualLatencyDevice: an in-memory device like `virtual`, with injected
-read/write latency for demonstrating and testing scheduler behavior under slow I/O."""
+"""VirtualLatencyDevice: an in-memory device like `virtual`, with latency.
+
+Injected read/write latency, for demonstrating and testing scheduler
+behavior under slow I/O."""
 
 import random
 import time
@@ -10,9 +12,11 @@ from phc.core.registry import register_module
 
 @register_module("virtual_latency")
 class VirtualLatencyDevice(Device):
-    """In-memory device like `virtual` but with injected latency for testing
-    scheduler behavior under slow I/O. Delay includes jitter (natural
-    variation around a baseline) and random spikes (occasional flakiness).
+    """In-memory device like `virtual` but with injected latency.
+
+    For testing scheduler behavior under slow I/O. Delay includes
+    jitter (natural variation around a baseline) and random spikes
+    (occasional flakiness).
     """
 
     def setup(self):
@@ -44,8 +48,10 @@ class VirtualLatencyDevice(Device):
 
     @staticmethod
     def _next_delay(cfg: dict) -> float:
-        """Return this call's delay: base latency (with jitter) or spike
-        latency with spike_probability chance."""
+        """Return this call's delay.
+
+        Base latency (with jitter), or spike latency with
+        spike_probability chance."""
         if random.random() < cfg["spike_probability"]:
             return VirtualLatencyDevice._jittered(cfg["spike_latency"], cfg["spike_jitter"])
         return VirtualLatencyDevice._jittered(cfg["latency"], cfg["jitter"])

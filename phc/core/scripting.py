@@ -1,9 +1,10 @@
-"""A restricted-Python sandbox shared by condition expressions and scripted
-actions (see phc.core.task's ExprCondition/ScriptAction). Purely mechanical: this
+"""A restricted-Python sandbox shared by conditions and scripted actions.
+
+See phc.core.task's ExprCondition/ScriptAction. Purely mechanical: this
 module knows nothing about Device/Task/Endpoint -- it only validates a
 Python AST against a small allow-list, compiles it, and runs it against a
-caller-supplied namespace dict. What that namespace actually contains (which
-functions are available to conditions vs. scripts) is decided in
+caller-supplied namespace dict. What that namespace actually contains
+(which functions are available to conditions vs. scripts) is decided in
 phc.core.task._build_rule_namespace, the one place that owns that policy.
 
 This targets mistake-containment for a trusted, locally-authored system YAML
@@ -15,6 +16,7 @@ instead of doing something surprising, not to sandbox an adversarial author."""
 import ast
 import builtins
 import logging
+from typing import Literal
 
 logger = logging.getLogger("phc.scripting")
 
@@ -26,9 +28,11 @@ _LOG_SNIPPET_LENGTH = 60
 
 
 def _snippet(source: str) -> str:
-    """Collapse `source` to one line (join()ing on whitespace, so a
-    multi-line script's newlines/indentation don't break up a log line) and
-    truncate to _LOG_SNIPPET_LENGTH characters."""
+    """Collapse `source` to one line and truncate it.
+
+    join()s on whitespace, so a multi-line script's newlines/indentation
+    don't break up a log line, then truncates to _LOG_SNIPPET_LENGTH
+    characters."""
     collapsed = " ".join(source.split())
     if len(collapsed) > _LOG_SNIPPET_LENGTH:
         return collapsed[:_LOG_SNIPPET_LENGTH] + "..."
@@ -93,16 +97,20 @@ _ALLOWED_NODE_TYPES = (
 
 
 class ScriptError(Exception):
-    """Raised for a condition/script source that fails to parse or violates
-    the sandbox whitelist. Callers (phc.core.config's _build_condition/
-    _build_action) catch this at config-load time and re-raise as
-    ConfigError, naming the offending task."""
+    """Raised for a condition/script source that fails validation.
+
+    Fails to parse, or violates the sandbox whitelist. Callers
+    (phc.core.config's _build_condition/_build_action) catch this at
+    config-load time and re-raise as ConfigError, naming the offending
+    task."""
 
 
 def _validate(tree: ast.AST) -> frozenset[str]:
-    """Walk every node in `tree`, raising ScriptError on the first construct
-    outside the whitelist. Returns the set of string-literal path arguments
-    passed to a _PATH_TAKING_FUNCTIONS call (see module docstring)."""
+    """Walk every node in `tree`, raising ScriptError on the first violation.
+
+    Outside the whitelist. Returns the set of string-literal path
+    arguments passed to a _PATH_TAKING_FUNCTIONS call (see module
+    docstring)."""
     referenced_paths: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODE_TYPES):
@@ -127,9 +135,10 @@ def _validate(tree: ast.AST) -> frozenset[str]:
 
 
 class Compiled:
-    """A validated, compiled expression or script, ready for repeated
-    evaluate_expression()/run_script() calls against different namespaces
-    (e.g. once per Scheduler tick)."""
+    """A validated, compiled expression or script.
+
+    Ready for repeated evaluate_expression()/run_script() calls against
+    different namespaces (e.g. once per Scheduler tick)."""
 
     __slots__ = ("code", "referenced_paths", "source")
 
@@ -139,36 +148,44 @@ class Compiled:
         self.source = source
 
 
-def compile_expression(source: str) -> Compiled:
-    """Validate and compile a condition's `expr:` source. Raises ScriptError
-    on invalid syntax or a whitelist violation."""
-    logger.debug("compile expr: %s", _snippet(source))
+def _compile(source: str, mode: Literal["eval", "exec"], label: str, filename: str) -> Compiled:
+    """Shared body of compile_expression()/compile_script().
+
+    Parses, runs _validate()'s whitelist check, and compiles. Raises
+    ScriptError on invalid syntax or a whitelist violation."""
+    logger.debug("compile %s: %s", label, _snippet(source))
     try:
-        tree = ast.parse(source, mode="eval")
+        tree = ast.parse(source, mode=mode)
     except SyntaxError as exc:
-        raise ScriptError(f"invalid expression syntax: {exc}") from None
-    compiled = Compiled(compile(tree, "<condition-expr>", "eval"), _validate(tree), source)
-    logger.debug("compile expr done: referenced path(s): %s", sorted(compiled.referenced_paths))
+        raise ScriptError(f"invalid {label} syntax: {exc}") from None
+    # mypy can't resolve compile()'s overloads when `mode` is a variable
+    # (even Literal-typed) rather than a literal at the call site itself.
+    code = compile(tree, filename, mode)  # type: ignore[call-overload]
+    compiled = Compiled(code, _validate(tree), source)
+    logger.debug("compile %s done: referenced path(s): %s", label, sorted(compiled.referenced_paths))
     return compiled
+
+
+def compile_expression(source: str) -> Compiled:
+    """Validate and compile a condition's `expr:` source.
+
+    Raises ScriptError on invalid syntax or a whitelist violation."""
+    return _compile(source, "eval", "expr", "<condition-expr>")
 
 
 def compile_script(source: str) -> Compiled:
-    """Validate and compile a script action's `code:` source. Raises
-    ScriptError on invalid syntax or a whitelist violation."""
-    logger.debug("compile script: %s", _snippet(source))
-    try:
-        tree = ast.parse(source, mode="exec")
-    except SyntaxError as exc:
-        raise ScriptError(f"invalid script syntax: {exc}") from None
-    compiled = Compiled(compile(tree, "<script-action>", "exec"), _validate(tree), source)
-    logger.debug("compile script done: referenced path(s): %s", sorted(compiled.referenced_paths))
-    return compiled
+    """Validate and compile a script action's `code:` source.
+
+    Raises ScriptError on invalid syntax or a whitelist violation."""
+    return _compile(source, "exec", "script", "<script-action>")
 
 
 def evaluate_expression(compiled: Compiled, namespace: dict):
-    """Evaluate a compile_expression() result against `namespace`. A runtime
-    error (e.g. NameError for a typo'd ref) is not caught here -- it
-    propagates to the caller, same as any other action/condition failure."""
+    """Evaluate a compile_expression() result against `namespace`.
+
+    A runtime error (e.g. NameError for a typo'd ref) is not caught
+    here -- it propagates to the caller, same as any other
+    action/condition failure."""
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("evaluate expr: %s", _snippet(compiled.source))
     result = eval(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
@@ -177,8 +194,9 @@ def evaluate_expression(compiled: Compiled, namespace: dict):
 
 
 def run_script(compiled: Compiled, namespace: dict) -> None:
-    """Execute a compile_script() result against `namespace`. See
-    evaluate_expression() re: runtime error handling."""
+    """Execute a compile_script() result against `namespace`.
+
+    See evaluate_expression() re: runtime error handling."""
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug("run script: %s", _snippet(compiled.source))
     exec(compiled.code, {"__builtins__": _SAFE_BUILTINS, **namespace})
@@ -186,12 +204,14 @@ def run_script(compiled: Compiled, namespace: dict) -> None:
 
 
 class EndpointRef:
-    """Lazy, read-only view of one device endpoint against a specific
-    namespace-construction's live `devices` dict -- backs both the `refs:`
-    attribute-access sugar (`sensor_a.state`) and, via the same underlying
-    Endpoint, the state()/changed()/text()/event()/sticky()/history()
-    namespace functions. Resolved at attribute-access time, not at
-    construction, since `devices` is rebuilt fresh every tick.
+    """Lazy, read-only view of one device endpoint.
+
+    Against a specific namespace-construction's live `devices` dict --
+    backs both the `refs:` attribute-access sugar (`sensor_a.state`) and,
+    via the same underlying Endpoint, the
+    state()/changed()/text()/event()/sticky()/history() namespace
+    functions. Resolved at attribute-access time, not at construction,
+    since `devices` is rebuilt fresh every tick.
 
     `subscriber_id` (typically the owning task's tag) backs `.sticky`, which
     forwards to Endpoint.get_log_value() -- see phc.core.endpoint's sticky log
@@ -240,20 +260,23 @@ class EndpointRef:
 
     @property
     def age(self):
-        """Seconds since this endpoint last produced a reading, or None if
-        it never has. Note this measures READS, not changes -- a sensor
-        reporting a steady value has an age near zero, not the time since
-        it last moved."""
+        """Seconds since this endpoint last produced a reading.
+
+        None if it never has. Note this measures READS, not changes --
+        a sensor reporting a steady value has an age near zero, not the
+        time since it last moved."""
         return self._endpoint().get_age()
 
     @property
     def history(self) -> list:
-        """This endpoint's recorded value history, oldest first. Raises
-        ValueError (naming the endpoint) if it never declared `history:` --
-        the one runtime check standing between a fractile()/median()/
-        average() call and silently pooling fewer sensors than intended,
-        since a list-of-refs argument defeats compile-time path validation
-        (see phc.core.scripting's _PATH_TAKING_FUNCTIONS docstring)."""
+        """This endpoint's recorded value history, oldest first.
+
+        Raises ValueError (naming the endpoint) if it never declared
+        `history:` -- the one runtime check standing between a
+        fractile()/median()/average() call and silently pooling fewer
+        sensors than intended, since a list-of-refs argument defeats
+        compile-time path validation (see phc.core.scripting's
+        _PATH_TAKING_FUNCTIONS docstring)."""
         endpoint = self._endpoint()
         if endpoint.history_size == 0:
             raise ValueError(

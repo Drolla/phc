@@ -1,5 +1,7 @@
-"""Building tasks: a `tasks:` entry into a Task, its `condition:` into a
-Condition/ExprCondition, and each `action:` into a registered Action kind.
+"""Building tasks: a `tasks:` entry into a Task.
+
+Its `condition:` becomes a Condition/ExprCondition, and each `action:` a
+registered Action kind.
 
 `_build_task` is what a TaskRegistry calls to create tasks at runtime too
 (see phc.core.task.TaskRegistry) -- it is injected there rather than
@@ -17,10 +19,11 @@ from phc.core.task import Condition, ExprCondition, Task, TaskRegistry, resolve_
 
 def _subscribe_referenced_endpoints(paths: set[str], flat: dict[str, Device], task_tag: str,
                                      sticky_endpoints: set, context: str) -> None:
-    """Validate and sticky-subscribe every "device.endpoint" path an expr or
-    script references -- shared by `condition: {expr}`, a `script` action's
-    `code`, and a `set` action's `expr`, so the three surfaces can't drift
-    in how they validate/subscribe referenced endpoints. `context` (e.g.
+    """Validate and sticky-subscribe every "device.endpoint" path referenced.
+
+    Shared by `condition: {expr}`, a `script` action's `code`, and a
+    `set` action's `expr`, so the three surfaces can't drift in how they
+    validate/subscribe referenced endpoints. `context` (e.g.
     "condition"/"action") only changes the ConfigError wording below."""
     for ref in paths:
         device_id, endpoint_key = resolve_endpoint_ref(ref)
@@ -33,12 +36,14 @@ def _subscribe_referenced_endpoints(paths: set[str], flat: dict[str, Device], ta
 
 def _build_condition(spec: dict | None, task_tag: str,
                       registry: TaskRegistry) -> Condition | ExprCondition | None:
-    """Build a task's `condition:` YAML entry into a Condition or
-    ExprCondition, or None if absent. Requires exactly one of `device` (the
-    {device, changed, value} shorthand -- see Condition's docstring for how
+    """Build a task's `condition:` YAML entry into a Condition/ExprCondition.
+
+    None if absent. Requires exactly one of `device` (the {device,
+    changed, value} shorthand -- see Condition's docstring for how
     `changed`/`value` combine) or `expr` (a restricted-Python boolean
-    expression, see phc.core.scripting). Raises ConfigError if a referenced
-    device doesn't exist or `expr` violates the sandbox whitelist.
+    expression, see phc.core.scripting). Raises ConfigError if a
+    referenced device doesn't exist or `expr` violates the sandbox
+    whitelist.
 
     For `expr`, every endpoint it references -- via `refs:` or inline as a
     string literal (`state("house.motion1.state")`, see
@@ -72,29 +77,24 @@ def _build_condition(spec: dict | None, task_tag: str,
 
 
 def _build_action(spec: dict, task_tag: str, registry: TaskRegistry):
-    """Build one `action:`/`actions[]` YAML entry into an Action instance,
-    dispatching on `kind` (via the task-kind registry). Every kind is built
-    the same way: device_id/endpoint_key are resolved from `device:` when
-    given (allow_bare=True -- an action's device may omit the endpoint,
-    e.g. "meteo-bern" rather than "meteo-bern.temperature", the Action
-    subclass then falling back to whole-device get()/set() semantics;
-    Conditions, above, intentionally do NOT allow this), None otherwise --
-    and flat/tasks/extensions/task_tag/sticky_endpoints/task_specs are
-    passed to every kind unconditionally, so a kind with no single device
-    target (create_task, kill_task, script, and every extension action) can
-    act on the task list itself, look up a named extension instance (see
-    phc.core.config._load_extensions) or a named `task_specs:` template (see
-    phc.core.task.CreateTaskAction), or (kind: script, or kind: set with an
-    `expr:`) run against the shared rule namespace (see
-    phc.core.task._build_rule_namespace), while an ordinary device-oriented
-    kind simply never touches them. Raises ConfigError on a
-    missing/unregistered kind, a given device that doesn't exist, a spec
-    missing one of that kind's own required constructor arguments (e.g.
-    create_task's `specs`/`template`), or -- for kind: script, or kind: set
-    with an `expr:` -- a code/expr block that violates the sandbox
-    whitelist. A device-oriented kind (e.g. set, toggle) whose `device:` is
-    missing builds without error here -- it fails at that action's own
-    perform() instead, the first time it fires."""
+    """Build one `action:`/`actions[]` YAML entry into an Action instance.
+
+    Dispatches on `kind` (via the task-kind registry). device_id/
+    endpoint_key are resolved from `device:` with allow_bare=True (unlike
+    Conditions): an action's device may omit the endpoint, e.g.
+    "meteo-bern" rather than "meteo-bern.temperature", falling back to
+    whole-device get()/set() semantics. flat/tasks/extensions/task_tag/
+    sticky_endpoints/task_specs are passed to every kind unconditionally,
+    so a kind with no single device target (create_task, kill_task,
+    script, extension actions) can act on the task list, a named extension
+    instance, or a named `task_specs:` template; an ordinary
+    device-oriented kind just never touches them.
+
+    Raises ConfigError on a missing/unregistered kind, a given device that
+    doesn't exist, a spec missing a required constructor argument, or a
+    code/expr block that violates the sandbox whitelist. A device-oriented
+    kind whose `device:` is missing builds without error here -- it fails
+    at that action's own perform() instead, the first time it fires."""
     flat, sticky_endpoints = registry.flat, registry.sticky_endpoints
     kind = spec.get("kind")
     if kind is None:
@@ -136,11 +136,12 @@ def _build_action(spec: dict, task_tag: str, registry: TaskRegistry):
 
 
 def _build_task(entry: dict, registry: TaskRegistry) -> Task:
-    """Build one `tasks:` YAML entry (or a `create_task`/script action's
-    nested spec, or a `task_specs:` entry once instantiated by a
-    `template:` reference) into a Task. See docs/configuration.md#tasks
-    for the `condition`/`time`/`repeat`/`min_interval` semantics and the
-    due_time defaulting matrix."""
+    """Build one `tasks:` YAML entry into a Task.
+
+    Or a `create_task`/script action's nested spec, or a `task_specs:`
+    entry once instantiated by a `template:` reference. See
+    docs/configuration.md#tasks for the `condition`/`time`/`repeat`/
+    `min_interval` semantics and the due_time defaulting matrix."""
     tag = entry["tag"]
     repeat_spec = entry.get("repeat")
     repeat_seconds = parse_duration(repeat_spec) if repeat_spec is not None else None

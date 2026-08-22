@@ -6,6 +6,7 @@ import time
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 
+from phc.core.clock import Now
 from phc.core.device import Device, _write_collector
 from phc.core.task import Task
 
@@ -18,10 +19,10 @@ health_logger = logging.getLogger("phc.health")
 
 
 class Scheduler:
-    """Drives each device's fetch()/update_state() on its own interval, then
-    evaluates tasks against the resulting state.
+    """Drives each device's fetch()/update_state() on its own interval.
 
-    A fixed-heartbeat loop, but the hardware I/O within a tick runs
+    Then evaluates tasks against the resulting state. A fixed-heartbeat
+    loop, but the hardware I/O within a tick runs
     concurrently: the loop awaits every due device's fetch() (and every write
     transmit_async()) together. fetch() is always async; by default it awaits
     receive_async(), which bridges the device's blocking receive() onto a
@@ -51,10 +52,13 @@ class Scheduler:
     see phc.core.intervals.parse_time) stays on time.time(). Before this
     split, a clock step backwards stalled every poll in the system for the
     size of the step, and a step forwards fired a burst of catch-up polls.
-    Both are passed explicitly into _tick_async/tick() rather than read
-    from the clock inside, so a caller (notably the test suite) can drive
-    ticks at whatever times it likes; tick(now=X) alone applies X to both,
-    so a single-clock caller keeps working unchanged.
+    Both readings travel together as one phc.core.clock.Now, passed
+    explicitly into _tick_async/tick() rather than read from the clock
+    inside, so a caller (notably the test suite) can drive ticks at
+    whatever times it likes. tick() also accepts a bare number, expanded
+    to both clocks reading that instant (Now.at) -- one synthetic
+    timeline, which is what lets the test suite run a day of scheduling in
+    milliseconds.
     """
 
     def __init__(self, devices: dict[str, Device], tasks: list[Task] | None = None,
@@ -69,11 +73,8 @@ class Scheduler:
         self.fetch_timeout = fetch_timeout
         self._max_workers = max_workers
         self._tick_hooks = tick_hooks if tick_hooks is not None else []
-        # One-time async lifecycle hooks (e.g. phc.extensions.web_ui starting/
-        # stopping its aiohttp server) -- unlike tick_hooks (once per tick),
-        # these run exactly once each, around run_forever()'s tick loop. See
-        # _run_async()/_run_hooks() below. Each hook is `async def
-        # hook(devices) -> None`.
+        # One-time lifecycle hooks (see class docstring) -- each hook is
+        # `async def hook(devices) -> None`.
         self._start_hooks = start_hooks if start_hooks is not None else []
         self._stop_hooks = stop_hooks if stop_hooks is not None else []
         self._running = False
@@ -109,9 +110,10 @@ class Scheduler:
             self._loop.set_default_executor(self._pool)
 
     def close(self):
-        """Release the thread pool and event loop. In-flight blocking fetches
-        are not waited on (a thread can't be force-cancelled); they finish and
-        are discarded."""
+        """Release the thread pool and event loop.
+
+        In-flight blocking fetches are not waited on (a thread can't be
+        force-cancelled); they finish and are discarded."""
         if self._pool is not None:
             self._pool.shutdown(wait=False)
             self._pool = None
@@ -121,25 +123,25 @@ class Scheduler:
 
     # ---------- tick ----------
 
-    def tick(self, now: float | None = None, now_mono: float | None = None):
+    def tick(self, now: Now | float | None = None):
         """Run one tick synchronously (creating the runtime on first call).
-        Only calls _tick_async -- start_hooks/stop_hooks never run on this
-        path, only around run_forever()'s own loop (see _run_async()).
 
-        `now` is wall-clock (task due_times), `now_mono` monotonic (device
-        intervals, task cooldowns). Passing only `now` applies it to both,
-        so a caller driving ticks at explicit times (the test suite) gets
-        one coherent timeline out of one argument -- see class docstring."""
-        now = now if now is not None else time.time()
-        now_mono = now_mono if now_mono is not None else now
+        Only calls _tick_async -- start_hooks/stop_hooks never run on
+        this path, only around run_forever()'s own loop (see
+        _run_async()).
+
+        `now` defaults to both real clocks (Now.capture); see class
+        docstring for the bare-number shorthand."""
+        now = Now.capture() if now is None else Now.coerce(now)
         self._ensure_runtime()
-        self._loop.run_until_complete(self._tick_async(now, now_mono))
+        self._loop.run_until_complete(self._tick_async(now))
 
-    async def _tick_async(self, now: float, now_mono: float):
-        """Run one scheduler tick: fetch due devices, run due tasks, then
-        commit state and events for every device. See class docstring for
-        the three-pass structure, its concurrency guarantees, and the
-        wall-clock (`now`) vs monotonic (`now_mono`) split."""
+    async def _tick_async(self, now: Now):
+        """Run one scheduler tick: fetch due devices, run due tasks, commit.
+
+        Commits state and events for every device. See class docstring
+        for the three-pass structure, its concurrency guarantees, and
+        the wall-clock (`now.wall`) vs monotonic (`now.mono`) split."""
         # Pass 1: fetch only -- stage raw values concurrently, do not commit or
         # compute change events yet. Every due device is launched directly
         # off the flat index: Device.fetch() stages only its own endpoints
@@ -148,7 +150,7 @@ class Scheduler:
         # no double-fetch to avoid and no subtree bookkeeping to do here. (A
         # device whose previous fetch is still running is skipped inside
         # Device.fetch()'s own in-flight guard, not here.)
-        due_ids = {qid for qid, d in self._devices.items() if d.due(now_mono)}
+        due_ids = {qid for qid, d in self._devices.items() if d.due(now.mono)}
         if due_ids:
             await asyncio.gather(*(self._fetch_one(q) for q in due_ids))
 
@@ -158,7 +160,7 @@ class Scheduler:
         # Writes issued by task actions (set() -> transmit()) are collected
         # here and flushed concurrently below, instead of each one blocking
         # inline.
-        self._log_task_countdown(now)
+        self._log_task_countdown(now.wall)
         token = _write_collector.set([])
         try:
             # Snapshot the list: a create_task/kill_task action firing this
@@ -168,7 +170,7 @@ class Scheduler:
             # tick-vs-next-tick firing for the newly spawned/removed task.
             for task in list(self._tasks):
                 try:
-                    fired = task.run(now, self._devices, now_mono)
+                    fired = task.run(now, self._devices)
                     if fired:
                         logger.info("task %s executed", task.tag)
                 except Exception:
@@ -184,9 +186,9 @@ class Scheduler:
         # Pass 3: commit + compute this tick's change events for EVERY device
         # (a device's _next_state may have been staged by a task's write, not
         # just its own fetch). mark_run() (the poll-interval bookkeeping) is
-        # gated on due_ids, as before. A device whose fetch() skipped (guard
-        # still in flight) keeps last-good state and is retried on a later due
-        # tick; marking it run here is harmless.
+        # gated on due_ids. A device whose fetch() skipped (guard still in
+        # flight) keeps last-good state and is retried on a later due tick;
+        # marking it run here is harmless.
         for qualified_id, device in self._devices.items():
             try:
                 device.update_state()
@@ -194,7 +196,7 @@ class Scheduler:
                 logger.exception("device %s update_state failed", device.qualified_id)
             finally:
                 if qualified_id in due_ids:
-                    device.mark_run(now_mono)
+                    device.mark_run(now.mono)
 
         # Pass 4: run per-tick hooks (e.g. a logger's sticky-value tracking,
         # see phc.extensions.logdb) now that this tick's state is fully
@@ -229,15 +231,17 @@ class Scheduler:
         await self._await_io(device.transmit_async(state), device, "transmit")
 
     async def _await_io(self, awaitable, device: Device, kind: str):
-        """Await one device I/O with per-device isolation (a failure/timeout is
-        logged and never propagates, so it can't cancel other devices' I/O in
-        the same gather) and an optional bound (fetch_timeout).
+        """Await one device I/O with per-device isolation and an optional bound.
+
+        A failure/timeout is logged and never propagates, so it can't
+        cancel other devices' I/O in the same gather. The bound is
+        fetch_timeout.
 
         This is the single place an I/O attempt is seen to succeed or fail,
         so it is also where each device's health is recorded (see
         phc.core.health.DeviceHealth). Swallowing the failure keeps one
-        flaky device from stalling the tick, but used to make it invisible
-        too -- the health record is what makes it observable instead."""
+        flaky device from stalling the tick; the health record is what
+        keeps that failure observable instead of silent."""
         try:
             if self.fetch_timeout is not None:
                 async with asyncio.timeout(self.fetch_timeout):
@@ -261,15 +265,15 @@ class Scheduler:
                                        device.qualified_id, kind, device.health.total_failures)
 
     def _record_failure(self, device: Device, kind: str, error: str, traceback: bool = False) -> None:
-        """Record one failed I/O attempt and log it -- in full the first
-        time, then quietly.
+        """Record one failed I/O attempt and log it.
 
-        A device that has been unreachable for hours would otherwise repeat
-        the same traceback on every tick, burying everything else; but
-        dropping the repeats entirely would leave no evidence it is still
-        failing. So the transition into failure is a WARNING (with the
-        traceback, when there is one), and continued failure stays at DEBUG
-        with a running count."""
+        In full the first time, then quietly. A device that has been
+        unreachable for hours would otherwise repeat the same traceback
+        on every tick, burying everything else; but dropping the
+        repeats entirely would leave no evidence it is still failing.
+        So the transition into failure is a WARNING (with the
+        traceback, when there is one), and continued failure stays at
+        DEBUG with a running count."""
         first = device.health.record_failure(error)
         if first:
             health_logger.warning("device %s %s failed: %s", device.qualified_id, kind, error)
@@ -280,12 +284,14 @@ class Scheduler:
                                  device.qualified_id, kind,
                                  device.health.consecutive_failures, error)
 
-    def _log_task_countdown(self, now: float):
-        """At DEBUG level, log an in-place status line of seconds-until-due
-        for every task. A task with no due_time schedule (condition-only,
-        or neither condition nor time given) shows 0 -- it's due every
-        tick, gated only by its condition if any (see Task.run()'s check
-        order). A due-time-gated task shows its countdown."""
+    def _log_task_countdown(self, wall: float):
+        """At DEBUG level, log an in-place countdown status line.
+
+        One entry per task, seconds-until-due. A task with no due_time
+        schedule (condition-only, or neither condition nor time given)
+        shows 0 -- it's due every tick, gated only by its condition if
+        any (see Task.run()'s check order). A due-time-gated task shows
+        its countdown."""
         if not logger.isEnabledFor(logging.DEBUG):
             return
         parts = []
@@ -293,15 +299,16 @@ class Scheduler:
             if task.due_time is None:
                 seconds = 0
             else:
-                seconds = max(0, int(task.due_time - now))
+                seconds = max(0, int(task.due_time - wall))
             parts.append(f"{seconds}:{task.tag}")
         logger.debug(" ".join(parts), extra={"in_place": True})
 
     # ---------- run loop ----------
 
     def run_forever(self):
-        """Run ticks on the heartbeat interval until stop() is called, then
-        release the runtime."""
+        """Run ticks on the heartbeat interval until stop() is called.
+
+        Releases the runtime afterward."""
         self._ensure_runtime()
         self._running = True
         try:
@@ -310,22 +317,22 @@ class Scheduler:
             self.close()
 
     async def _run_async(self):
-        """Run start_hooks once, then tick on a fixed heartbeat grid until
-        stopped, then run stop_hooks once -- all on the SAME loop
-        run_forever() drives, so a hook (e.g. phc.extensions.web_ui binding its
-        aiohttp server) can freely use asyncio primitives tied to this
-        loop. stop_hooks run here, inside this coroutine's own finally --
-        NOT in run_forever()'s finally: self.close(), which only runs after
-        this coroutine returns and would already have started tearing the
-        loop down.
+        """Run start_hooks, tick on a heartbeat grid, then run stop_hooks.
+
+        All on the SAME loop run_forever() drives, so a hook (e.g.
+        phc.extensions.web_ui binding its aiohttp server) can freely
+        use asyncio primitives tied to this loop. stop_hooks run here,
+        inside this coroutine's own finally -- NOT in run_forever()'s
+        finally: self.close(), which only runs after this coroutine
+        returns and would already have started tearing the loop down.
 
         Ticks are scheduled against a monotonic deadline grid
         (`next_tick += heartbeat`), sleeping only the time REMAINING until
         the next grid point. Sleeping a full heartbeat after each tick
-        instead -- as this loop used to -- makes the real period
-        `heartbeat + tick duration`, so a system with a 1s heartbeat and a
-        200ms tick actually ticks every 1.2s, and every scheduled interval
-        in the system silently runs ~17% slow, forever.
+        instead would make the real period `heartbeat + tick duration`,
+        so a system with a 1s heartbeat and a 200ms tick would actually
+        tick every 1.2s, and every scheduled interval in the system would
+        silently run ~17% slow, forever.
 
         The sleep waits on _stop_event rather than sleeping blindly, so
         stop() takes effect immediately instead of after up to one full
@@ -337,7 +344,7 @@ class Scheduler:
         try:
             next_tick = time.monotonic()
             while self._running:
-                await self._tick_async(time.time(), time.monotonic())
+                await self._tick_async(Now.capture())
                 if self.heartbeat <= 0:
                     continue    # free-running: no grid to keep, no sleep to take
                 next_tick += self.heartbeat
@@ -354,19 +361,19 @@ class Scheduler:
             await self._run_hooks(self._stop_hooks, "stop")
 
     def _handle_overrun(self, next_tick: float) -> float:
-        """Advance a missed heartbeat deadline to the next grid point that
-        is still in the future, and return it. Skipping ahead (rather than
-        letting `next_tick` fall further and further behind) means a
-        temporary stall -- one slow fetch, a suspended laptop -- costs the
-        ticks it actually missed and nothing more; the alternative is a
-        catch-up burst of back-to-back ticks racing to work off a backlog
-        that no longer corresponds to anything real.
+        """Advance a missed heartbeat deadline to the next grid point.
 
-        Logged once per overrun episode, not once per overrunning tick: a
-        system whose tick genuinely exceeds its heartbeat would otherwise
-        emit this warning on every single tick forever."""
-        now_mono = time.monotonic()
-        missed = int((now_mono - next_tick) // self.heartbeat) + 1
+        Returns the advanced deadline. Skipping ahead (rather than
+        letting `next_tick` fall further and further behind) means a
+        temporary stall -- one slow fetch, a suspended laptop -- costs
+        the ticks it actually missed and nothing more; the alternative
+        is a catch-up burst of back-to-back ticks racing to work off a
+        backlog that no longer corresponds to anything real.
+
+        Logged once per overrun episode (see _overrun_logged), not once per
+        overrunning tick."""
+        mono = time.monotonic()
+        missed = int((mono - next_tick) // self.heartbeat) + 1
         if not self._overrun_logged:
             logger.warning(
                 "tick overran its %.3fs heartbeat; skipping %d missed tick(s) "
@@ -376,10 +383,11 @@ class Scheduler:
         return next_tick + missed * self.heartbeat
 
     async def _run_hooks(self, hooks: list, label: str) -> None:
-        """Run every hook in `hooks` once, concurrently, each isolated so one
-        hook's failure/exception is logged and never blocks the others or
-        propagates -- mirrors the tick_hooks pass's per-hook isolation
-        (_tick_async, pass 4)."""
+        """Run every hook in `hooks` once, concurrently, each isolated.
+
+        One hook's failure/exception is logged and never blocks the
+        others or propagates -- mirrors the tick_hooks pass's per-hook
+        isolation (_tick_async, pass 4)."""
         if hooks:
             await asyncio.gather(*(self._run_one_hook(hook, label) for hook in hooks))
 

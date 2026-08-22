@@ -1,5 +1,4 @@
-"""The extension contract: what PHC calls on a configured extension
-instance, and when.
+"""The extension contract: what PHC calls on an extension instance.
 
 An extension is a package with an `extension.yaml` and an `extension.py`
 exposing `configure()`, which returns an instance object. That object may
@@ -80,18 +79,14 @@ class Extension(Protocol):
 
 
 def check_lifecycle_hooks(instance: object, instance_key: str) -> None:
-    """Raise ConfigError if `instance` has a method that looks like a
-    misspelled lifecycle hook.
+    """Raise ConfigError if `instance` has a misspelled lifecycle hook.
 
-    Hooks are found by name, so `on_tik` is not a broken hook -- it is not
-    a hook at all, and the extension simply never ticks, silently, until
-    someone notices the thing it was supposed to do never happens. This
-    turns that into a startup error naming both the method and what it was
-    probably meant to be.
+    See module docstring for why this check exists. Names both the
+    method and what it was probably meant to be.
 
-    Deliberately conservative: only a close match to a real hook name is
-    reported, so an extension is free to have its own `on_message` or
-    `on_connect`."""
+    Deliberately conservative (see _TYPO_CUTOFF above): only a close
+    match to a real hook name is reported, so an unrelated method is
+    left alone."""
     known = set(LIFECYCLE_HOOKS)
     for name in dir(instance):
         if name.startswith("__") or name in known:
@@ -109,7 +104,8 @@ def check_lifecycle_hooks(instance: object, instance_key: str) -> None:
 
 
 def collect_hook(instances: dict, hook: str) -> list:
-    """Every instance's bound `hook` method, in registry order, for the
-    instances that implement it."""
+    """Every instance's bound `hook` method, for instances that implement it.
+
+    In registry order."""
     return [getattr(instance, hook) for instance in instances.values()
             if hasattr(instance, hook)]

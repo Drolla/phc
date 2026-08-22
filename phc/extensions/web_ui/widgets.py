@@ -1,8 +1,10 @@
-"""Pure inference of which UI widget kind best represents an Endpoint, from
-its existing generic metadata (readable/writable/value_type/values/unit/
-min/max) -- no per-device or per-endpoint-kind registration. This is the
-ONLY place that decision is made; phc/extensions/web_ui/templates/_macros.html's
-render_widget macro branches on the result but never re-derives it."""
+"""Pure inference of which UI widget kind best represents an Endpoint.
+
+From its existing generic metadata
+(readable/writable/value_type/values/unit/min/max) -- no per-device or
+per-endpoint-kind registration. This is the ONLY place that decision
+is made; phc/extensions/web_ui/templates/_macros.html's render_widget
+macro branches on the result but never re-derives it."""
 
 from phc.core.device import Device
 from phc.core.endpoint import Endpoint
@@ -24,10 +26,11 @@ def infer_widget_kind(endpoint: Endpoint) -> str:
 
 
 def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | None = None) -> dict:
-    """The one JSON-serializable shape shared by the JSON read API
-    (GET /api/tree) and every Jinja2 render (full page and single
-    /widget/{device}/{endpoint} fragment alike) -- a single source of truth
-    for "what a widget needs to know".
+    """The one JSON-serializable shape shared by every render path.
+
+    The JSON read API (GET /api/tree) and every Jinja2 render (full
+    page and single /widget/{device}/{endpoint} fragment alike) -- a
+    single source of truth for "what a widget needs to know".
 
     `device` supplies the health of the device this endpoint belongs to
     (see phc.core.health). Without it a widget shows the last value the
@@ -61,13 +64,14 @@ def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | No
 
 
 def describe_device(device: Device, visible_pairs: set[tuple[str, str]]) -> dict | None:
-    """Recursive device-tree description, pruned to only the branches that
-    lead to at least one visible endpoint: a device with none of its own
-    endpoints in `visible_pairs` and no descendant with any is omitted
-    entirely (returns None, filtered out by its parent/caller). Needed once
-    different pages/sections have different, narrower selectors -- without
-    pruning, every section would repeat large empty group headers for
-    devices outside its own selection."""
+    """Recursive device-tree description, pruned to only visible branches.
+
+    A device with none of its own endpoints in `visible_pairs` and no
+    descendant with any is omitted entirely (returns None, filtered
+    out by its parent/caller). Needed once different pages/sections
+    have different, narrower selectors -- without pruning, every
+    section would repeat large empty group headers for devices outside
+    its own selection."""
     children = [described for described in
                 (describe_device(child, visible_pairs) for child in device.children.values())
                 if described is not None]

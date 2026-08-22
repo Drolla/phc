@@ -1,11 +1,11 @@
-"""Parsed module.yaml/extension.yaml descriptors, and the key sets that
-define what a config entry may contain.
+"""Parsed module.yaml/extension.yaml descriptors and their key sets.
 
-A device module and an extension are each a Python package plus a
-declarative descriptor; this module is what reads those descriptors and
-validates their internal consistency (profile libraries, reserved
-parameter names). It is the bottom of this package's dependency order --
-everything else builds on the descriptors it produces.
+Defines what a config entry may contain. A device module and an
+extension are each a Python package plus a declarative descriptor; this
+module reads those descriptors and validates their internal consistency
+(profile libraries, reserved parameter names). It is the bottom of this
+package's dependency order -- everything else builds on the descriptors
+it produces.
 """
 
 import importlib.resources
@@ -53,13 +53,11 @@ _DEVICE_PROFILE_KEYS = {"brand", "type", "product", "description", "endpoints"}
 
 # Keys _build_device recognizes on a device entry, and modules.<name>:
 # recognizes on a module entry -- `params:` is deliberately absent from
-# both: a declared device/module parameter (module.yaml's `parameters:`) is
-# an ordinary top-level field, the same choice already made for endpoint
-# parameters above. A typo'd key here fails open elsewhere in the stack --
-# e.g. a misspelled "device_profil:" silently yields a device with zero
-# endpoints, and phc/devices/zway/device.py's setup() documents that a
-# misconfigured endpoint "permanently reports None, never raises" -- so an
-# unrecognized key is rejected here rather than silently ignored.
+# both, the same choice already made for endpoint parameters above. A
+# typo'd key here fails open elsewhere (e.g. a misspelled "device_profil:"
+# silently yields a device with zero endpoints, see
+# phc/devices/zway/device.py's setup()), so an unrecognized key is
+# rejected here rather than silently ignored.
 _DEVICE_ENTRY_KEYS = {"id", "module", "name", "endpoints", "update", "children",
                       "device_profile"}
 
@@ -75,19 +73,19 @@ _MODULES_ENTRY_KEYS = {"update", "device_profiles", "endpoint_profiles"}
 def _parse_profile_library(owner_label: str, raw_endpoint_profiles: dict | None,
                             raw_device_profiles: dict | None, endpoint_param_names: set,
                             extra_endpoint_specs=()) -> tuple[dict, dict]:
-    """Parse+validate one endpoint_profiles/device_profiles mapping pair --
-    shared by ModuleDescriptor.__init__ (a module.yaml's own library) and
+    """Parse+validate one endpoint_profiles/device_profiles mapping pair.
+
+    Shared by ModuleDescriptor.__init__ (a module.yaml's own library) and
     _build_effective_module (a system YAML's modules.<name>.device_profiles/
     endpoint_profiles overlay). `owner_label` (e.g. "module 'zway'" or
     "modules.zway") only names the source in error messages.
     `extra_endpoint_specs` are endpoint specs validated alongside the two
     libraries but not returned -- only ModuleDescriptor passes its own
     unconditional `endpoints:` here, folding them into the same
-    key-validation pass. Returns (endpoint_profiles, device_profiles) as
-    plain dicts. Does not check name collisions against a second source, or
-    the endpoints:/device_profiles mutual-exclusion rule -- both are
-    specific to which two sources are being combined and stay with the
-    caller."""
+    key-validation pass. Does not check name collisions against a second
+    source, or the endpoints:/device_profiles mutual-exclusion rule --
+    both are specific to which two sources are being combined and stay
+    with the caller."""
     endpoint_profiles = raw_endpoint_profiles or {}
     device_profiles = {}
     for profile_name, profile_raw in (raw_device_profiles or {}).items():
@@ -117,9 +115,23 @@ def _parse_profile_library(owner_label: str, raw_endpoint_profiles: dict | None,
     return endpoint_profiles, device_profiles
 
 
+def _check_no_reserved_names(module_name: str, entry_kind: str, names: set,
+                              reserved: set, reserved_desc: str) -> None:
+    """Raise ConfigError if any of `names` collides with `reserved`.
+
+    Shared by ModuleDescriptor's parameters:/endpoint_parameters:
+    collision checks."""
+    collision = names & reserved
+    if collision:
+        raise ConfigError(
+            f"module {module_name!r}: {entry_kind} name(s) {sorted(collision)} "
+            f"collide with a reserved {reserved_desc}")
+
+
 class ModuleDescriptor:
-    """Parsed module.yaml for one device module. See
-    docs/developer/writing-a-device-module.md for the full module.yaml
+    """Parsed module.yaml for one device module.
+
+    See docs/developer/writing-a-device-module.md for the full module.yaml
     schema (parameters, endpoint_parameters, endpoint_profiles/
     device_profiles, {param} templating).
 
@@ -139,24 +151,17 @@ class ModuleDescriptor:
         self.name = name
         self.description = raw.get("description", "")
         self.parameters = raw.get("parameters") or []
-        param_names = {p["name"] for p in self.parameters}
-        # "params" itself is reserved even though it's no longer a device/
-        # modules entry key -- a device param literally named "params"
-        # would be indistinguishable from the old nested-dict spelling.
-        reserved = _DEVICE_ENTRY_KEYS | _MODULES_ENTRY_KEYS | {"params"}
-        collision = param_names & reserved
-        if collision:
-            raise ConfigError(
-                f"module {name!r}: parameters name(s) {sorted(collision)} collide "
-                f"with a reserved device/modules entry key")
+        # "params" is reserved too (see _ENDPOINT_ENTRY_KEYS comment above): a
+        # param literally named "params" would be confusable with a nested
+        # params: block, which this schema doesn't have.
+        _check_no_reserved_names(
+            name, "parameters", {p["name"] for p in self.parameters},
+            _DEVICE_ENTRY_KEYS | _MODULES_ENTRY_KEYS | {"params"}, "device/modules entry key")
         self.endpoint_parameters = raw.get("endpoint_parameters") or []
         self.endpoint_param_names = {p["name"] for p in self.endpoint_parameters}
-        endpoint_reserved = _ENDPOINT_ENTRY_KEYS | {"params"}
-        endpoint_collision = self.endpoint_param_names & endpoint_reserved
-        if endpoint_collision:
-            raise ConfigError(
-                f"module {name!r}: endpoint_parameters name(s) {sorted(endpoint_collision)} "
-                f"collide with a reserved endpoint field name")
+        _check_no_reserved_names(
+            name, "endpoint_parameters", self.endpoint_param_names,
+            _ENDPOINT_ENTRY_KEYS | {"params"}, "endpoint field name")
         self.endpoints = raw.get("endpoints") or []
         self.update = raw.get("update", None)
         self.endpoint_profiles, self.device_profiles = _parse_profile_library(
@@ -174,15 +179,12 @@ _module_descriptors: dict[str, ModuleDescriptor] = {}
 
 
 def _read_descriptor_yaml(package: str, name: str, filename: str, kind: str) -> dict:
-    """Read and parse one packaged descriptor (a device module's
-    module.yaml or an extension's extension.yaml) from `package`, located
-    through the import system rather than the filesystem.
+    """Read and parse one packaged descriptor from `package`.
 
-    `package` comes from the registry (see phc.core.registry's
-    module_package()/extension_package()), i.e. from wherever the plugin's
-    code actually lives -- so a module shipped by another distribution
-    finds its descriptor next to its own code rather than under
-    phc.devices.
+    A device module's module.yaml or an extension's extension.yaml,
+    located through importlib.resources (see module comment above).
+    `package` comes from the registry (module_package()/
+    extension_package()), i.e. wherever the plugin's code actually lives.
 
     Raises ConfigError if the package or the descriptor within it doesn't
     exist. ModuleNotFoundError is translated rather than propagated: to a
@@ -198,13 +200,13 @@ def _read_descriptor_yaml(package: str, name: str, filename: str, kind: str) -> 
 
 
 def _load_module_descriptor(module_name: str) -> ModuleDescriptor:
-    """Return the cached ModuleDescriptor for `module_name`, loading and
-    parsing its module.yaml on first use.
+    """Return the cached ModuleDescriptor for `module_name`.
 
-    The package to read it from is whichever one registered the module's
-    Device subclass, so a bundled module and a third-party one are handled
-    identically. An unregistered name means no discovered plugin claims it
-    -- reported as the config error it is, naming what is available."""
+    Loads and parses its module.yaml on first use. The package to read it
+    from is whichever one registered the module's Device subclass
+    (bundled or third-party alike, see module comment above). An
+    unregistered name means no discovered plugin claims it -- reported
+    as the config error it is, naming what is available."""
     if module_name in _module_descriptors:
         return _module_descriptors[module_name]
     try:
@@ -220,10 +222,12 @@ def _load_module_descriptor(module_name: str) -> ModuleDescriptor:
 
 
 class ExtensionDescriptor:
-    """Parsed extension.yaml for one extension package. Structurally like
-    ModuleDescriptor, but every extension instance (e.g. one named logdb
-    entry) is merged independently against the same descriptor -- there is
-    no module/device scope split since extensions aren't devices."""
+    """Parsed extension.yaml for one extension package.
+
+    Structurally like ModuleDescriptor, but every extension instance
+    (e.g. one named logdb entry) is merged independently against the
+    same descriptor -- there is no module/device scope split since
+    extensions aren't devices."""
 
     def __init__(self, name: str, raw: dict):
         self.name = name
@@ -235,9 +239,11 @@ _extension_descriptors: dict[str, ExtensionDescriptor] = {}
 
 
 def _load_extension_descriptor(name: str) -> ExtensionDescriptor:
-    """Return the cached ExtensionDescriptor for `name`, loading and parsing
-    its extension.yaml on first use. The package to read it from comes from
-    the registry (see _load_module_descriptor for the same reasoning)."""
+    """Return the cached ExtensionDescriptor for `name`.
+
+    Loads and parses its extension.yaml on first use. The package to
+    read it from comes from the registry (see _load_module_descriptor
+    for the same reasoning)."""
     if name in _extension_descriptors:
         return _extension_descriptors[name]
     try:

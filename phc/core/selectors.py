@@ -1,8 +1,8 @@
-"""Device/endpoint selector resolution: expand a list of
-"<device-glob>/<endpoint-glob>" patterns into the concrete (qualified_id,
-endpoint_key) pairs they match, against a system's full flat device tree.
-Shared by any extension/module that needs to pick a subset of devices'
-endpoints (currently phc.extensions.logdb; see phc/extensions/logdb/extension.py)."""
+"""Device/endpoint selector resolution.
+
+Expands a list of "<device-glob>/<endpoint-glob>" patterns into the
+concrete (qualified_id, endpoint_key) pairs they match, against a
+system's full flat device tree."""
 
 import fnmatch
 
@@ -11,13 +11,14 @@ from phc.core.errors import ConfigError
 
 
 def resolve_selectors(patterns: list[str], flat: dict[str, Device]) -> list[tuple[str, str]]:
-    """Expand selector patterns into a sorted, deduplicated list of
+    """Expand selector patterns into a sorted, deduplicated list of pairs.
+
     (qualified_id, endpoint_key) pairs, matched against every readable
     endpoint of every device in `flat` (the full flat tree, not just
     roots). "*" alone is shorthand for "*/*" (device-glob/endpoint-glob);
     any other pattern must contain exactly one "/". fnmatch's "*" is not
-    "."-aware, so e.g. "house.*/*" matches every descendant under house at
-    any nesting depth, not just direct children -- intentional."""
+    "."-aware, so e.g. "house.*/*" matches every descendant under house
+    at any nesting depth, not just direct children -- intentional."""
     device_endpoint_globs = []
     for pattern in patterns:
         if pattern == "*":

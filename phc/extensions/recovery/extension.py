@@ -1,10 +1,12 @@
-"""recovery extension wiring: resolves an extensions.recovery.<instance>'s
-`selectors` list against the live device tree (post-filtered to writable
-endpoints only, since restoring requires Device.set(), which requires
-writable=True), persists their current value to a small YAML file
-whenever one of them changes, and restores every persisted value once at
-startup, before the scheduler's first tick -- see phc.core.config._load_extensions
-for how configure() is invoked, and phc.core.scheduler.Scheduler for
+"""recovery extension wiring: persists/restores writable endpoint values.
+
+Resolves an extensions.recovery.<instance>'s `selectors` list against
+the live device tree (post-filtered to writable endpoints only, since
+restoring requires Device.set(), which requires writable=True),
+persists their current value to a small YAML file whenever one of them
+changes, and restores every persisted value once at startup, before
+the scheduler's first tick -- see phc.core.config._load_extensions for
+how configure() is invoked, and phc.core.scheduler.Scheduler for
 start_hooks/tick_hooks/stop_hooks timing."""
 
 import logging
@@ -18,9 +20,11 @@ logger = logging.getLogger("phc.recovery")
 
 
 class RecoveryInstance:
-    """One configured recovery instance: a RecoveryStore plus the resolved,
-    writable-only pairs it persists/restores. Looked up by nothing else --
-    unlike phc.extensions.logdb, recovery has no task action; it is entirely
+    """One configured recovery instance.
+
+    A RecoveryStore plus the resolved, writable-only pairs it
+    persists/restores. Looked up by nothing else -- unlike
+    phc.extensions.logdb, recovery has no task action; it is entirely
     automatic (see on_start/on_tick/on_stop, auto-collected by
     phc.core.config.load_system())."""
 
@@ -30,12 +34,13 @@ class RecoveryInstance:
         self.instance_key = instance_key
 
     async def on_start(self, devices: dict[str, Device]) -> None:
-        """Restore every persisted pair's value, once, before the
-        scheduler's first tick (see Scheduler.start_hooks). start_hooks
-        run to completion before the tick loop -- and on_tick, the writer
-        -- ever begins (phc.core.scheduler.Scheduler._run_async), so unlike
-        THC's RecoverAll no re-entrancy guard against self-triggered writes
-        is needed here.
+        """Restore every persisted pair's value, once, before the first tick.
+
+        See Scheduler.start_hooks. start_hooks run to completion before
+        the tick loop -- and on_tick, the writer -- ever begins
+        (phc.core.scheduler.Scheduler._run_async), so this can never
+        trigger on_tick's own write back into the file it is still
+        reading; no re-entrancy guard is needed.
 
         Each persisted entry is restored independently: a device/endpoint
         that no longer exists, or is no longer writable (config may have
@@ -72,12 +77,14 @@ class RecoveryInstance:
                      self.instance_key, restored, skipped, len(values))
 
     def on_tick(self, devices: dict[str, Device]) -> None:
-        """Rewrite the whole file if any subscribed pair changed this tick
-        (see phc.core.endpoint.Endpoint.get_event(), already deduped against a
-        same-value re-write by Endpoint.update_state()). Auto-registered by
-        phc.core.config.load_system() as a Scheduler tick hook -- runs after
-        this tick's state is fully committed (phc.core.scheduler._tick_async,
-        pass 4), so get_event() reflects it."""
+        """Rewrite the whole file if any subscribed pair changed this tick.
+
+        See phc.core.endpoint.Endpoint.get_event(), already deduped
+        against a same-value re-write by Endpoint.update_state().
+        Auto-registered by phc.core.config.load_system() as a
+        Scheduler tick hook -- runs after this tick's state is fully
+        committed (phc.core.scheduler._tick_async, pass 4), so
+        get_event() reflects it."""
         for qualified_id, endpoint_key in self.pairs:
             device = devices.get(qualified_id)
             if device is None:
@@ -87,15 +94,17 @@ class RecoveryInstance:
                 return
 
     async def on_stop(self, devices: dict[str, Device]) -> None:
-        """Do one final, unconditional persist on graceful shutdown (see
-        Scheduler.stop_hooks) -- covers the very last tick's change even if
-        on_tick's own write already handled it; cheap, since it's the same
-        whole-file rewrite either way."""
+        """Do one final, unconditional persist on graceful shutdown.
+
+        See Scheduler.stop_hooks. Covers the very last tick's change
+        even if on_tick's own write already handled it; cheap, since
+        it's the same whole-file rewrite either way."""
         self._persist(devices)
 
     def _persist(self, devices: dict[str, Device]) -> None:
-        """Build {pair_key: value} from each pair's current committed
-        value and write it. A pair whose device has disappeared, or whose
+        """Build {pair_key: value} from each pair's current committed value.
+
+        And write it. A pair whose device has disappeared, or whose
         value is still None (never yet set -- nothing meaningful to
         persist), is omitted from the written file."""
         values = {}
@@ -112,14 +121,16 @@ class RecoveryInstance:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> RecoveryInstance:
-    """Extension entry point (see phc.core.config._load_extensions): resolve
-    the selectors once against the static device tree, reject at
-    configure-time (ConfigError) any selector that matches zero endpoints
-    or matches a non-writable one -- both are almost certainly
-    configuration mistakes, unlike a device/endpoint disappearing between
-    persist and restore, which is tolerated (see RecoveryInstance.on_start).
-    `extensions_registry` is unused -- recovery never references, nor is
-    referenced by, another extension's instance."""
+    """Extension entry point (see phc.core.config._load_extensions).
+
+    Resolves the selectors once against the static device tree,
+    rejects at configure-time (ConfigError) any selector that matches
+    zero endpoints or matches a non-writable one -- both are almost
+    certainly configuration mistakes, unlike a device/endpoint
+    disappearing between persist and restore, which is tolerated (see
+    RecoveryInstance.on_start). `extensions_registry` is unused --
+    recovery never references, nor is referenced by, another
+    extension's instance."""
     pairs = resolve_selectors(params["selectors"], flat)
     if not pairs:
         raise ConfigError(

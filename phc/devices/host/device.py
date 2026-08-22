@@ -6,6 +6,7 @@ from phc.core.registry import register_module
 
 @register_module("host")
 class HostDevice(Device):
-    """Pure grouping device: no endpoints, only children. All behavior is
-    inherited unchanged from Device."""
+    """Pure grouping device: no endpoints, only children.
+
+    All behavior is inherited unchanged from Device."""
     pass

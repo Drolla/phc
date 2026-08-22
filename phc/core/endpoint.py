@@ -26,10 +26,8 @@ _DEFAULT_FLOAT_FORMAT = ".1f"
 LOG_AGGREGATIONS = ("min", "max")
 
 # What to do with a write whose value falls outside a declared min/max.
-# "pass" is the default and preserves the historical behaviour exactly:
-# min/max were documented as a display hint only, never enforced, so
-# enforcing them by default would change the meaning of every config that
-# already declares them.
+# "pass" is the default: min/max are a display hint (e.g. a slider's
+# bounds) unless a config opts into enforcement.
 ON_INVALID_MODES = ("pass", "reject", "clamp")
 
 
@@ -43,7 +41,12 @@ class Endpoint:
     See docs/configuration.md for the endpoint field reference (`type`,
     `unit`, `values`, `min`/`max`, `format`, `read_transform`/
     `write_transform`, `history`/`history_interval`, and the `name` vs
-    `description` convention)."""
+    `description` convention).
+
+    `update_time` (wall clock) marks the last value CHANGE, shown as an
+    absolute time by the web UI; `last_read_time`/`age` (monotonic) mark
+    the last non-None READING, used only to measure elapsed time -- see
+    set_raw() for why the two are distinct."""
 
     kind: str = "generic"
 
@@ -103,8 +106,6 @@ class Endpoint:
         self._last_valid_state = None
         self._event = None
         self._update_time = 0.0
-        # Monotonic stamp of the last non-None reading -- see set_raw().
-        # None until the endpoint has produced an actual value.
         self._last_read_time: float | None = None
         # Sticky log values: {subscriber_id: value | None}, one slot per
         # logger subscribed via subscribe_log() (see those methods below).
@@ -121,10 +122,11 @@ class Endpoint:
 
     @staticmethod
     def _compile_transform(key: str, field: str, source: str | None):
-        """Compile a read_transform/write_transform expression via
-        phc.core.scripting, or return None if unset. Raises ValueError (not
-        ScriptError) so config.py's single `except ValueError` around
-        Endpoint construction also catches a bad transform."""
+        """Compile a read/write_transform expression via phc.core.scripting.
+
+        Returns None if unset. Raises ValueError (not ScriptError) so
+        config.py's single `except ValueError` around Endpoint
+        construction also catches a bad transform."""
         if source is None:
             return None
         try:
@@ -137,10 +139,11 @@ class Endpoint:
         self._next_state = new_state
 
     def set_raw(self, raw_value):
-        """Like set(), but for a value freshly read from hardware (see
-        Device.fetch()): applies `read_transform` first, if declared, to
-        correct/invert it (e.g. a calibration offset). None (fetch failure)
-        passes through untransformed.
+        """Like set(), but for a value freshly read from hardware.
+
+        See Device.fetch(). Applies `read_transform` first, if
+        declared, to correct/invert it (e.g. a calibration offset).
+        None (fetch failure) passes through untransformed.
 
         A non-None reading also stamps `last_read_time`, which is what
         makes staleness measurable. Note this is deliberately NOT the same
@@ -158,31 +161,28 @@ class Endpoint:
         self.set(raw_value)
 
     def get_last_read_time(self):
-        """Monotonic time of the most recent non-None reading, or None if
-        this endpoint has never produced one. Monotonic because it is only
-        ever used to measure elapsed time (see age() in
-        docs/scripting.md), never shown as an absolute timestamp."""
+        """Time of the most recent non-None reading.
+
+        None if this endpoint has never produced one (see class
+        docstring for the clock; see age() in docs/scripting.md)."""
         return self._last_read_time
 
-    def get_age(self, now: float | None = None):
-        """Seconds since the last non-None reading, or None if there has
-        never been one. `now` defaults to time.monotonic()."""
+    def get_age(self, mono: float | None = None):
+        """Seconds since the last non-None reading.
+
+        None if there has never been one. Defaults to time.monotonic()."""
         if self._last_read_time is None:
             return None
-        return (time.monotonic() if now is None else now) - self._last_read_time
+        return (time.monotonic() if mono is None else mono) - self._last_read_time
 
     def check_write(self, value):
-        """Apply this endpoint's `on_invalid` rule to a value about to be
-        written, returning the value to actually write.
+        """Apply this endpoint's `on_invalid` rule to a pending write.
 
-        `min`/`max` have always been stored but never enforced -- fine as
-        a UI hint (it is what gives a slider its bounds), less fine when a
-        task computes a setpoint and sends 95 to a valve that accepts
-        0-100 but a thermostat that accepts 5-30. Enforcement is opt-in so
-        that existing configs, which declared min/max as a hint, keep
-        their exact behaviour:
+        Returns the value to actually write. Enforcement is opt-in: a
+        task computing a setpoint could otherwise send 95 to a valve
+        that accepts 0-100 but a thermostat that accepts 5-30.
 
-        - "pass" (default): write it unchanged, as before.
+        - "pass" (default): write it unchanged; min/max are a UI hint only.
         - "reject": raise ValueError, so the write never reaches hardware
           and the failure is visible rather than silently clipped.
         - "clamp": write the nearest in-range value.
@@ -209,11 +209,12 @@ class Endpoint:
         return clamped
 
     def to_raw(self, value):
-        """Apply this endpoint's `on_invalid` range rule and then its
-        `write_transform` to `value` (a logical value about to be written,
-        e.g. via Device.set()/set_text()), returning what should actually
-        be sent to hardware. Identity if neither is declared, or `value` is
-        None. The write-path counterpart to set_raw().
+        """Convert a logical `value` into what to send to hardware.
+
+        Applies this endpoint's `on_invalid` range rule and then its
+        `write_transform` (e.g. for a value about to be written via
+        Device.set()/set_text()). Identity if neither is declared, or
+        `value` is None. The write-path counterpart to set_raw().
 
         The range check runs BEFORE the transform: min/max describe the
         logical value a config author writes and a UI shows, while the
@@ -234,11 +235,13 @@ class Endpoint:
         return self._event
 
     def get_last_valid_state(self):
-        """Return the most recent non-None/non-empty committed value, i.e.
-        the value get_event() is gated against (see update_state()). Useful
-        for spotting a state change that fired no event: on a 5 -> None ->
-        5 sequence, get() moves twice but get_event() stays None both
-        times, since the second 5 never differs from this value."""
+        """Return the most recent non-None/non-empty committed value.
+
+        I.e. the value get_event() is gated against (see
+        update_state()). Useful for spotting a state change that fired
+        no event: on a 5 -> None -> 5 sequence, get() moves twice but
+        get_event() stays None both times, since the second 5 never
+        differs from this value."""
         return self._last_valid_state
 
     def get_update_time(self):
@@ -246,8 +249,10 @@ class Endpoint:
         return self._update_time
 
     def update_state(self):
-        """Commit the staged value: promote _next_state to _state and compute this
-        tick's change event (see class docstring for the two-phase model)."""
+        """Commit the staged value: promote _next_state to _state.
+
+        Also computes this tick's change event (see class docstring for
+        the two-phase model)."""
         self._event = None
         if self._next_state != self._state:
             if self._next_state not in (None, ''):
@@ -258,20 +263,22 @@ class Endpoint:
             self._update_time = time.time()
 
     def subscribe_log(self, subscriber_id: str) -> None:
-        """Register `subscriber_id` (e.g. "logdb.house_log") for sticky
-        min/max tracking on this endpoint (see update_log_value()).
-        Idempotent -- re-subscribing an already-subscribed id does not
-        reset its current sticky value."""
+        """Register `subscriber_id` for sticky min/max tracking.
+
+        E.g. "logdb.house_log" (see update_log_value()). Idempotent --
+        re-subscribing an already-subscribed id does not reset its
+        current sticky value."""
         self._log_subscriptions.setdefault(subscriber_id, None)
 
     def update_log_value(self) -> None:
-        """Advance every subscriber's sticky value from the CURRENT
-        committed state (get()), per this endpoint's log_aggregation rule.
-        Meant to be called once per tick (after that tick's state has been
+        """Advance every subscriber's sticky value from the CURRENT state.
+
+        Uses get(), per this endpoint's log_aggregation rule. Meant to
+        be called once per tick (after that tick's state has been
         committed) by whichever logger owns each subscription -- see
-        phc.core.scheduler's tick-hooks pass. A no-op while the endpoint has
-        never been set (get() is None), and for any endpoint with no
-        subscribers."""
+        phc.core.scheduler's tick-hooks pass. A no-op while the
+        endpoint has never been set (get() is None), and for any
+        endpoint with no subscribers."""
         current = self._state
         if current is None:
             return
@@ -284,38 +291,39 @@ class Endpoint:
                 self._log_subscriptions[subscriber_id] = min(sticky, current)
 
     def get_log_value(self, subscriber_id: str):
-        """The subscriber's current sticky value, or None if nothing has
-        been observed since subscribing or since the last
-        invalidate_log_value()."""
+        """The subscriber's current sticky value.
+
+        None if nothing has been observed since subscribing or since
+        the last invalidate_log_value()."""
         return self._log_subscriptions.get(subscriber_id)
 
     def invalidate_log_value(self, subscriber_id: str) -> None:
-        """Reset the subscriber's sticky value to None. Meant to be called
-        right after a logger reads it (get_log_value()), so the next
-        update_log_value() call starts a fresh min/max window."""
+        """Reset the subscriber's sticky value to None.
+
+        Meant to be called right after a logger reads it
+        (get_log_value()), so the next update_log_value() call starts a
+        fresh min/max window."""
         self._log_subscriptions[subscriber_id] = None
 
     def record_history(self) -> bool:
-        """Append the current committed state (get()) to this endpoint's
-        history buffer, returning True iff a sample was actually appended.
-        A no-op (returns False) while history_size == 0 (self._history is a
-        maxlen=0 deque, so append() below already drops it -- this early
-        return only skips the isinstance/isnan work), for a None value (not
-        yet read), and for any non-numeric value -- matching THC's
-        VHistory_Add, which filtered with `string is double -strict`. A
-        bool is accepted (bool is a numeric type in Python, and a 0/1
-        endpoint's history is a legitimate median-filter debounce). A float
-        NaN is skipped: one NaN in the buffer makes sorted() order
-        arbitrary, silently corrupting every fractile()/median()/average()
-        read for the rest of that NaN's time in the window.
+        """Append the current committed state to the history buffer.
+
+        Returns True iff a sample was actually appended (get() is the
+        source). A no-op (returns False) while history_size == 0 (see
+        _history's init comment -- this early return only skips the
+        isinstance/isnan work), for a None value (not yet read), and
+        for any non-numeric value. A bool is accepted (bool
+        is a numeric type in Python, and a 0/1 endpoint's history is a
+        legitimate median-filter debounce). A float NaN is skipped: one
+        NaN in the buffer makes sorted() order arbitrary, silently
+        corrupting every fractile()/median()/average() read for the rest
+        of that NaN's time in the window.
 
         Meant to be called once per sampling interval (see phc.core.config's
         history tick hook) -- not once per tick, and not only on change:
         unlike Endpoint.update_state()'s _event (which fires only when the
         value differs), a stalled sensor's unchanged value is deliberately
-        re-recorded each interval, the same way THC's VHistory_Add kept
-        re-appending $State(...) whether or not it had actually refreshed.
-        """
+        re-recorded each interval."""
         if self.history_size == 0:
             return False
         value = self._state
@@ -327,15 +335,17 @@ class Endpoint:
         return True
 
     def get_history(self) -> list:
-        """This endpoint's history buffer, oldest sample first. Empty if
-        history_size == 0 or no sample has been recorded yet."""
+        """This endpoint's history buffer, oldest sample first.
+
+        Empty if history_size == 0 or no sample has been recorded yet."""
         return list(self._history)
 
     def to_text(self, value=_UNSET) -> str:
-        """Format `value` (defaults to the current state) as display text,
-        per this endpoint's declared `values` mapping/`unit`/`value_type`/
-        `format` (see class docstring). The standard counterpart to
-        from_text()."""
+        """Format `value` as display text.
+
+        Defaults to the current state, per this endpoint's declared
+        `values` mapping/`unit`/`value_type`/`format` (see class
+        docstring). The standard counterpart to from_text()."""
         if value is _UNSET:
             value = self.get()
         if value is None:
@@ -353,12 +363,14 @@ class Endpoint:
         return text
 
     def from_text(self, text):
-        """Parse `text` (typically display text, but an already-raw value --
-        e.g. a YAML-native 1 or "on" -- is also accepted) back into this
-        endpoint's raw value, per its declared `values` mapping/`unit`/
-        `value_type`. The standard counterpart to to_text() -- `int(s)`/
-        `float(s)` already parse the fixed-precision text a `format` like
-        ".1f" produces, so no separate un-formatting step is needed here."""
+        """Parse `text` back into this endpoint's raw value.
+
+        `text` is typically display text, but an already-raw value --
+        e.g. a YAML-native 1 or "on" -- is also accepted, per its
+        declared `values` mapping/`unit`/`value_type`. The standard
+        counterpart to to_text() -- `int(s)`/`float(s)` already parse
+        the fixed-precision text a `format` like ".1f" produces, so no
+        separate un-formatting step is needed here."""
         if self.values is not None:
             for raw, label in self.values.items():
                 if raw == text or str(label).strip().lower() == str(text).strip().lower():

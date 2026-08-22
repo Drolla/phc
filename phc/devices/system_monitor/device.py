@@ -1,5 +1,7 @@
-"""SystemMonitorDevice: local computer performance metrics (CPU, memory,
-network, disk, temperature, uptime) -- cross-platform (Windows/Linux)."""
+"""SystemMonitorDevice: local computer performance metrics.
+
+CPU, memory, network, disk, temperature, uptime; cross-platform
+(Windows/Linux)."""
 
 import os
 import platform
@@ -18,9 +20,11 @@ _LINUX_CPU_TEMP_LABELS = ("coretemp", "cpu_thermal", "cpu-thermal")
 
 @register_module("system_monitor")
 class SystemMonitorDevice(Device):
-    """Local host performance metrics via psutil (CPU, memory, network, disk,
-    temperature, uptime). Cross-platform (Windows/Linux). Rate endpoints
-    (network/disk I/O) are computed by diffing cumulative counters. Read-only.
+    """Local host performance metrics via psutil.
+
+    CPU, memory, network, disk, temperature, uptime; cross-platform
+    (Windows/Linux). Rate endpoints (network/disk I/O) are computed by
+    diffing cumulative counters. Read-only.
     """
 
     def setup(self):
@@ -34,8 +38,12 @@ class SystemMonitorDevice(Device):
         self._prev_time = time.monotonic()
 
     def receive(self) -> dict:
-        now = time.monotonic()
-        elapsed = max(now - self._prev_time, 1e-6)
+        """Read current CPU/memory/network/disk/temperature metrics.
+
+        Diffs cumulative network/disk counters against the previous
+        call for the rate endpoints."""
+        mono = time.monotonic()
+        elapsed = max(mono - self._prev_time, 1e-6)
 
         net = psutil.net_io_counters()
         disk = psutil.disk_io_counters()
@@ -67,16 +75,23 @@ class SystemMonitorDevice(Device):
 
         self._prev_net = net
         self._prev_disk = disk
-        self._prev_time = now
+        self._prev_time = mono
         return state
 
     def _read_cpu_temperature(self):
+        """Return the CPU temperature via the platform-appropriate backend.
+
+        None if unavailable."""
         if platform.system() == "Windows":
             return self._read_cpu_temperature_windows()
         return self._read_cpu_temperature_linux()
 
     @staticmethod
     def _read_cpu_temperature_linux():
+        """Read CPU temperature from psutil's Linux sensors.
+
+        Preferring _LINUX_CPU_TEMP_LABELS, else falling back to any
+        available sensor."""
         try:
             sensors = psutil.sensors_temperatures()
         except AttributeError:
@@ -93,8 +108,10 @@ class SystemMonitorDevice(Device):
     @staticmethod
     def _read_cpu_temperature_windows():
         """Read CPU temperature via OpenHardwareMonitor WMI namespace.
-        Reconnects on every call (not cached) so a monitor that isn't running
-        yet self-heals on a later poll. Any failure reports None."""
+
+        Reconnects on every call (not cached) so a monitor that isn't
+        running yet self-heals on a later poll. Any failure reports
+        None."""
         try:
             import wmi
         except ImportError:

@@ -1,11 +1,13 @@
-"""random_light extension wiring: parses an extensions.random_light.<instance>'s
-`lights` list against the live device tree, builds a RandomLightController
-(the pure algorithm, see random_light.py), and registers the "random_light"
-task action kind so a `tasks:` entry can run the periodic randomize pass
-(or force every light on/off) on its own schedule -- see
+"""random_light extension wiring: builds a RandomLightController.
+
+Parses an extensions.random_light.<instance>'s `lights` list against
+the live device tree, builds a RandomLightController (the pure
+algorithm, see random_light.py), and registers the "random_light" task
+action kind so a `tasks:` entry can run the periodic randomize pass (or
+force every light on/off) on its own schedule -- see
 phc.core.config._load_extensions for configure()'s call site, and
-phc.core.registry.discover_extensions() for how @register_task_kind here gets
-picked up at startup."""
+phc.core.registry.discover_extensions() for how @register_task_kind
+here gets picked up at startup."""
 
 import re
 import time
@@ -22,12 +24,14 @@ _FIXED_BOUND_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
 def _parse_window_bound(spec: str, label: str) -> WindowBound:
-    """Parse one window "start"/"end" value: "HH:MM" (fixed local time) or
-    "sunrise"/"sunset" optionally offset by a duration string (e.g.
-    "sunset+12m", "sunrise-18m" -- phc.core.intervals.parse_duration doesn't
-    accept a leading sign, so the sign is split off here before parsing
-    the magnitude). `label` (e.g. "light 'a.b'" or "instance 'x.y'
-    default") only flavors the error message."""
+    """Parse one window "start"/"end" value.
+
+    "HH:MM" (fixed local time) or "sunrise"/"sunset" optionally offset
+    by a duration string (e.g. "sunset+12m", "sunrise-18m" --
+    phc.core.intervals.parse_duration doesn't accept a leading sign, so
+    the sign is split off here before parsing the magnitude). `label`
+    (e.g. "light 'a.b'" or "instance 'x.y' default") only flavors the
+    error message."""
     sun_match = _SUN_BOUND_RE.match(spec)
     if sun_match:
         anchor, offset_spec = sun_match.groups()
@@ -46,10 +50,11 @@ def _parse_window_bound(spec: str, label: str) -> WindowBound:
 
 
 def _parse_windows(window_specs, label: str) -> tuple[list[tuple[WindowBound, WindowBound]], bool]:
-    """Parse a `windows:` list (either a light's own, or the instance-level
-    default) into resolved (start, end) WindowBound pairs, plus whether any
-    bound in it is sun-anchored. `label` (e.g. "light 'a.b'" or "instance
-    'x.y' default") only flavors error messages."""
+    """Parse a `windows:` list into resolved (start, end) WindowBound pairs.
+
+    Either a light's own, or the instance-level default; also returns
+    whether any bound in it is sun-anchored. `label` (e.g. "light
+    'a.b'" or "instance 'x.y' default") only flavors error messages."""
     if not isinstance(window_specs, list) or not window_specs:
         raise ConfigError(f"random_light: {label}: 'windows' must be a non-empty list")
     windows = []
@@ -63,6 +68,9 @@ def _parse_windows(window_specs, label: str) -> tuple[list[tuple[WindowBound, Wi
 
 
 def _parse_probability(value, label: str) -> float:
+    """Parse a `probability_on` value, requiring it in [0, 1].
+
+    `label` only flavors the error message."""
     probability_on = float(value)
     if not 0.0 <= probability_on <= 1.0:
         raise ConfigError(f"random_light: {label}: probability_on must be between 0 and 1")
@@ -71,13 +79,14 @@ def _parse_probability(value, label: str) -> float:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "RandomLightInstance":
-    """Extension entry point (see phc.core.config._load_extensions and
-    docs/random-light.md). `extensions_registry` is unused -- random_light
-    never references another extension's instance. `windows`/`min_interval`/
-    `probability_on` are declared, defaulted extension parameters
-    (extension.yaml), so `params[...]` already holds the instance's value
-    or extension.yaml's default by the time this runs (read directly, no
-    `.get()`, matching phc/extensions/logdb)."""
+    """Extension entry point (see phc.core.config._load_extensions).
+
+    See also docs/random-light.md. `extensions_registry` is unused --
+    random_light never references another extension's instance.
+    `windows`/`min_interval`/`probability_on` are declared, defaulted
+    extension parameters (extension.yaml), so `params[...]` already
+    holds the instance's value or extension.yaml's default by the time
+    this runs (read directly, no `.get()`, matching phc/extensions/logdb)."""
     default_label = f"instance {instance_key!r} default"
     default_windows, default_needs_sun = _parse_windows(params["windows"], default_label)
     default_min_interval = parse_duration(params["min_interval"])
@@ -129,13 +138,15 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
 
 
 class RandomLightInstance:
-    """One configured random_light instance: a RandomLightController (the
-    pure algorithm) plus the resolved device targets. apply() is called by
-    RandomLightAction.perform() (below), which runs in the Scheduler's task
-    pass (pass 2) -- so writes here are automatically batched via
-    phc.core.device's _write_collector, like any other Action (unlike an
-    on_tick hook, which runs in pass 4, outside that context; this instance
-    has no on_tick)."""
+    """One configured random_light instance.
+
+    A RandomLightController (the pure algorithm) plus the resolved
+    device targets. apply() is called by RandomLightAction.perform()
+    (below), which runs in the Scheduler's task pass (pass 2) -- so
+    writes here are automatically batched via phc.core.device's
+    _write_collector, like any other Action (unlike an on_tick hook,
+    which runs in pass 4, outside that context; this instance has no
+    on_tick)."""
 
     def __init__(self, controller: RandomLightController, targets: dict[str, tuple[str, str]],
                  sun_device_id: str | None):
@@ -145,15 +156,18 @@ class RandomLightInstance:
 
     @staticmethod
     def _read(devices: dict[str, Device], ref: tuple[str, str]):
+        """Current value of one (device_id, endpoint_key) target."""
         device_id, endpoint_key = ref
         return devices[device_id].get(endpoint_key)
 
     def apply(self, devices: dict[str, Device], force: int | None = None) -> None:
-        """force=None: run the periodic randomize pass. force=0/1: bypass
-        windows entirely, forcing every light to that value -- for a
-        surrounding system's own on/off calls (arm, disarm, alarm). Reads
-        current states and sunrise/sunset fresh each call (never cached);
-        writes only lights whose target differs from their current state."""
+        """force=None: run the periodic randomize pass.
+
+        force=0/1: bypass windows entirely, forcing every light to that
+        value -- for a surrounding system's own on/off calls (arm,
+        disarm, alarm). Reads current states and sunrise/sunset fresh
+        each call (never cached); writes only lights whose target
+        differs from their current state."""
         now = time.time()
         current_states = {light_id: self._read(devices, ref) for light_id, ref in self._targets.items()}
         sunrise = sunset = None
@@ -170,11 +184,12 @@ class RandomLightInstance:
 
 @register_task_kind("random_light")
 class RandomLightAction(Action):
-    """Runs one random_light instance's periodic randomize pass (`force`
-    omitted) or forces every configured light to a fixed value (`force: 0`
-    or `force: 1`) when this task fires. Has no single target device --
-    its YAML spec never has a `device:` key, so device_id/endpoint_key
-    stay None (see Action)."""
+    """Runs one random_light instance's periodic randomize pass, or forces.
+
+    `force` omitted runs the pass; `force: 0`/`force: 1` forces every
+    configured light to a fixed value, when this task fires. Has no
+    single target device -- its YAML spec never has a `device:` key, so
+    device_id/endpoint_key stay None (see Action)."""
 
     def __init__(self, *, instance: str, extensions: dict, force: int | None = None, **params):
         super().__init__(**params)

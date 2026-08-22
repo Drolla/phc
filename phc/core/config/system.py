@@ -1,5 +1,6 @@
-"""The System object and load_system(): the top of this package, tying
-every other layer together into a runnable system.
+"""The System object and load_system(): the top of this package.
+
+Ties every other layer together into a runnable system.
 """
 
 from pathlib import Path
@@ -23,8 +24,9 @@ from phc.core.task import Task, TaskRegistry
 
 
 class System:
-    """A fully-loaded system: the device tree, its flat id index, tasks, and
-    scheduler settings, as built by load_system()."""
+    """A fully-loaded system: device tree, tasks, and scheduler settings.
+
+    Includes the flat id index, built by load_system()."""
 
     def __init__(self, heartbeat: float, roots: list[Device], devices: dict[str, Device],
                  tasks: TaskRegistry | list[Task] | None = None, max_workers: int | None = None,
@@ -62,8 +64,9 @@ class System:
         self.extensions = extensions or {}
 
     def scheduled_devices(self) -> dict[str, Device]:
-        """Return the subset of `devices` that have an update_interval (i.e.
-        are auto-polled by the Scheduler)."""
+        """Return the subset of `devices` that have an update_interval.
+
+        I.e. those auto-polled by the Scheduler."""
         return {qid: d for qid, d in self.devices.items() if d.update_interval is not None}
 
 
@@ -167,11 +170,10 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     tick_hooks = collect_hook(extensions_registry, "on_tick")
     if history_records:
         tick_hooks.append(_make_history_tick_hook(history_records))
-    # One-time async lifecycle hooks (see phc.core.scheduler.Scheduler's
-    # start_hooks/stop_hooks) -- same auto-collection as tick_hooks above,
-    # but for an extension instance that needs to start/stop a long-lived
-    # resource (e.g. phc.extensions.web_ui's aiohttp server) once, rather
-    # than every tick.
+    # Same auto-collection as tick_hooks above, but for a resource an
+    # extension instance needs to start/stop once rather than every tick
+    # (e.g. phc.extensions.web_ui's aiohttp server) -- see
+    # System.start_hooks/stop_hooks.
     start_hooks = collect_hook(extensions_registry, "on_start")
     stop_hooks = collect_hook(extensions_registry, "on_stop")
 
