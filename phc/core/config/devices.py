@@ -1,5 +1,7 @@
-"""Building the device tree: one `devices:` entry (and its children) into
-a Device, pulling together the descriptor, parameter, and endpoint layers.
+"""Building the device tree: one `devices:` entry into a Device.
+
+Pulls together the descriptor, parameter, and endpoint layers, for a
+device and its children.
 """
 
 from phc.core.config.descriptors import _DEVICE_ENTRY_KEYS, ModuleDescriptor, _load_module_descriptor
@@ -21,15 +23,16 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
                    module_config_cache: dict[str, "_ModuleConfig"],
                    effective_module_cache: dict[str, ModuleDescriptor],
                    context: dict | None = None) -> Device:
-    """Recursively build one `devices:` YAML entry (and its children) into a
-    Device tree, registering every device by qualified id in `flat` as it
-    goes. Raises ConfigError on a duplicate qualified id or an unrecognized
-    entry key. Which keys count as "device entry keys" vs. "params" depends
-    on the module (a declared parameter is an ordinary top-level field, see
-    ModuleDescriptor), so unlike `_DEVICE_PROFILE_KEYS`-style checks this
-    can't validate `entry`'s keys until after the module is loaded --
-    _merge_params raises on whatever's left in `instance_params` once its
-    own declared names are picked out.
+    """Recursively build one `devices:` YAML entry into a Device tree.
+
+    Registers every device (and its children) by qualified id in `flat`
+    as it goes. Raises ConfigError on a duplicate qualified id or an
+    unrecognized entry key. Which keys count as "device entry keys" vs.
+    "params" depends on the module (a declared parameter is an ordinary
+    top-level field, see ModuleDescriptor), so `entry`'s keys can't be
+    validated until the module is loaded -- _merge_params raises on
+    whatever's left in `instance_params` once its own declared names are
+    picked out.
 
     `context` is the one scratch dict shared by every device of this system
     (see Device.context) -- created once per load_system() call and passed

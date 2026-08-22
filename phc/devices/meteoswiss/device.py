@@ -1,5 +1,6 @@
-"""MeteoSwissDevice: reads live measurements for one MeteoSwiss automatic
-weather station from the shared, periodically-published SwissMetNet CSV."""
+"""MeteoSwissDevice: live measurements for one MeteoSwiss weather station.
+
+From the shared, periodically-published SwissMetNet CSV."""
 
 import asyncio
 import csv
@@ -22,9 +23,10 @@ _csv_cache_lock = asyncio.Lock()
 
 @register_module("meteoswiss")
 class MeteoSwissDevice(Device):
-    """One MeteoSwiss weather station from the shared SwissMetNet CSV. Async,
-    cached per data_url to batch multiple stations into one HTTP request.
-    Read-only.
+    """One MeteoSwiss weather station from the shared SwissMetNet CSV.
+
+    Async, cached per data_url to batch multiple stations into one
+    HTTP request. Read-only.
     """
 
     def setup(self):
@@ -51,8 +53,9 @@ class MeteoSwissDevice(Device):
                 for key, ep in self.endpoints.items()}
 
     async def _fetch_station_row(self) -> dict | None:
-        """Return this device's row from the shared CSV, or None if the
-        station code isn't present in it."""
+        """Return this device's row from the shared CSV.
+
+        None if the station code isn't present in it."""
         text = await self._get_csv_text()
         reader = csv.DictReader(text.splitlines(), delimiter=";")
         for row in reader:
@@ -61,21 +64,23 @@ class MeteoSwissDevice(Device):
         return None
 
     async def _get_csv_text(self) -> str:
-        """Return CSV text, reusing cached copy if fresh. Cache is shared by
-        data_url; freshness is per-caller (per-device cache_time)."""
-        now = time.monotonic()
+        """Return CSV text, reusing cached copy if fresh.
+
+        Cache is shared by data_url; freshness is per-caller (per-device
+        cache_time)."""
+        mono = time.monotonic()
         cached = _csv_cache.get(self._data_url)
-        if cached is not None and (now - cached[0]) < self._cache_time:
+        if cached is not None and (mono - cached[0]) < self._cache_time:
             return cached[1]
         async with _csv_cache_lock:
             # Re-check: another device may have refreshed the cache while
             # this one was waiting for the lock.
-            now = time.monotonic()
+            mono = time.monotonic()
             cached = _csv_cache.get(self._data_url)
-            if cached is not None and (now - cached[0]) < self._cache_time:
+            if cached is not None and (mono - cached[0]) < self._cache_time:
                 return cached[1]
             text = await self._download_csv()
-            _csv_cache[self._data_url] = (now, text)
+            _csv_cache[self._data_url] = (mono, text)
             return text
 
     async def _download_csv(self) -> str:
@@ -88,8 +93,9 @@ class MeteoSwissDevice(Device):
 
     @staticmethod
     def _extract(row: dict | None, column: str | None):
-        """Extract one numeric value from row, returning None for missing
-        row/column or MeteoSwiss markers ("-"/empty)."""
+        """Extract one numeric value from row.
+
+        None for missing row/column or MeteoSwiss markers ("-"/empty)."""
         if row is None or column is None:
             return None
         value = row.get(column, "-")

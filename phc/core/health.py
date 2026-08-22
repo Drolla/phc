@@ -52,24 +52,28 @@ class DeviceHealth:
         unhealthy forever would be actively misleading."""
         return self.consecutive_failures == 0
 
-    def record_success(self, now: float | None = None) -> bool:
-        """Note a successful I/O. Returns True if this is a RECOVERY (the
-        previous attempt had failed), so the caller can log the transition
-        rather than every success."""
+    def record_success(self, mono: float | None = None) -> bool:
+        """Note a successful I/O.
+
+        Returns True if this is a RECOVERY (the previous attempt had
+        failed), so the caller can log the transition rather than every
+        success."""
         recovered = self.consecutive_failures > 0
         self.consecutive_failures = 0
-        self.last_success = time.monotonic() if now is None else now
+        self.last_success = time.monotonic() if mono is None else mono
         return recovered
 
-    def record_failure(self, error: str, now: float | None = None) -> bool:
-        """Note a failed I/O. Returns True if this is the FIRST failure
-        after a healthy period, so the caller can log the transition
-        instead of repeating itself every tick for a device that has been
+    def record_failure(self, error: str, mono: float | None = None) -> bool:
+        """Note a failed I/O.
+
+        Returns True if this is the FIRST failure after a healthy
+        period, so the caller can log the transition instead of
+        repeating itself every tick for a device that has been
         unreachable for hours."""
         first = self.consecutive_failures == 0
         self.consecutive_failures += 1
         self.total_failures += 1
-        self.last_failure = time.monotonic() if now is None else now
+        self.last_failure = time.monotonic() if mono is None else mono
         self.last_error = error
         return first
 

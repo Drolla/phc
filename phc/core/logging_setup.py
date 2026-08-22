@@ -1,6 +1,8 @@
-"""Logging setup for the "phc" logger tree: one or more independently
-levelled destinations (stream or file), plus an in-place (carriage return,
-no newline) status line for the scheduler's live task countdown."""
+"""Logging setup for the "phc" logger tree.
+
+One or more independently levelled destinations (stream or file), plus
+an in-place (carriage return, no newline) status line for the
+scheduler's live task countdown."""
 
 import logging
 import sys
@@ -8,24 +10,26 @@ from pathlib import Path
 
 
 class _InPlaceLineState:
-    """Shared between InPlaceLineHandler and NewlineSafeStreamHandler: lets
-    a normal log record know -- and clear -- whether an in-place (no
-    trailing newline) line is currently open on the stream. Scoped per
-    underlying stream object (stdout and stderr each get their own), so two
-    stream destinations sharing one tty don't interleave a pending '\\r'
-    line from one with a normal record from the other."""
+    """Shared between InPlaceLineHandler and NewlineSafeStreamHandler.
+
+    Lets a normal log record know -- and clear -- whether an in-place
+    (no trailing newline) line is currently open on the stream. Scoped
+    per underlying stream object (stdout and stderr each get their own),
+    so two stream destinations sharing one tty don't interleave a
+    pending '\\r' line from one with a normal record from the other."""
 
     def __init__(self):
         self.is_open = False
 
 
 class _BrokenPipeSilentMixin:
-    """Suppresses logging's default handleError() traceback dump for a
-    broken output stream (e.g. Ctrl-C while stdout is piped to a process
-    that has already exited -- Windows raises OSError EINVAL on the next
-    write/flush, not BrokenPipeError). Nothing can be done about a stream
-    that's gone, and a shutdown-time record failing to print isn't worth
-    the noise; any other handler error still surfaces normally."""
+    """Suppresses handleError()'s traceback dump for a broken stream.
+
+    E.g. Ctrl-C while stdout is piped to a process that has already
+    exited -- Windows raises OSError EINVAL on the next write/flush,
+    not BrokenPipeError. Nothing can be done about a stream that's
+    gone, and a shutdown-time record failing to print isn't worth the
+    noise; any other handler error still surfaces normally."""
 
     def handleError(self, record):
         if sys.exc_info()[0] in (BrokenPipeError, OSError):
@@ -34,14 +38,16 @@ class _BrokenPipeSilentMixin:
 
 
 class InPlaceLineHandler(_BrokenPipeSilentMixin, logging.Handler):
-    """Writes each record as '\\r' + message, with no trailing newline, so
-    repeated calls overwrite the same terminal line instead of scrolling.
-    Used for the scheduler's live per-tick task countdown -- a status line
-    re-rendered every heartbeat, not a discrete event worth a full log
-    line each time. Only ever installed on the first stream destination
-    (see configure_logging) -- file destinations never receive in-place
-    records at all, since a carriage-return status line is a terminal
-    affordance that makes no sense appended to a log file."""
+    """Writes each record as '\\r' + message, no trailing newline.
+
+    So repeated calls overwrite the same terminal line instead of
+    scrolling. Used for the scheduler's live per-tick task countdown --
+    a status line re-rendered every heartbeat, not a discrete event
+    worth a full log line each time. Only ever installed on the first
+    stream destination (see configure_logging) -- file destinations
+    never receive in-place records at all, since a carriage-return
+    status line is a terminal affordance that makes no sense appended
+    to a log file."""
 
     def __init__(self, stream, state: _InPlaceLineState):
         super().__init__()
@@ -59,8 +65,9 @@ class InPlaceLineHandler(_BrokenPipeSilentMixin, logging.Handler):
 
 
 class NewlineSafeStreamHandler(_BrokenPipeSilentMixin, logging.StreamHandler):
-    """A normal, newline-terminated StreamHandler that -- before emitting
-    each record -- closes any pending in-place line (see
+    """A normal, newline-terminated StreamHandler with in-place cleanup.
+
+    Before emitting each record, closes any pending in-place line (see
     InPlaceLineHandler) with a bare newline first, so the new record
     always starts on its own line. This makes the in-place-to-normal
     switch automatic for every logger and every record; no call site
@@ -83,8 +90,9 @@ class NewlineSafeStreamHandler(_BrokenPipeSilentMixin, logging.StreamHandler):
 
 
 def _parse_level(level_name, default: int) -> int:
-    """Resolve a level name (e.g. "DEBUG") to its logging module constant,
-    falling back to `default` if `level_name` is None."""
+    """Resolve a level name (e.g. "DEBUG") to its logging module constant.
+
+    Falls back to `default` if `level_name` is None."""
     if level_name is None:
         return default
     return getattr(logging, str(level_name).upper(), default)
@@ -125,9 +133,10 @@ class _LevelMapFilter(logging.Filter):
 
 def configure_logging(log_config: list | None, log_levels_override: dict | None = None,
                        config_dir: Path | None = None) -> None:
-    """Configure the "phc" logger tree from `log_config`, a list of
-    independently levelled destinations -- see docs/configuration.md for
-    the `log:` YAML schema.
+    """Configure the "phc" logger tree from `log_config`.
+
+    A list of independently levelled destinations -- see
+    docs/configuration.md for the `log:` YAML schema.
 
     `dest` is "stdout"/"stderr" for a stream, or any other string for a
     file path -- resolved relative to `config_dir` (the system YAML's own
@@ -154,12 +163,12 @@ def configure_logging(log_config: list | None, log_levels_override: dict | None 
     interleave two independently rewound '\\r' lines on one terminal.
 
     Absent/empty log_config defaults to a single stdout destination at
-    INFO. Raises ValueError if log_config is a mapping (the removed
-    single-destination `log: {dest: ...}` form) or if two destinations
-    share one `dest`. Closes any handlers previously installed on "phc"
-    before installing the new ones, so repeated calls (load_system() makes
-    one every time it's called) don't accumulate open file descriptors --
-    harmless for a StreamHandler, but a FileHandler holds a real fd.
+    INFO. Raises ValueError if log_config is a mapping rather than a list,
+    or if two destinations share one `dest`. Closes any handlers
+    previously installed on "phc" before installing the new ones, so
+    repeated calls (load_system() makes one every time it's called)
+    don't accumulate open file descriptors -- harmless for a
+    StreamHandler, but a FileHandler holds a real fd.
     """
     if isinstance(log_config, dict):
         raise ValueError(

@@ -1,4 +1,5 @@
 """Random light control: the pure, framework-agnostic decision algorithm.
+
 Decoupled from phc.core.device/phc.core.task -- callers pass plain
 {light_id: 0|1|None} state dicts and sunrise/sunset timestamps, and get
 back a plain {light_id: 0|1} target dict. See phc/extensions/random_light/
@@ -12,10 +13,12 @@ from datetime import datetime
 
 @dataclass(frozen=True)
 class WindowBound:
-    """One edge of a light's on/off window: either a fixed local
-    time-of-day ("HH:MM") or a sun-relative anchor ("sunrise"/"sunset")
-    plus/minus an offset. Built via the fixed()/sun() constructors;
-    resolve() turns it into a concrete Unix timestamp for "today"."""
+    """One edge of a light's on/off window.
+
+    Either a fixed local time-of-day ("HH:MM") or a sun-relative anchor
+    ("sunrise"/"sunset") plus/minus an offset. Built via the
+    fixed()/sun() constructors; resolve() turns it into a concrete Unix
+    timestamp for "today"."""
 
     kind: str  # "fixed" | "sun"
     hour: int | None = None
@@ -25,16 +28,22 @@ class WindowBound:
 
     @classmethod
     def fixed(cls, hour: int, minute: int) -> "WindowBound":
+        """A fixed local time-of-day bound."""
         return cls(kind="fixed", hour=hour, minute=minute)
 
     @classmethod
     def sun(cls, anchor: str, offset_seconds: float = 0.0) -> "WindowBound":
+        """A sun-relative bound.
+
+        `anchor` ("sunrise"/"sunset") plus/minus `offset_seconds`."""
         return cls(kind="sun", anchor=anchor, offset_seconds=offset_seconds)
 
     def resolve(self, now: float, sunrise: float | None, sunset: float | None) -> float | None:
-        """This bound's timestamp for `now`'s local calendar day, or None
-        if it can't be resolved today (kind="sun" and the matching
-        sunrise/sunset value is currently None -- polar day/night)."""
+        """This bound's timestamp for `now`'s local calendar day.
+
+        None if it can't be resolved today (kind="sun" and the
+        matching sunrise/sunset value is currently None -- polar
+        day/night)."""
         if self.kind == "fixed":
             today = datetime.fromtimestamp(now).replace(
                 hour=self.hour, minute=self.minute, second=0, microsecond=0)
@@ -47,8 +56,10 @@ class WindowBound:
 
 @dataclass(frozen=True)
 class Light:
-    """One configured light's static settings (see RandomLightController
-    for the mutable per-light "next switch time" state)."""
+    """One configured light's static settings.
+
+    See RandomLightController for the mutable per-light "next switch
+    time" state."""
 
     id: str
     windows: list[tuple[WindowBound, WindowBound]]
@@ -57,12 +68,13 @@ class Light:
     is_default: bool = False
 
     def in_window(self, now: float, sunrise: float | None, sunset: float | None) -> bool:
-        """True if `now` falls inside any of this light's [start, end]
-        window pairs. A pair that can't be resolved today, or whose
-        resolved end is before its start (would need midnight wraparound,
-        not supported -- express an overnight window as two same-day
-        pairs instead), is simply skipped rather than failing the whole
-        light."""
+        """True if `now` falls inside any of this light's window pairs.
+
+        [start, end] pairs. A pair that can't be resolved today, or
+        whose resolved end is before its start (would need midnight
+        wraparound, not supported -- express an overnight window as two
+        same-day pairs instead), is simply skipped rather than failing
+        the whole light."""
         for start, end in self.windows:
             start_ts = start.resolve(now, sunrise, sunset)
             end_ts = end.resolve(now, sunrise, sunset)
@@ -74,8 +86,9 @@ class Light:
 
 
 class RandomLightController:
-    """Owns every configured light's static Light config plus the mutable
-    per-light "next switch time" bookkeeping, for one extension instance."""
+    """Owns every configured light's static config plus mutable bookkeeping.
+
+    Per-light "next switch time" state, for one extension instance."""
 
     def __init__(self, lights: dict[str, Light], random_func: Callable[[], float] = random.random):
         self._lights = lights
@@ -85,15 +98,16 @@ class RandomLightController:
     def decide_single(self, light_id: str, now: float, current_state: int | None,
                        sunrise: float | None, sunset: float | None,
                        force: int | None = None) -> int:
-        """Decide one light's target state. `force` here is the internal,
-        window-respecting override used only by decide_all()'s
-        default-light fallback (a light forced on this way can still end
-        up off if it's outside its own window) -- NOT the same as
-        decide_all()'s own top-level `force`, which bypasses windows
-        entirely. `current_state=None` (never observed) is treated as
-        "off" for branch selection. A forced call never touches
-        next_switch_time -- the schedule it left behind still applies
-        once the light is no longer forced."""
+        """Decide one light's target state.
+
+        `force` here is the internal, window-respecting override used
+        only by decide_all()'s default-light fallback (a light forced
+        on this way can still end up off if it's outside its own
+        window) -- NOT the same as decide_all()'s own top-level
+        `force`, which bypasses windows entirely. `current_state=None`
+        (never observed) is treated as "off" for branch selection. A
+        forced call never touches next_switch_time -- the schedule it
+        left behind still applies once the light is no longer forced."""
         light = self._lights[light_id]
         if not light.in_window(now, sunrise, sunset):
             self._next_switch_time.pop(light_id, None)
@@ -115,6 +129,7 @@ class RandomLightController:
                     sunrise: float | None, sunset: float | None,
                     force: int | None = None) -> dict[str, int]:
         """Decide every configured light's target state for this call.
+
         `force` (0 or 1) bypasses everything -- windows, probability,
         min_interval -- forcing every light to that value directly.
         Otherwise runs the normal per-light decision, then -- only if no

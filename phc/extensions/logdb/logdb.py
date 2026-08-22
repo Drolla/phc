@@ -198,10 +198,10 @@ class LogDb:
     # ---------- query API ----------
 
     def get_at(self, timestamp: float, labels: list[str] | None = None) -> dict[str, float] | None:
-        """Return the record nearest to `timestamp` (either side), or None
-        if empty.
+        """Return the record nearest to `timestamp` (either side).
 
-        O(log n) via bisect on the always time-ascending _times."""
+        None if empty. O(log n) via bisect on the always
+        time-ascending _times."""
         if not self._times:
             return None
         idx = bisect.bisect_left(self._times, timestamp)
@@ -235,8 +235,7 @@ class LogDb:
     def get_decimated(self, labels: list[str] | None = None,
                        decimation: list[tuple[float, int]] | None = None,
                        now: float | None = None) -> list[dict[str, float]]:
-        """Like get_range() over the full retained window, but coarsens
-        older data.
+        """Like get_range(), but coarsens older data.
 
         Older samples are averaged within each decimation tier, trading
         resolution for a bounded response size on a UI's full-history
@@ -357,8 +356,7 @@ class LogDb:
         self.csv_path.rename(backup)
 
     def _consume_leading_lines(self, data_start: int, extra_needed: int) -> tuple[int, int]:
-        """Read forward from `data_start`, accumulating whole lines' byte
-        lengths.
+        """Read forward from `data_start`, accumulating whole line lengths.
 
         Reads until at least `extra_needed` bytes have been consumed (or
         the file runs out). Returns (bytes_consumed, records_consumed)."""
@@ -375,8 +373,7 @@ class LogDb:
         return consumed, count
 
     def _reconcile_header(self, configured_labels: list[str]) -> list[str]:
-        """Read or create the CSV header, growing it in place for any
-        newly configured labels.
+        """Read or create the CSV header, growing it for new labels.
 
         Sets self._data_start to the byte offset where data rows begin.
         Returns the final, combined label list (persisted labels, in
@@ -443,8 +440,7 @@ class LogDb:
     # ---------- restore ----------
 
     def _window_covered(self, lines: list[str], anchor_index: int, reference_time: float) -> bool:
-        """Whether replaying from `lines[anchor_index]` onward already
-        covers the full retention window.
+        """Whether replaying from `lines[anchor_index]` covers the window.
 
         Used by _replay so its backward scan can stop growing its chunk.
         Unbounded (no max_records/max_age) never stops early -- the scan
@@ -484,7 +480,8 @@ class LogDb:
         return timestamp
 
     def _retention_cutoff(self, times: list[float], reference_time: float) -> int:
-        """Compute the index below which replayed records fall outside
+        """Compute the index below which replayed records fall outside limits.
+
         max_records/max_age."""
         n = len(times)
         cutoff = 0

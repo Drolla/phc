@@ -1,10 +1,11 @@
-"""RecoveryStore: a small YAML file persisting selected writable device
-endpoint values, so PHC can restore them to their last-known-good state
-after a crash/restart (see phc/extensions/recovery/extension.py for the
-on_start/on_tick/on_stop wiring that drives it). Whole-file rewrite, not
-append -- unlike phc.extensions.logdb.logdb.LogDb's much larger append-only
-CSV, this file holds one entry per subscribed endpoint, so there's no
-replay/reconciliation logic to write."""
+"""RecoveryStore: a small YAML file persisting writable endpoint values.
+
+So PHC can restore them to their last-known-good state after a
+crash/restart (see phc/extensions/recovery/extension.py for the
+on_start/on_tick/on_stop wiring that drives it). Whole-file rewrite,
+not append -- unlike phc.extensions.logdb.logdb.LogDb's much larger
+append-only CSV, this file holds one entry per subscribed endpoint, so
+there's no replay/reconciliation logic to write."""
 
 import logging
 import os
@@ -16,8 +17,10 @@ logger = logging.getLogger("phc.recovery")
 
 
 class RecoveryStore:
-    """A YAML file at `path` holding {"<qualified_id>/<endpoint_key>":
-    value} for a fixed set of subscribed pairs.
+    """A YAML file at `path` holding subscribed pairs' values.
+
+    {"<qualified_id>/<endpoint_key>": value} for a fixed set of
+    subscribed pairs.
 
     write() rewrites the whole file atomically; load() reads it back,
     tolerating a missing or corrupt file (returns {} either way -- see
@@ -49,9 +52,7 @@ class RecoveryStore:
         recover, not an error), is empty, or can't be parsed as a YAML
         mapping (corrupt/truncated file, e.g. from a crash that hit before
         the first successful write() -- also not an error, just logged as
-        a warning, mirroring THC's silent-catch-on-source but with
-        logging, consistent with how the rest of this codebase logs
-        rather than stays silent)."""
+        a warning rather than silently ignored)."""
         if not self.path.exists():
             return {}
         try:

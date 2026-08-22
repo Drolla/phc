@@ -4,6 +4,7 @@ minimal hand-built `flat` dict of VirtualDevice/Endpoint instances and
 phc.core.task.Task objects, mirroring tests/test_logdb_extension.py's style --
 no full YAML system needed."""
 
+from phc.core.clock import Now
 from phc.core.device import Device
 from phc.core.endpoint import Endpoint
 from phc.core.task import Condition, Task
@@ -217,8 +218,12 @@ def test_tasks_sorted_soonest_time_then_condition_then_never():
 # ---------- envelope ----------
 
 def test_snapshot_envelope_fields():
+    """`time` must be the WALL reading: the client renders it as a date
+    (new Date(snapshot.time*1000) in static/portal.js), so shipping the
+    monotonic reading would show a 1970 timestamp. Driven with clearly
+    divergent clocks so the assertion can only pass on .wall."""
     system = FakeSystem(heartbeat=2.5)
-    snapshot = build_snapshot(system, {}, [], tick=42, now=1000.0, period=2.6)
+    snapshot = build_snapshot(system, {}, [], tick=42, now=Now(1000.0, 5.0), period=2.6)
     assert snapshot["tick"] == 42
     assert snapshot["time"] == 1000.0
     assert snapshot["heartbeat"] == 2.5
@@ -231,8 +236,8 @@ def test_device_row_reports_health():
     device = Device("sensor", endpoints=[Endpoint("value")], update_interval=10.0)
     system = FakeSystem(tasks=[], heartbeat=1.0)
 
-    snapshot = build_snapshot(system, {"sensor": device}, [], tick=1, now=1000.0,
-                               period=1.0, now_mono=100.0)
+    snapshot = build_snapshot(system, {"sensor": device}, [], tick=1,
+                               now=Now(1000.0, 100.0), period=1.0)
     row = snapshot["devices"][0]
     assert row["healthy"] is True
     assert row["failures"] == 0
@@ -240,9 +245,39 @@ def test_device_row_reports_health():
 
     device.health.record_failure("ConnectionError: refused")
     device.health.record_failure("ConnectionError: refused")
-    snapshot = build_snapshot(system, {"sensor": device}, [], tick=2, now=1001.0,
-                               period=1.0, now_mono=101.0)
+    snapshot = build_snapshot(system, {"sensor": device}, [], tick=2,
+                               now=Now(1001.0, 101.0), period=1.0)
     row = snapshot["devices"][0]
     assert row["healthy"] is False
     assert row["failures"] == 2
     assert "refused" in row["last_error"]
+
+
+def test_derived_countdowns_each_read_their_own_clock(monkeypatch):
+    """Every countdown in a snapshot is a difference, and each must be taken
+    against the clock its operand was recorded in: `due_in`/`age` against
+    the wall clock (task due_times, endpoint update_time), `cooldown` and
+    the device poll countdown against the monotonic clock. Driven with the
+    two clocks far apart, so reading the wrong one changes every number
+    asserted below."""
+    import phc.core.endpoint as endpoint_module
+
+    # Fired at monotonic 20.0; still scheduled for wall 1200.0 (repeat is
+    # None, so run() marks it finished without advancing due_time).
+    task = Task("t", due_time=1200.0, min_interval=60.0, actions=[])
+    task.run(Now(1200.0, 20.0), {})
+
+    ep = Endpoint("value")
+    device = VirtualDevice("sensor", endpoints=[ep], update_interval=10.0)
+    device.mark_run(45.0)                       # monotonic: next due at 55.0
+    monkeypatch.setattr(endpoint_module.time, "time", lambda: 940.0)
+    _commit(ep, 5)                              # wall update_time: 940.0
+
+    system = FakeSystem(tasks=[task], heartbeat=1.0)
+    snapshot = build_snapshot(system, {"sensor": device}, [("sensor", "value")],
+                               tick=1, now=Now(1000.0, 50.0), period=1.0)
+
+    assert snapshot["tasks"][0]["due_in"] == 200.0       # wall: 1200 - 1000
+    assert snapshot["tasks"][0]["cooldown"] == 30.0      # mono: 60 - (50 - 20)
+    assert snapshot["devices"][0]["due_in"] == 5.0       # mono: 55 - 50
+    assert snapshot["endpoints"][0]["age"] == 60.0       # wall: 1000 - 940

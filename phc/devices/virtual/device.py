@@ -6,8 +6,10 @@ from phc.core.registry import register_module
 
 @register_module("virtual")
 class VirtualDevice(Device):
-    """In-memory device with no hardware. transmit() buffers writes;
-    receive() returns and clears the buffer on the next fetch."""
+    """In-memory device with no hardware.
+
+    transmit() buffers writes; receive() returns and clears the buffer
+    on the next fetch."""
 
     def setup(self):
         """Initialize the empty write buffer."""

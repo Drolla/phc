@@ -1,48 +1,48 @@
-"""Pure construction of one JSON-serializable snapshot of the running
-system's internals -- the scheduler's task queue, the device poll queue,
-and every selected endpoint's live state/event/last_valid_state -- kept
-free of any aiohttp/HTTP concern so it is unit-testable on its own (see
-phc/extensions/web_ui/widgets.py's describe_endpoint()/describe_device() for
-the same separation). Called once per tick by
-phc.extensions.debug_portal.extension.DebugPortalInstance.on_tick()."""
+"""The debug portal's per-tick snapshot of the running system.
 
+One JSON-serializable dict covering the scheduler's task queue, the device
+poll queue, and every selector-matched endpoint's live state. Built fresh
+each tick and handed straight to SseHub.broadcast() -- nothing is retained
+between calls, so there is no history or diffing here. Free of any
+aiohttp/HTTP concern, so it is unit-testable on its own.
+
+Both clocks come from the tick's Now (see phc.core.clock): `now.wall` for
+task due_times and endpoint ages, `now.mono` for device poll intervals and
+task cooldowns. Subtracting one from the other would compare two unrelated
+epochs.
+"""
+
+from phc.core.clock import Now
 from phc.core.device import Device
 from phc.core.task import Task
 
 
 def _task_sort_key(due_in: float | None, mode: str) -> tuple[int, float]:
-    """Planned-execution-order sort key: soonest numeric due_in first, then
-    condition-gated tasks with no due_time countdown (re-evaluated every
-    tick, so due "now" in spirit but not a countdown), then tasks that will
-    never fire again (due_time exhausted, repeat <= 0, no condition to
-    re-arm them)."""
+    """Planned-execution order: soonest countdown first.
+
+    Then condition-gated tasks (re-evaluated every tick, so due "now"
+    in spirit but without a countdown), then tasks that can never fire
+    again."""
     if due_in is not None:
         return (0, due_in)
-    if mode in ("cond", "cond+time"):
-        return (1, 0.0)
-    return (2, 0.0)
+    return (1 if mode in ("cond", "cond+time") else 2, 0.0)
 
 
-def _describe_task(task: Task, now: float, now_mono: float) -> dict:
-    """Mirrors phc.core.scheduler.Scheduler._log_task_countdown's own due-time
-    classification, but as structured fields rather than a single debug
-    log line. See docs/configuration.md#tasks for `mode`'s cond/time/
-    cond+time meanings. `due_in` is None for a task with no due_time
-    schedule, or an exhausted one (due_time=+inf) -- `mode` disambiguates
-    the two on the client.
+def _describe_task(task: Task, now: Now) -> dict:
+    """One row of the task queue.
 
-    Needs both clocks: `due_in` counts down to an absolute wall-clock
-    due_time, while `cooldown` measures against Task.last_fired, which is
-    monotonic (see phc.core.task.Task.run)."""
+    See docs/configuration.md#tasks for `mode`'s cond/time/cond+time
+    meanings.
+
+    `due_in` is None both for a task with no due_time and for an exhausted
+    one (due_time=+inf); `mode` disambiguates the two on the client."""
     has_condition = task.condition is not None
     has_due_time = task.due_time is not None
     mode = "cond+time" if (has_condition and has_due_time) else "cond" if has_condition else "time"
-    if not has_due_time or task.due_time == float("inf"):
-        due_in = None
-    else:
-        due_in = max(0.0, task.due_time - now)
+    due_in = (max(0.0, task.due_time - now.wall)
+              if has_due_time and task.due_time != float("inf") else None)
     repeat = task.repeat if (has_due_time and task.repeat is not None and task.repeat > 0) else None
-    cooldown = max(0.0, task.min_interval - (now_mono - task.last_fired)) if task.min_interval else 0.0
+    cooldown = max(0.0, task.min_interval - (now.mono - task.last_fired)) if task.min_interval else 0.0
     return {
         "tag": task.tag,
         "mode": mode,
@@ -52,39 +52,33 @@ def _describe_task(task: Task, now: float, now_mono: float) -> dict:
     }
 
 
-def _describe_device(qualified_id: str, device: Device, now_mono: float) -> dict:
-    """One row of the device poll queue -- only ever called for a device
-    with an update_interval (see build_snapshot's own filter), so
-    next_due() is always finite here.
+def _describe_device(qualified_id: str, device: Device, mono: float) -> dict:
+    """One row of the device poll queue.
 
-    Takes the MONOTONIC clock: Device.next_due() is expressed in whatever
-    clock the Scheduler drives due()/mark_run() with, which is
-    time.monotonic() (see phc.core.scheduler.Scheduler's class docstring).
-    Subtracting a wall-clock reading from it would yield a meaningless
-    difference of two unrelated epochs."""
+    Only called for a device with an update_interval (see
+    build_snapshot's filter), so next_due() is finite here."""
     health = device.health
     return {
         "id": qualified_id,
         "interval": device.update_interval,
-        "due_in": max(0.0, device.next_due() - now_mono),
-        # A device whose fetches are failing keeps its last-good endpoint
-        # values, so the endpoint table alone cannot show that it has
-        # stopped answering -- see phc.core.health.
+        "due_in": max(0.0, device.next_due() - mono),
+        # A failing device keeps its last-good endpoint values, so the
+        # endpoint table alone cannot show that it stopped answering.
         "healthy": health.healthy,
         "failures": health.consecutive_failures,
         "last_error": health.last_error,
     }
 
 
-def _describe_endpoint(qualified_id: str, endpoint_key: str, endpoint, now: float) -> dict:
-    """`state`/`last_valid` are sent as repr() strings, not to_text():
-    to_text() applies the endpoint's `values:`/unit display mapping, which
-    hides the actual value -- the wrong thing to show in a debugger -- and
-    repr() is the only representation that tells a None state apart from
-    the string "None" or "" on the wire. `event` is a plain JSON null (not
-    a repr'd "None") when no event fired this tick, so the client's
-    highlight logic is a single truthy check rather than a string
-    comparison."""
+def _describe_endpoint(qualified_id: str, endpoint_key: str, endpoint, wall: float) -> dict:
+    """One row of the endpoint table.
+
+    `state`/`last_valid` are repr() strings rather than to_text(): to_text()
+    applies the endpoint's `values:`/unit display mapping, which hides the
+    actual value -- the wrong thing to show in a debugger -- and repr() is
+    the only representation that tells a None state apart from the string
+    "None" or "". `event` is a plain JSON null when no event fired, so the
+    client's highlight logic is a truthy check, not a string comparison."""
     event = endpoint.get_event()
     update_time = endpoint.get_update_time()
     return {
@@ -94,48 +88,35 @@ def _describe_endpoint(qualified_id: str, endpoint_key: str, endpoint, now: floa
         "state": repr(endpoint.get()),
         "last_valid": repr(endpoint.get_last_valid_state()),
         "event": repr(event) if event is not None else None,
-        "age": None if update_time == 0.0 else max(0.0, now - update_time),
+        "age": None if update_time == 0.0 else max(0.0, wall - update_time),
     }
 
 
 def build_snapshot(system, devices: dict[str, Device], pairs: list[tuple[str, str]], *,
-                    tick: int, now: float, period: float,
-                    now_mono: float | None = None) -> dict:
-    """Build one tick's full snapshot: `system.tasks` in planned-execution
-    order, every scheduled device (has an update_interval) by next poll
-    time, and every selector-matched (device, endpoint) pair in `pairs`.
-    No history/diffing -- called fresh each tick and hand it straight to
-    phc.extensions.debug_portal.server.SseHub.broadcast(); nothing here is
-    retained across calls. `period` is the caller's own measured wall-clock
-    delta since the previous call (an overrun indicator: the actual tick
-    period including the heartbeat sleep, not this tick's processing time
-    alone).
+                    tick: int, now: Now | float, period: float) -> dict:
+    """Build one tick's snapshot.
 
-    `now` is wall-clock (task due_times, endpoint ages); `now_mono` is the
-    monotonic clock the Scheduler drives device intervals and task
-    cooldowns with (see phc.core.scheduler.Scheduler). It defaults to `now`
-    only so a caller with a single synthetic timeline (the tests) stays
-    simple -- the live caller passes both."""
-    if now_mono is None:
-        now_mono = now
-    tasks = [_describe_task(task, now, now_mono) for task in system.tasks]
+    Tasks in planned-execution order, every scheduled device by next
+    poll time, and every (device, endpoint) pair in `pairs`.
+
+    `now` also accepts a bare number, expanded to both clocks reading that
+    instant. `period` is the caller's measured wall-clock delta since the
+    previous call -- an overrun indicator, covering the whole tick period
+    including the heartbeat sleep."""
+    now = Now.coerce(now)
+    tasks = [_describe_task(task, now) for task in system.tasks]
     tasks.sort(key=lambda t: _task_sort_key(t["due_in"], t["mode"]))
 
-    device_rows = [_describe_device(qid, device, now_mono) for qid, device in devices.items()
+    device_rows = [_describe_device(qid, device, now.mono) for qid, device in devices.items()
                    if device.update_interval is not None]
     device_rows.sort(key=lambda d: d["due_in"])
 
-    endpoints = []
-    for qualified_id, endpoint_key in pairs:
-        device = devices.get(qualified_id)
-        if device is None:
-            continue
-        endpoints.append(_describe_endpoint(qualified_id, endpoint_key,
-                                             device.endpoint(endpoint_key), now))
+    endpoints = [_describe_endpoint(qid, key, devices[qid].endpoint(key), now.wall)
+                 for qid, key in pairs if qid in devices]
 
     return {
         "tick": tick,
-        "time": now,
+        "time": now.wall,
         "heartbeat": system.heartbeat,
         "period": period,
         "tasks": tasks,

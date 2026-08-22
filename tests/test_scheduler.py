@@ -861,8 +861,9 @@ def test_stop_interrupts_the_heartbeat_sleep_instead_of_waiting_it_out():
 def test_device_polling_survives_a_wall_clock_step_backwards():
     """Device intervals run on the monotonic clock, so an NTP correction or
     DST change that moves time.time() backwards must not stall polling.
-    Driven through tick()'s explicit clocks: the wall clock jumps back an
+    Driven through tick()'s explicit Now: the wall clock jumps back an
     hour while the monotonic clock keeps advancing."""
+    from phc.core.clock import Now
     from phc.core.endpoint import Endpoint
     from phc.devices.virtual.device import VirtualDevice
 
@@ -870,11 +871,19 @@ def test_device_polling_survives_a_wall_clock_step_backwards():
                            update_interval=10.0)
     scheduler = Scheduler({"living_light": light})
 
-    scheduler.tick(now=1_000_000.0, now_mono=100.0)
+    scheduler.tick(now=Now(1_000_000.0, 100.0))
     assert light.next_due() == 110.0        # expressed in monotonic terms
 
+    # Wall clock races ahead 15 minutes but the interval has NOT elapsed on
+    # the monotonic clock, so the device must not be re-polled. Without this
+    # step the test cannot tell due() from a wall-clock due(): _last_run is a
+    # monotonic value, so a wall reading is always vastly larger than it and
+    # would answer "due" by accident.
+    scheduler.tick(now=Now(1_000_000.0 + 900.0, 105.0))
+    assert light.next_due() == 110.0, "device was re-polled before its interval elapsed"
+
     # Wall clock jumps back an hour; monotonic advances past the interval.
-    scheduler.tick(now=1_000_000.0 - 3600.0, now_mono=111.0)
+    scheduler.tick(now=Now(1_000_000.0 - 3600.0, 111.0))
     assert light.next_due() == 121.0, "device was not re-polled after a wall-clock step back"
     scheduler.close()
 
@@ -883,6 +892,7 @@ def test_task_cooldown_survives_a_wall_clock_step_backwards():
     """min_interval is a cooldown, so it is measured on the monotonic clock
     -- a wall-clock step backwards must not freeze it (nor a step forwards
     end it early)."""
+    from phc.core.clock import Now
     from phc.core.endpoint import Endpoint
     from phc.devices.virtual.device import VirtualDevice
 
@@ -897,12 +907,57 @@ def test_task_cooldown_survives_a_wall_clock_step_backwards():
 
     task = Task("cooldown", min_interval=60.0, actions=[RecordingAction()])
 
-    assert task.run(1_000_000.0, devices, 100.0) is True
+    assert task.run(Now(1_000_000.0, 100.0), devices) is True
     assert len(fired) == 1
     # Wall clock jumps back an hour; only 10 monotonic seconds have passed,
     # so the cooldown is still in effect and must still block.
-    assert task.run(1_000_000.0 - 3600.0, devices, 110.0) is False
+    assert task.run(Now(1_000_000.0 - 3600.0, 110.0), devices) is False
     assert len(fired) == 1
     # Once the cooldown genuinely elapses on the monotonic clock, it fires.
-    assert task.run(1_000_000.0 - 3600.0, devices, 161.0) is True
+    assert task.run(Now(1_000_000.0 - 3600.0, 161.0), devices) is True
     assert len(fired) == 2
+
+
+def test_task_due_time_is_gated_on_the_wall_clock():
+    """due_time is an absolute timestamp naming a time of day, so it is
+    compared against the WALL reading. Gating it on the monotonic reading
+    would be meaningless: the two clocks have unrelated origins, so a task
+    set for a real time of day would either hang forever or fire at once.
+    Driven with clocks far enough apart that each assertion inverts if the
+    wrong one is read."""
+    from phc.core.clock import Now
+    from phc.devices.virtual.device import VirtualDevice
+
+    devices = {"light": VirtualDevice("light", endpoints=[], update_interval=None)}
+    fired: list[float] = []
+
+    class RecordingAction(LogAction):
+        def perform(self, devices):
+            fired.append(1.0)
+
+    # Wall reading has reached due_time; monotonic is nowhere near it.
+    reached = Task("reached", due_time=1_000_000.0, actions=[RecordingAction()])
+    assert reached.run(Now(1_000_000.0, 100.0), devices) is True
+    assert len(fired) == 1
+
+    # The inverse: monotonic is well past due_time but the wall clock has
+    # not arrived yet, so the task must stay pending.
+    pending = Task("pending", due_time=1_000_000.0, actions=[RecordingAction()])
+    assert pending.run(Now(999_999.0, 2_000_000.0), devices) is False
+    assert len(fired) == 1
+
+
+def test_task_repeat_rearms_on_the_wall_clock():
+    """repeat: advances an absolute due_time by whole multiples, so the
+    catch-up arithmetic has to use the wall reading. Using the monotonic
+    one would compute a negative number of missed periods and rearm the
+    task into the past."""
+    from phc.core.clock import Now
+    from phc.devices.virtual.device import VirtualDevice
+
+    devices = {"light": VirtualDevice("light", endpoints=[], update_interval=None)}
+    task = Task("hourly", due_time=1000.0, repeat=100.0, actions=[LogAction()])
+
+    # Wall clock is 2.5 periods past due; monotonic sits far below due_time.
+    assert task.run(Now(1250.0, 7.0), devices) is True
+    assert task.due_time == 1300.0, "rearmed off the wrong clock"

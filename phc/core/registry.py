@@ -1,7 +1,9 @@
-"""Plugin registry: Device/Endpoint/Action classes register themselves here by
-name (via @register_module/@register_endpoint_kind/@register_task_kind).
-discover_modules()/discover_extensions() import the modules that carry those
-decorators, so registration happens automatically at startup.
+"""Plugin registry: name -> class lookup for Device/Endpoint/Action classes.
+
+Classes register via @register_module/@register_endpoint_kind/
+@register_task_kind; discover_modules()/discover_extensions() import the
+modules carrying those decorators, so registration happens automatically
+at startup.
 
 A device module or extension can live in three places, all discovered the
 same way and indistinguishable to a system YAML afterwards:
@@ -64,8 +66,9 @@ def _scan_once(key: tuple, scan) -> list[tuple[str, str]]:
 
 
 def register_module(name: str):
-    """Class decorator: registers a Device subclass under a module name,
-    so system YAML can reference it via `module: <name>`."""
+    """Class decorator: registers a Device subclass under a module name.
+
+    System YAML then references it via `module: <name>`."""
     def decorator(cls):
         _device_modules[name] = cls
         return cls
@@ -73,8 +76,9 @@ def register_module(name: str):
 
 
 def register_endpoint_kind(kind: str):
-    """Class decorator: registers an Endpoint subclass under a `kind` name,
-    so module.yaml endpoint entries can reference it via `kind: <kind>`."""
+    """Class decorator: registers an Endpoint subclass under a `kind` name.
+
+    module.yaml endpoint entries then reference it via `kind: <kind>`."""
     def decorator(cls):
         _endpoint_kinds[kind] = cls
         return cls
@@ -90,16 +94,19 @@ def get_device_class(module_name: str) -> type:
 
 
 def get_endpoint_class(kind: str | None) -> type[Endpoint]:
-    """Return the Endpoint subclass registered under `kind`, or the base
-    Endpoint class if `kind` is None or unregistered."""
+    """Return the Endpoint subclass registered under `kind`.
+
+    Falls back to the base Endpoint class if `kind` is None or
+    unregistered."""
     if kind is None:
         return Endpoint
     return _endpoint_kinds.get(kind, Endpoint)
 
 
 def register_task_kind(kind: str):
-    """Class decorator: registers an Action subclass under a `kind` name,
-    so task YAML action entries can reference it via `kind: <kind>`."""
+    """Class decorator: registers an Action subclass under a `kind` name.
+
+    Task YAML action entries then reference it via `kind: <kind>`."""
     def decorator(cls):
         _task_kinds[kind] = cls
         return cls
@@ -115,14 +122,17 @@ def get_task_kind_class(kind: str) -> type:
 
 
 def registered_modules() -> list[str]:
-    """Every discovered device module name, sorted -- bundled, entry
-    point, and plugin_paths alike (run a discover_modules() first)."""
+    """Every discovered device module name, sorted.
+
+    Bundled, entry-point, and plugin_paths sources alike; run
+    discover_modules() first."""
     return sorted(_device_modules)
 
 
 def registered_extensions() -> list[str]:
-    """Every discovered extension name, sorted (run discover_extensions()
-    first)."""
+    """Every discovered extension name, sorted.
+
+    Run discover_extensions() first."""
     return sorted(_extension_packages)
 
 
@@ -138,8 +148,9 @@ def module_package(module_name: str) -> str:
 
 
 def extension_package(extension_name: str) -> str:
-    """The package holding `extension_name`'s extension.py and
-    extension.yaml, as recorded by discover_extensions()."""
+    """The package holding `extension_name`'s extension.py/extension.yaml.
+
+    As recorded by discover_extensions()."""
     try:
         return _extension_packages[extension_name]
     except KeyError:
@@ -150,16 +161,12 @@ def _import_plugin_submodule(package: str, submodule: str) -> bool:
     """Import `package`.`submodule` if it exists; return whether it did.
 
     A package without the submodule is simply not a plugin -- reported as
-    False, not an error.
-
-    Deliberately does NOT swallow ImportError. This used to be
-    `except ModuleNotFoundError: continue`, which could not tell "this
-    package has no device.py" from "device.py exists, but its own
-    `import serial` failed" -- so a plugin with a missing dependency
-    silently did not exist, and the config naming it failed later, and
-    confusingly, as an unknown module. find_spec answers the first
-    question; anything raised by the import itself is the second, and
-    propagates."""
+    False, not an error. Deliberately does NOT swallow ImportError:
+    find_spec() alone answers "does this package have a device.py", so
+    anything raised by the import itself is a different failure -- e.g.
+    device.py exists but its own `import serial` failed -- and propagates,
+    so a plugin with a missing dependency fails loudly here, not
+    confusingly later as an "unknown module"."""
     if importlib.util.find_spec(f"{package}.{submodule}") is None:
         return False
     importlib.import_module(f"{package}.{submodule}")
@@ -168,6 +175,7 @@ def _import_plugin_submodule(package: str, submodule: str) -> bool:
 
 def _discover_in_package(package_name: str, submodule: str) -> list[tuple[str, str]]:
     """Import `<package_name>/<name>/<submodule>.py` for every subpackage.
+
     Returns the (name, package) pairs that turned out to be plugins."""
     package = importlib.import_module(package_name)
     found = []
@@ -181,6 +189,7 @@ def _discover_in_package(package_name: str, submodule: str) -> list[tuple[str, s
 
 def _discover_in_entry_points(group: str, submodule: str) -> list[tuple[str, str]]:
     """Import the `submodule` of every package advertised in `group`.
+
     Returns the (entry point name, package) pairs that were plugins."""
     found = []
     for entry_point in entry_points(group=group):
@@ -190,10 +199,10 @@ def _discover_in_entry_points(group: str, submodule: str) -> list[tuple[str, str
 
 
 def _discover_in_paths(paths, submodule: str) -> list[tuple[str, str]]:
-    """Import `<dir>/<name>/<submodule>.py` for every subpackage of every
-    directory in `paths`, each laid out like phc/devices/.
+    """Import every subpackage's `<submodule>.py` for each directory in `paths`.
 
-    Each directory goes on sys.path first, so its subdirectories import as
+    Laid out like phc/devices/ (see module docstring, source 3). Each
+    directory goes on sys.path first, so its subdirectories import as
     ordinary top-level packages."""
     found = []
     for directory in paths:
@@ -210,9 +219,10 @@ def _discover_in_paths(paths, submodule: str) -> list[tuple[str, str]]:
 
 def _discover_all(package_name: str, group: str, submodule: str,
                    plugin_paths) -> list[tuple[str, str]]:
-    """Every (name, package) plugin pair reachable for one submodule kind,
-    across all three sources. Each source is scanned at most once per
-    process (see _scan_once)."""
+    """Every (name, package) plugin pair reachable for one submodule kind.
+
+    Across all three sources; each is scanned at most once per process
+    (see _scan_once)."""
     found = _scan_once((submodule, "package", package_name),
                         lambda: _discover_in_package(package_name, submodule))
     found = found + _scan_once((submodule, "entry_points", group),
@@ -224,18 +234,20 @@ def _discover_all(package_name: str, group: str, submodule: str,
 
 
 def discover_modules(package_name: str = "phc.devices", plugin_paths=()) -> None:
-    """Import every device module's device.py so its @register_module
-    decorator runs and populates the registry -- from the bundled package,
-    from the "phc.devices" entry point group, and from any `plugin_paths:`
-    directory. Idempotent, and cheap to call repeatedly."""
+    """Import every device module's device.py, populating the registry.
+
+    Covers the bundled package, the "phc.devices" entry-point group, and
+    any `plugin_paths:` directory. Idempotent, and cheap to call
+    repeatedly."""
     _discover_all(package_name, DEVICE_ENTRY_POINT_GROUP, "device", plugin_paths)
 
 
 def discover_extensions(package_name: str = "phc.extensions", plugin_paths=()) -> None:
-    """Import every extension's extension.py (so its @register_task_kind and
-    other decorators run) and record which package each extension name
-    lives in -- see extension_package(). Mirrors discover_modules(), but for
-    the extension.py convention."""
+    """Import every extension's extension.py, recording its package.
+
+    Runs @register_task_kind and other decorators; see extension_package()
+    for the recorded mapping. Mirrors discover_modules(), for the
+    extension.py convention."""
     for name, package in _discover_all(package_name, EXTENSION_ENTRY_POINT_GROUP,
                                         "extension", plugin_paths):
         _extension_packages[name] = package

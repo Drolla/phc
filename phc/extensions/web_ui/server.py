@@ -1,10 +1,12 @@
-"""aiohttp.web application for phc.extensions.web_ui: server-rendered (Jinja2)
-device pages/sections/panels + a JSON read API + a write endpoint + a
-per-widget HTML fragment endpoint used by HTMX for polling refresh, plus a
-timers-panel fragment/CRUD endpoint set (see _describe_timers_panel).
-build_app() only constructs the Application/routes (safe with no running
-loop); extension.py's WebUiInstance.on_start()/on_stop() own the actual
-AppRunner/TCPSite lifecycle, driven by phc.core.scheduler.Scheduler's
+"""aiohttp.web application for phc.extensions.web_ui.
+
+Server-rendered (Jinja2) device pages/sections/panels + a JSON read API
++ a write endpoint + a per-widget HTML fragment endpoint used by HTMX
+for polling refresh, plus a timers-panel fragment/CRUD endpoint set
+(see _describe_timers_panel). build_app() only constructs the
+Application/routes (safe with no running loop); extension.py's
+WebUiInstance.on_start()/on_stop() own the actual AppRunner/TCPSite
+lifecycle, driven by phc.core.scheduler.Scheduler's
 start_hooks/stop_hooks."""
 
 import importlib.resources
@@ -25,11 +27,10 @@ logger = logging.getLogger("phc.web_ui")
 
 # Templates and static assets are package DATA (see pyproject.toml's
 # [tool.setuptools.package-data]), so they are located through the import
-# system rather than from this file's own path -- the latter silently
-# works in a source checkout and is the reason an installed wheel used to
-# serve an unstyled UI. files() returns a real directory for any normal
-# (unzipped) install, which is what Jinja2's FileSystemLoader and
-# aiohttp's add_static both need.
+# system rather than from this file's own path -- the latter only happens
+# to work in a source checkout, not an installed wheel. files() returns a
+# real directory for any normal (unzipped) install, which is what
+# Jinja2's FileSystemLoader and aiohttp's add_static both need.
 _PACKAGE_DIR = Path(str(importlib.resources.files("phc.extensions.web_ui")))
 _TEMPLATES_DIR = _PACKAGE_DIR / "templates"
 _STATIC_DIR = _PACKAGE_DIR / "static"
@@ -64,10 +65,11 @@ TIMER_PANELS_BY_ID = web.AppKey("phc_timer_panels_by_id", dict)
 
 @web.middleware
 async def _log_requests(request: web.Request, handler):
-    """Handlers here signal redirects/errors by raising web.HTTPException
-    subclasses (e.g. handle_index's HTTPFound, handle_page's HTTPNotFound)
-    rather than returning them, so those must be caught here to still log
-    their status before re-raising for aiohttp's own handling."""
+    """Handlers here signal redirects/errors by raising, not returning.
+
+    web.HTTPException subclasses (e.g. handle_index's HTTPFound,
+    handle_page's HTTPNotFound), so those must be caught here to still
+    log their status before re-raising for aiohttp's own handling."""
     if request.method in ("POST", "PUT", "PATCH"):
         # request.post() caches its result on `request`, so this doesn't
         # consume anything the handler's own request.post() call still needs.
@@ -86,6 +88,10 @@ async def _log_requests(request: web.Request, handler):
 
 def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
               extensions_registry: dict) -> web.Application:
+    """Construct the Application, its per-request state, and routes.
+
+    For `pages`. Safe to call with no running event loop; see module
+    docstring for who owns starting/stopping it."""
     app = web.Application(middlewares=[_log_requests])
     app[DEVICES] = devices
     app[PAGES] = pages
@@ -125,17 +131,20 @@ def build_app(devices: dict[str, Device], pages: list, refresh_interval: float,
 
 
 def _roots(devices: dict[str, Device]) -> list[Device]:
+    """The top-level devices in `devices` (no '.' in their qualified_id)."""
     return [device for qualified_id, device in devices.items() if "." not in qualified_id]
 
 
 def _describe_timer(t) -> dict:
-    """One TimerDef (phc.extensions.timer.timer.TimerDef), reshaped for the
-    "timers" panel template: adds `target` (the "device/endpoint" pair-key
-    convention shared with phc.extensions.recovery/phc.extensions.logdb, used as
-    the form's target <select> value) and `time_local` (a naive local
-    "YYYY-MM-DDTHHMM"-shaped string an <input type="datetime-local"> can be
-    pre-filled with, matching phc.core.intervals' own naive-local time
-    convention -- see phc/core/intervals.py's parse_time)."""
+    """One TimerDef, reshaped for the "timers" panel template.
+
+    Adds `target` (the "device/endpoint" pair-key convention shared
+    with phc.extensions.recovery/phc.extensions.logdb, used as the
+    form's target <select> value) and `time_local` (a naive local
+    "YYYY-MM-DDTHHMM"-shaped string an <input type="datetime-local">
+    can be pre-filled with, matching phc.core.intervals' own
+    naive-local time convention -- see phc/core/intervals.py's
+    parse_time)."""
     return {
         "id": t.id,
         "device": t.device,
@@ -153,14 +162,16 @@ def _describe_timer(t) -> dict:
 
 def _describe_timers_panel(panel, devices: dict[str, Device],
                             extensions_registry: dict) -> tuple[dict, object | None]:
-    """Build a "timers" panel's template-ready data (targets + current
-    timer list), resolving `panel.timer_instance` against the live
-    EXTENSIONS_REGISTRY -- deferred to request/render time for the same
-    reason as GraphPanel's logdb_instance (see panels.TimersPanel). Returns
-    (data, instance): `data["error"]` is set instead of `targets`/`timers`
-    if the reference can't be resolved, and `instance` is None in that
-    case -- callers driving a CRUD mutation (not just rendering) use this
-    to 404 instead of proceeding."""
+    """Build a "timers" panel's template-ready data.
+
+    Targets + current timer list, resolving `panel.timer_instance`
+    against the live EXTENSIONS_REGISTRY -- deferred to request/render
+    time for the same reason as GraphPanel's logdb_instance (see
+    panels.TimersPanel). Returns (data, instance): `data["error"]` is
+    set instead of `targets`/`timers` if the reference can't be
+    resolved, and `instance` is None in that case -- callers driving a
+    CRUD mutation (not just rendering) use this to 404 instead of
+    proceeding."""
     instance = extensions_registry.get(panel.timer_instance)
     if instance is None or not hasattr(instance, "list_timers"):
         return ({"kind": "timers", "id": panel.id, "title": panel.title,
@@ -173,10 +184,13 @@ def _describe_timers_panel(panel, devices: dict[str, Device],
 
 
 def _render_panel_data(panel: Panel, devices: dict[str, Device], extensions_registry: dict) -> dict:
-    """Panel.describe() gives the raw (kind, resolved-selection) shape from
-    configure()-time; this turns it into what each panel kind's own branch
-    of templates/_macros.html's render_panel macro actually needs. "devices"
-    gets a pruned device tree scoped to its own matched pairs. "timers" gets
+    """Turns Panel.describe()'s raw shape into what the template needs.
+
+    Panel.describe() gives the raw (kind, resolved-selection) shape
+    from configure()-time; this turns it into what each panel kind's
+    own branch of templates/_macros.html's render_panel macro actually
+    needs. "devices" gets a pruned device tree scoped to its own
+    matched pairs. "timers" gets
     its target/timer lists (see _describe_timers_panel) -- unlike a graph
     panel's chart data (fetched separately by the browser, see
     handle_graph_data), a timers panel's data is small enough to embed
@@ -195,6 +209,7 @@ def _render_panel_data(panel: Panel, devices: dict[str, Device], extensions_regi
 
 
 def _describe_section(section, devices: dict[str, Device], extensions_registry: dict) -> dict:
+    """One page section's template-ready data, its panels via _render_panel_data."""
     return {
         "id": section.id,
         "title": section.title,
@@ -204,11 +219,13 @@ def _describe_section(section, devices: dict[str, Device], extensions_registry: 
 
 
 async def handle_index(request: web.Request) -> web.Response:
+    """GET /: redirect to the first configured page."""
     pages = request.app[PAGES]
     raise web.HTTPFound(f"/page/{pages[0].id}")
 
 
 async def handle_page(request: web.Request) -> web.Response:
+    """GET /page/{page_id}: render one page's sections/panels."""
     page_id = request.match_info["page_id"]
     page = request.app[PAGES_BY_ID].get(page_id)
     if page is None:
@@ -223,6 +240,9 @@ async def handle_page(request: web.Request) -> web.Response:
 
 
 async def handle_api_tree(request: web.Request) -> web.Response:
+    """GET /api/tree: the whole readable device tree as JSON.
+
+    ALL_PAIRS, independent of any page/section's own narrower selectors."""
     devices = request.app[DEVICES]
     pairs = request.app[ALL_PAIRS]
     tree = [d for d in (describe_device(root, pairs) for root in _roots(devices)) if d is not None]
@@ -230,6 +250,9 @@ async def handle_api_tree(request: web.Request) -> web.Response:
 
 
 async def handle_widget(request: web.Request) -> web.Response:
+    """GET /widget/{device}/{endpoint}: one endpoint's HTML fragment.
+
+    Poll-refresh fragment (see templates/_widget_only.html)."""
     devices = request.app[DEVICES]
     device_id = request.match_info["device"]
     endpoint_key = request.match_info["endpoint"]
@@ -248,12 +271,14 @@ async def handle_widget(request: web.Request) -> web.Response:
 
 
 async def handle_graph_data(request: web.Request) -> web.Response:
-    """History data for one GraphPanel (see phc/extensions/web_ui/panels.py),
-    fetched client-side by phc/extensions/web_ui/static/graph.js. The panel's
-    `logdb_instance` reference is resolved here, against the live
-    EXTENSIONS_REGISTRY, rather than at configure()-time -- see
-    GraphPanel's own docstring for why -- so an unresolvable instance
-    surfaces as a 404, not a config-time error."""
+    """History data for one GraphPanel.
+
+    See phc/extensions/web_ui/panels.py, fetched client-side by
+    phc/extensions/web_ui/static/graph.js. The panel's `logdb_instance`
+    reference is resolved here, against the live EXTENSIONS_REGISTRY,
+    rather than at configure()-time -- see GraphPanel's own docstring
+    for why -- so an unresolvable instance surfaces as a 404, not a
+    config-time error."""
     graph_id = request.match_info["graph_id"]
     panel = request.app[GRAPH_PANELS_BY_ID].get(graph_id)
     if panel is None:
@@ -281,13 +306,15 @@ async def handle_graph_data(request: web.Request) -> web.Response:
 
 
 async def handle_api_set(request: web.Request) -> web.Response:
-    """Form-encoded body (device, endpoint, text) -> device.set_text_async(
-    text, name=endpoint). set_text_async(), not the sync set_text(), is
-    required outside a scheduler tick to actually reach a native-async
-    device like phc.devices.zway.ZWayDevice -- see Device._emit()'s docstring.
-    Deliberately returns no body/markup: a write isn't observable via get()
-    until the NEXT tick's fetch()/update_state() (see Device.set()), so the
-    widget's own polling picks up the real value instead."""
+    """Form-encoded body (device, endpoint, text) -> device.set_text_async().
+
+    set_text_async(), not the sync set_text(), is required outside a
+    scheduler tick to actually reach a native-async device like
+    phc.devices.zway.ZWayDevice -- see Device._emit()'s docstring.
+    Deliberately returns no body/markup: a write isn't observable via
+    get() until the NEXT tick's fetch()/update_state() (see
+    Device.set()), so the widget's own polling picks up the real value
+    instead."""
     devices = request.app[DEVICES]
     data = await request.post()
     device_id, endpoint_key, text = data.get("device"), data.get("endpoint"), data.get("text")
@@ -315,6 +342,7 @@ async def handle_api_set(request: web.Request) -> web.Response:
 
 
 def _get_timers_panel(request: web.Request):
+    """Look up a timers panel by its `panel_id` path segment, or 404."""
     panel_id = request.match_info["panel_id"]
     panel = request.app[TIMER_PANELS_BY_ID].get(panel_id)
     if panel is None:
@@ -323,12 +351,13 @@ def _get_timers_panel(request: web.Request):
 
 
 def _timers_response(request: web.Request, panel) -> web.Response:
-    """Re-render one timers panel's fragment (table + form), the response
-    every timers route (poll and every CRUD mutation alike) returns --
-    unlike /api/set's empty 204, a timer write is extension state, already
-    committed and immediately readable, so there is no next-tick staleness
-    to avoid rendering (see handle_api_set's own docstring for that
-    contrast)."""
+    """Re-render one timers panel's fragment (table + form).
+
+    The response every timers route (poll and every CRUD mutation
+    alike) returns -- unlike /api/set's empty 204, a timer write is
+    extension state, already committed and immediately readable, so
+    there is no next-tick staleness to avoid rendering (see
+    handle_api_set's own docstring for that contrast)."""
     devices = request.app[DEVICES]
     data, _ = _describe_timers_panel(panel, devices, request.app[EXTENSIONS_REGISTRY])
     template = request.app[JINJA_ENV].get_template("_timers_only.html")
@@ -337,15 +366,18 @@ def _timers_response(request: web.Request, panel) -> web.Response:
 
 
 async def handle_timers_fragment(request: web.Request) -> web.Response:
-    """GET /timers/{panel_id}: the timers panel's own poll-refresh fragment,
-    mirroring handle_widget's role for a single device endpoint."""
+    """GET /timers/{panel_id}: the timers panel's own poll-refresh fragment.
+
+    Mirroring handle_widget's role for a single device endpoint."""
     return _timers_response(request, _get_timers_panel(request))
 
 
 def _resolve_timer_instance(request: web.Request, panel):
-    """Shared by every timers CRUD handler: 404 if `panel`'s
-    timer_instance can't be resolved (see _describe_timers_panel) --
-    otherwise return the live TimerInstance to mutate."""
+    """Shared by every timers CRUD handler.
+
+    404 if `panel`'s timer_instance can't be resolved (see
+    _describe_timers_panel) -- otherwise return the live TimerInstance
+    to mutate."""
     devices = request.app[DEVICES]
     _, instance = _describe_timers_panel(panel, devices, request.app[EXTENSIONS_REGISTRY])
     if instance is None:
@@ -354,15 +386,18 @@ def _resolve_timer_instance(request: web.Request, panel):
 
 
 def _parse_timer_form(data) -> dict:
-    """Extract one POSTed timer form (see templates/_timers.html's
-    render_timers_panel) into phc.extensions.timer.extension.TimerInstance's
-    add_timer()/update_timer() kwargs. `target` is "device/endpoint" (the
-    same pair-key convention as phc.extensions.recovery/phc.extensions.logdb,
-    rpartition'd on the LAST "/" since a qualified device id never
-    contains one itself -- see phc.core.task.resolve_endpoint_ref's analogous
-    last-dot split). A "value" field absent from the POST body (e.g. an
-    unchecked checkbox contributes nothing) becomes None, same as
-    action == "toggle" needing none."""
+    """Extract one POSTed timer form into TimerInstance's kwargs.
+
+    See templates/_timers.html's render_timers_panel, into
+    phc.extensions.timer.extension.TimerInstance's
+    add_timer()/update_timer() kwargs. `target` is "device/endpoint"
+    (the same pair-key convention as
+    phc.extensions.recovery/phc.extensions.logdb, rpartition'd on the
+    LAST "/" since a qualified device id never contains one itself --
+    see phc.core.task.resolve_endpoint_ref's analogous last-dot split).
+    A "value" field absent from the POST body (e.g. an unchecked
+    checkbox contributes nothing) becomes None, same as action ==
+    "toggle" needing none."""
     target = data.get("target", "")
     device, _, endpoint = target.rpartition("/")
     action = data.get("action", "set")
@@ -379,8 +414,10 @@ def _parse_timer_form(data) -> dict:
 
 
 async def handle_api_timers_set(request: web.Request) -> web.Response:
-    """POST /api/timers/{panel_id}: create (no `id` field) or update
-    (`id` present) a timer. Form-encoded, same convention as /api/set."""
+    """POST /api/timers/{panel_id}: create or update a timer.
+
+    No `id` field creates; `id` present updates. Form-encoded, same
+    convention as /api/set."""
     panel = _get_timers_panel(request)
     instance = _resolve_timer_instance(request, panel)
     data = await request.post()
@@ -411,9 +448,10 @@ async def handle_api_timers_delete(request: web.Request) -> web.Response:
 
 
 async def handle_api_timers_enable(request: web.Request) -> web.Response:
-    """POST /api/timers/{panel_id}/enable: form fields `id`, `enabled`
-    ("true"/"false") -- the row's own enabled checkbox, independent of the
-    add/edit form."""
+    """POST /api/timers/{panel_id}/enable: form fields `id`, `enabled`.
+
+    "true"/"false" -- the row's own enabled checkbox, independent of
+    the add/edit form."""
     panel = _get_timers_panel(request)
     instance = _resolve_timer_instance(request, panel)
     data = await request.post()

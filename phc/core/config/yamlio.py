@@ -1,5 +1,6 @@
-"""YAML loading for system configs: the `!include`/`!placeholder` tags and
-the list-splicing they imply.
+"""YAML loading for system configs.
+
+The `!include`/`!placeholder` tags, and the list-splicing they imply.
 
 Purely syntactic -- this layer knows nothing about devices, endpoints or
 tasks. It turns a file on disk into a plain nested dict/list structure,
@@ -16,13 +17,15 @@ _include_stack: list[Path] = []
 
 
 class _IncludeLoader(yaml.SafeLoader):
-    """SafeLoader that also understands !include <relative-path>, so a
-    system YAML can pull in child YAML files (see _include_constructor), and
-    <<: !include <relative-path>, which merges the included mapping's keys
-    into the surrounding mapping -- the surrounding mapping's own keys win,
-    the same precedence an ordinary `<<: *anchor` merge already has (see
-    construct_mapping below). Only a single !include as the merge value is
-    supported (not a sequence mixing !include with *anchor merges)."""
+    """SafeLoader that also understands !include and <<: !include.
+
+    !include <relative-path> lets a system YAML pull in child YAML files
+    (see _include_constructor). <<: !include <relative-path> merges the
+    included mapping's keys into the surrounding mapping -- the
+    surrounding mapping's own keys win, the same precedence an ordinary
+    `<<: *anchor` merge already has (see construct_mapping below). Only
+    a single !include as the merge value is supported (not a sequence
+    mixing !include with *anchor merges)."""
 
     def construct_mapping(self, node, deep=False):
         if not isinstance(node, yaml.MappingNode):
@@ -56,11 +59,12 @@ class _IncludeLoader(yaml.SafeLoader):
 
 
 def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
-    """Replace an !include node with the parsed contents of the referenced
-    file, resolved relative to the including file's own directory (so
-    child-of-child includes keep resolving correctly regardless of the root
-    file's location or the process's cwd). Raises ConfigError on a missing
-    file or a circular include chain."""
+    """Replace an !include node with its referenced file's parsed contents.
+
+    Resolved relative to the including file's own directory (so
+    child-of-child includes keep resolving correctly regardless of the
+    root file's location or the process's cwd). Raises ConfigError on a
+    missing file or a circular include chain."""
     include_rel = loader.construct_scalar(node)
     base_dir = Path(loader.name).resolve().parent
     include_path = (base_dir / include_rel).resolve()
@@ -78,15 +82,17 @@ def _include_constructor(loader: yaml.SafeLoader, node: yaml.Node):
 
 
 class _Placeholder(str):
-    """A scalar built from `!placeholder <example>` -- marks a value (a
-    credential, another system's URL, ...) that a system YAML's author must
-    replace with something real before the file is fit to run. Subclasses
-    str so the example text underneath still reads/compares like a normal
-    string to any code that isn't specifically checking for this type; see
-    _find_placeholders, which load_system() calls right after parsing, before
-    any of that code runs, so a leftover !placeholder always aborts the
-    load rather than silently reaching a device/extension as a literal
-    value like "<URL>"."""
+    """A scalar built from `!placeholder <example>`.
+
+    Marks a value (a credential, another system's URL, ...) that a
+    system YAML's author must replace with something real before the
+    file is fit to run. Subclasses str so the example text underneath
+    still reads/compares like a normal string to any code that isn't
+    specifically checking for this type; see _find_placeholders, which
+    load_system() calls right after parsing, before any of that code
+    runs, so a leftover !placeholder always aborts the load rather than
+    silently reaching a device/extension as a literal value like
+    "<URL>"."""
 
 
 def _placeholder_constructor(loader: yaml.SafeLoader, node: yaml.Node) -> _Placeholder:
@@ -94,11 +100,12 @@ def _placeholder_constructor(loader: yaml.SafeLoader, node: yaml.Node) -> _Place
 
 
 def _find_placeholders(value, path: str = "") -> list[str]:
-    """Recursively collect a human-readable path (dotted for mapping keys,
-    bracketed for list entries -- using that entry's own `id`/`tag` when it
-    has one, since "devices[2]" is far less useful than
-    "devices[2].children['sensor_cellar']") for every `!placeholder` value
-    still nested anywhere in `value` (the raw, just-parsed config tree)."""
+    """Recursively collect a path to every `!placeholder` value in `value`.
+
+    `value` is the raw, just-parsed config tree. Path is dotted for
+    mapping keys, bracketed for list entries -- using that entry's own
+    `id`/`tag` when it has one, since "devices[2]" is far less useful
+    than "devices[2].children['sensor_cellar']"."""
     found = []
     if isinstance(value, _Placeholder):
         found.append(path)
@@ -113,11 +120,12 @@ def _find_placeholders(value, path: str = "") -> list[str]:
 
 
 def _flatten_list_entries(raw_entries: list) -> list:
-    """Splice a `- !include <path>` item whose target resolves to a list
-    into the surrounding list, instead of nesting it as one list-of-lists
-    element. See docs/configuration.md#splitting-configuration-across-files.
-    Used by every top-level/nested list this module builds: `devices:`,
-    a host device's `children:`, `task_specs:`, `tasks:`."""
+    """Splice a `- !include <path>` list-target into the surrounding list.
+
+    Instead of nesting it as one list-of-lists element. See
+    docs/configuration.md#splitting-configuration-across-files. Used by
+    every top-level/nested list this module builds: `devices:`, a host
+    device's `children:`, `task_specs:`, `tasks:`."""
     flat = []
     for entry in raw_entries:
         if isinstance(entry, list):

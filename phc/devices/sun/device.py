@@ -1,5 +1,6 @@
-"""SunDevice: computes sunrise/sunset/dawn/dusk and solar elevation/azimuth
-for a location, purely from astronomy (no network or hardware)."""
+"""SunDevice: sunrise/sunset/dawn/dusk and solar elevation/azimuth.
+
+For a location, purely from astronomy (no network or hardware)."""
 
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -18,8 +19,10 @@ def _now(tzinfo):
 
 @register_module("sun")
 class SunDevice(Device):
-    """Pure computation via astral: today's sunrise/sunset/dawn/dusk/solar-noon
-    and current solar elevation/azimuth. No network or hardware. Synchronous.
+    """Pure computation via astral: sun events and current sun position.
+
+    Today's sunrise/sunset/dawn/dusk/solar-noon and current solar
+    elevation/azimuth. No network or hardware. Synchronous.
     """
 
     def setup(self):

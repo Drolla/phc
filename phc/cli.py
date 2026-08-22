@@ -41,11 +41,12 @@ def _parse_log_level_module(value: str) -> tuple[str, str]:
 
 def _resolve_debug_portal_instance(system: System, port: int | None,
                                     selectors: list[str]) -> DebugPortalInstance | None:
-    """Build a DebugPortalInstance from --debug-portal-port/--debug-portal-selector,
-    bound to `system` -- or None if `port` wasn't given (the flag's absence is
-    the common case: no debug portal for this run at all). Host is fixed to
-    phc/extensions/debug_portal/extension.yaml's own loopback default; only
-    port/selectors are exposed on the command line.
+    """Build a DebugPortalInstance from the --debug-portal-* flags.
+
+    Bound to `system` -- or None if `port` wasn't given (the flag's
+    absence is the common case: no debug portal for this run at all).
+    Host is fixed to phc/extensions/debug_portal/extension.yaml's own
+    loopback default; only port/selectors are exposed on the command line.
 
     Raises ValueError if the system YAML already configures its own
     extensions.debug_portal.<instance> -- rather than silently running a
@@ -70,8 +71,9 @@ def _resolve_debug_portal_instance(system: System, port: int | None,
 
 
 def _validate(argv) -> int:
-    """`phc validate --config X`: load the config and report, without
-    running it. Everything load_system() does -- module/extension
+    """`phc validate --config X`: load the config and report.
+
+    Without running it. Everything load_system() does -- module/extension
     discovery, parameter and endpoint resolution, task and action building
     -- happens here, so this catches the same problems a real start would,
     without touching hardware or binding a port. Returns a process exit
@@ -109,10 +111,11 @@ def _describe_parameters(parameters) -> list[str]:
 
 
 def _list_plugins(argv, kind: str) -> int:
-    """`phc list-modules` / `phc list-extensions`: what this installation
-    can actually use, including anything provided by an entry point or a
-    plugin_paths: directory -- the answer to "is my plugin installed, and
-    what does it accept?", which otherwise required reading source."""
+    """`phc list-modules` / `phc list-extensions`: what's installed.
+
+    Including anything provided by an entry point or a plugin_paths:
+    directory -- the answer to "is my plugin installed, and what does
+    it accept?", which otherwise required reading source."""
     parser = argparse.ArgumentParser(prog=f"phc list-{kind}s")
     parser.add_argument("--plugin-path", metavar="DIR", action="append", default=[],
                          help="also look in this directory (same layout as a system "

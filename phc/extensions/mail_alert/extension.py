@@ -1,9 +1,11 @@
-"""mail_alert extension wiring: resolves an extensions.mail_alert.<instance>'s
-SMTP connection details and default sender/recipients into a MailAlertInstance,
-and registers the "mail_alert" task action kind so a hand-authored `tasks:`
-entry can send a message through it -- see phc.core.config._load_extensions for
-how configure() is invoked, and phc.core.registry.discover_extensions() for how
-this module's @register_task_kind decorator gets picked up at startup."""
+"""mail_alert extension wiring: builds a MailAlertInstance.
+
+Resolves an extensions.mail_alert.<instance>'s SMTP connection details
+and default sender/recipients, and registers the "mail_alert" task
+action kind so a hand-authored `tasks:` entry can send a message
+through it -- see phc.core.config._load_extensions for how configure()
+is invoked, and phc.core.registry.discover_extensions() for how this
+module's @register_task_kind decorator gets picked up at startup."""
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -27,12 +29,14 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="phc-mail")
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "MailAlertInstance":
-    """Extension entry point (see phc.core.config._load_extensions): validate
-    this instance's SMTP settings and build a MailAlertInstance. Unlike
-    logdb/random_light, nothing here is resolved against `flat` -- a mail
-    alert has no device target. `extensions_registry` (see
-    phc.core.config._load_extensions) is unused here -- mail_alert never
-    references another extension's instance."""
+    """Extension entry point (see phc.core.config._load_extensions).
+
+    Validates this instance's SMTP settings and builds a
+    MailAlertInstance. Unlike logdb/random_light, nothing here is
+    resolved against `flat` -- a mail alert has no device target.
+    `extensions_registry` (see phc.core.config._load_extensions) is
+    unused here -- mail_alert never references another extension's
+    instance."""
     security = params["security"]
     if security not in _SECURITY_MODES:
         raise ConfigError(
@@ -59,9 +63,11 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
 
 
 class MailAlertInstance:
-    """One configured mail_alert instance: resolved SMTP connection settings
-    plus default sender/recipients. Looked up by name from a mail_alert
-    task action (see phc.core.config._load_extensions/_build_action)."""
+    """One configured mail_alert instance.
+
+    Resolved SMTP connection settings plus default sender/recipients.
+    Looked up by name from a mail_alert task action (see
+    phc.core.config._load_extensions/_build_action)."""
 
     def __init__(self, *, smtp_host: str, smtp_port: int, security: str,
                  username: str | None, password: str | None, timeout: float,
@@ -78,19 +84,20 @@ class MailAlertInstance:
 
     def send(self, *, to: list[str] | None, title: str, message: str,
               from_addr: str | None = None) -> None:
-        """Resolve `to`/`from_addr` against this instance's defaults and
-        submit the actual delivery to the shared background pool -- returns
-        immediately, so a slow/unreachable mail server never blocks the
-        calling Action.perform() (see extension.yaml's description)."""
+        """Resolve `to`/`from_addr` and submit delivery to the background pool.
+
+        Returns immediately, so a slow/unreachable mail server never
+        blocks the calling Action.perform() (see extension.yaml's
+        description)."""
         recipients = to or self.default_to
         sender = from_addr or self.default_from
         _executor.submit(self._deliver, recipients, title, message, sender)
 
     def _deliver(self, to: list[str], title: str, message: str, from_addr: str) -> None:
-        """Runs on a worker thread: perform the actual SMTP send and log the
-        outcome (success/failure is never surfaced back to the firing
-        task -- mirrors the old Tcl system's SendDirect success/failure log
-        line and its -debug flag)."""
+        """Runs on a worker thread: performs the SMTP send, logs the outcome.
+
+        Success/failure is never surfaced back to the firing task --
+        this is the only record of it."""
         try:
             send_mail(smtp_host=self.smtp_host, smtp_port=self.smtp_port, security=self.security,
                       username=self.username, password=self.password, timeout=self.timeout,
@@ -105,9 +112,11 @@ class MailAlertInstance:
 
 @register_task_kind("mail_alert")
 class MailAlertAction(Action):
-    """Sends one message through the named mail_alert instance when this
-    task fires. Has no single target device -- its YAML spec never has a
-    `device:` key, so device_id/endpoint_key stay None (see Action)."""
+    """Sends one message through the named mail_alert instance.
+
+    When this task fires. Has no single target device -- its YAML spec
+    never has a `device:` key, so device_id/endpoint_key stay None
+    (see Action)."""
 
     def __init__(self, *, instance: str, extensions: dict, title: str, message: str,
                  to: list[str] | None = None, **params):

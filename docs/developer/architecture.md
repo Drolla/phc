@@ -113,9 +113,14 @@ of the step, and a forwards step would fire a burst of catch-up polls. A
 task set for `22:00` genuinely should move with the clock, which is why the
 split exists rather than one clock winning.
 
-Both are passed explicitly into `tick()`, so a caller can drive ticks at
-whatever times it likes; that is how the test suite runs a day of
-scheduling in milliseconds.
+Both readings travel together as one frozen `Now(wall, mono)`
+(`phc/core/clock.py`), passed explicitly into `tick()` rather than read from
+the clock inside — so a caller can drive ticks at whatever times it likes.
+Each use site names the clock it reads (`now.wall`, `now.mono`), and a
+function needing only one takes a plain `mono:` or `wall:` float instead.
+`tick()` also accepts a bare number, expanded to both clocks reading that
+instant; that is how the test suite runs a day of scheduling in
+milliseconds.
 
 The heartbeat itself is a **deadline grid**: the next tick is scheduled one
 heartbeat after the previous tick's *start*. Sleeping a heartbeat after it

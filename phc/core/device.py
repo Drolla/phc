@@ -20,6 +20,12 @@ class Device:
     A device holds zero-or-more Endpoints and zero-or-more child Devices at
     the same time. A pure grouping/"host" device is simply a Device with no
     endpoints of its own -- there is no separate host/leaf class hierarchy.
+
+    get/set/get_text/set_text/get_event/get_update_time all share one
+    dispatch: called with no `name`, they target the whole device -- a
+    bare scalar shortcut when there's exactly one endpoint and no
+    children, else a dict keyed by endpoint/child name. Called with
+    `name`, they target that one endpoint or child directly.
     """
 
     def __init__(self, id: str, *, name: str = "", params: dict | None = None,
@@ -97,6 +103,7 @@ class Device:
 
     def consume_reported_failure(self) -> str | None:
         """Return and clear any failure reported during the last fetch.
+
         Called by the Scheduler; not part of a device module's API."""
         reported, self._reported_failure = self._reported_failure, None
         return reported
@@ -115,30 +122,37 @@ class Device:
 
     def receive(self) -> dict:
         """Read raw state(s) from hardware -> {endpoint_key: raw_value}.
-        Default (sync, blocking) override point; bridged onto a worker thread
-        by the default receive_async(). No-op base implementation (returns
-        {})."""
+
+        Default (sync, blocking) override point; bridged onto a worker
+        thread by the default receive_async(). No-op base implementation
+        (returns {})."""
         return {}
 
     def transmit(self, state: dict) -> None:
-        """Push a requested state change to hardware; state is
-        {endpoint_key: value}. Default (sync, blocking) override point;
-        bridged onto a worker thread by the default transmit_async(). No-op
-        base implementation (read-only/group devices)."""
+        """Push a requested state change to hardware.
+
+        `state` is {endpoint_key: value}. Default (sync, blocking)
+        override point; bridged onto a worker thread by the default
+        transmit_async(). No-op base implementation (read-only/group
+        devices)."""
         pass
 
     async def receive_async(self) -> dict:
-        """Default: bridge the blocking receive() onto the loop's executor. A
-        native-async device overrides this directly instead of receive()."""
+        """Default: bridge the blocking receive() onto the loop's executor.
+
+        A native-async device overrides this directly instead of
+        receive()."""
         self._fetch_thread_running = True
         return await asyncio.to_thread(self._receive_and_clear)
 
     def _receive_and_clear(self) -> dict:
-        """Worker-thread body for the default receive_async: run receive(),
-        then always release the in-flight guard -- regardless of whether the
-        awaiting coroutine was itself cancelled/abandoned by a timeout in the
-        meantime (a thread can't be force-cancelled, so this is the only place
-        it's safe to clear the flag)."""
+        """Worker-thread body for the default receive_async().
+
+        Runs receive(), then always releases the in-flight guard --
+        regardless of whether the awaiting coroutine was itself
+        cancelled/abandoned by a timeout in the meantime (a thread can't
+        be force-cancelled, so this is the only place it's safe to clear
+        the flag)."""
         try:
             return self.receive()
         finally:
@@ -146,17 +160,20 @@ class Device:
 
     async def transmit_async(self, state: dict) -> None:
         """Default: bridge the blocking transmit() onto the loop's executor.
-        No in-flight guard is needed: each tick's write is one-shot and never
-        re-issued, so a timed-out write's thread finishing late is
+
+        No in-flight guard is needed: each tick's write is one-shot and
+        never re-issued, so a timed-out write's thread finishing late is
         harmless."""
         await asyncio.to_thread(self.transmit, state)
 
     def _emit(self, state: dict) -> None:
-        """Route a write from set(): defer into an active tick's write
-        collector, else transmit immediately via the synchronous transmit()
-        -- a no-op for a native-async device (overrides transmit_async()
-        directly, e.g. phc.devices.zway.ZWayDevice); use set_text_async() for
-        those outside a tick instead."""
+        """Route a write from set().
+
+        Defers into an active tick's write collector, else transmits
+        immediately via the synchronous transmit() -- a no-op for a
+        native-async device (overrides transmit_async() directly, e.g.
+        phc.devices.zway.ZWayDevice); use set_text_async() for those
+        outside a tick instead."""
         collector = _write_collector.get()
         if collector is None:
             self.transmit(state)
@@ -164,8 +181,9 @@ class Device:
             collector.append((self, state))
 
     async def _emit_async(self, state: dict) -> None:
-        """_emit(), but awaits transmit_async() directly so it reaches a
-        native-async device's override too."""
+        """_emit(), but awaits transmit_async() directly.
+
+        So it reaches a native-async device's override too."""
         collector = _write_collector.get()
         if collector is None:
             await self.transmit_async(state)
@@ -173,20 +191,22 @@ class Device:
             collector.append((self, state))
 
     # ---------- 2. PHC control interface (driven by the scheduler) ----------
+    #
+    # fetch()/update_state() are deliberately not recursive into children
+    # (unlike get()/get_text()/set()/etc. below): phc.core.scheduler.Scheduler
+    # drives every device -- parent and descendant alike -- directly from
+    # the flat device dict (see phc.core.config._build_device), so recursing
+    # here would redo a child's own, separately-scheduled work a second
+    # time in the same tick.
 
     async def fetch(self) -> None:
-        """Stage this device's own raw state via receive_async(). The single
-        always-async orchestration method -- identical for every device,
-        sync-bridged or native-async.
+        """Stage this device's own raw state via receive_async().
 
-        Deliberately NOT recursive into children, for the same reason
-        update_state() isn't (see that method): phc.core.scheduler.Scheduler
-        drives every device directly from its flat device dict (parent and
-        descendant alike, see phc.core.config._build_device), so recursing here
-        would fetch a child twice whenever both it and its parent are due --
-        concurrently, at that. It also makes each device's own `update:`
-        authoritative: a child no longer inherits its parent's poll cadence
-        just by being nested under it.
+        The single always-async orchestration method -- identical for
+        every device, sync-bridged or native-async. Not recursive into
+        children (see section banner above) -- which also makes each
+        device's own `update:` authoritative: a child doesn't inherit
+        its parent's poll cadence just by being nested under it.
 
         In-flight guard: if a previous receive_async() bridge call (this
         device's own blocking receive(), offloaded to a worker thread) is
@@ -208,35 +228,38 @@ class Device:
     def update_state(self):
         """Commit every endpoint's staged value (see Endpoint.update_state).
 
-        Deliberately NOT recursive into children (unlike get()/get_text()/
-        set()/etc.) -- phc.core.scheduler.Scheduler's commit pass already visits
-        every device directly via its flat device dict (parent and descendant
-        alike, see phc.core.config._build_device), so recursing here too would
-        double-commit -- and reset the freshly-computed Endpoint.get_event()
-        of -- any device with children a second time in the same tick."""
+        Not recursive into children (see section banner above) -- doing so
+        would double-commit, and reset the freshly-computed
+        Endpoint.get_event() of, any device with children a second time in
+        the same tick."""
         for ep in self.endpoints.values():
             ep.update_state()
 
-    def due(self, now: float) -> bool:
-        """True if this device is poll-eligible now: has an update_interval
-        and at least that long has passed since mark_run().
+    def due(self, mono: float) -> bool:
+        """True if this device is poll-eligible now.
 
-        `now` is whatever clock the caller drives the pair with -- the
-        Scheduler passes time.monotonic(), so a wall-clock step (NTP, DST)
-        can neither stall polling nor trigger a catch-up burst; see
-        phc.core.scheduler.Scheduler's class docstring."""
+        Has an update_interval and at least that long has passed since
+        mark_run().
+
+        `mono` must be the same clock mark_run() and next_due() are read
+        in -- the Scheduler drives all three with Now.mono (monotonic), so
+        a wall-clock step (NTP, DST) can neither stall polling nor trigger
+        a catch-up burst; see phc.core.scheduler.Scheduler's class
+        docstring."""
         if self.update_interval is None:
             return False
-        return (now - self._last_run) >= self.update_interval
+        return (mono - self._last_run) >= self.update_interval
 
-    def mark_run(self, now: float):
-        """Record `now` as this device's last poll time, for due(). Same
-        clock as due() -- monotonic, when driven by the Scheduler."""
-        self._last_run = now
+    def mark_run(self, mono: float):
+        """Record `mono` as this device's last poll time, for due().
+
+        Same clock as due() -- monotonic, when driven by the Scheduler."""
+        self._last_run = mono
 
     def next_due(self) -> float:
-        """Return the clock reading (see due()) at which due() next becomes
-        True, or +inf for a device with no update_interval (never
+        """Return the clock reading at which due() next becomes True.
+
+        See due(). +inf for a device with no update_interval (never
         auto-polled)."""
         if self.update_interval is None:
             return float("inf")
@@ -253,9 +276,7 @@ class Device:
         raise KeyError(f"{self.qualified_id}: no endpoint or child named {key!r}")
 
     def get(self, name: str | None = None):
-        """No args: whole-device value (scalar shortcut for a single endpoint
-        and no children, else a dict). With `name`: that one endpoint's or
-        child's value directly."""
+        """The current value(s) -- see class docstring for the dispatch."""
         if name is not None:
             _, target = self._resolve(name)
             return target.get()
@@ -266,13 +287,12 @@ class Device:
         return result
 
     def set(self, value, name: str | None = None):
-        """No `name`: whole-device set (scalar for a single endpoint and no
-        children, else a dict routed per-key). With `name`: set that one
-        endpoint/child only. Endpoint writes always go through transmit() --
-        a value only becomes observable via get() after the next
-        fetch()/receive()/update_state() cycle. Each endpoint value passes
-        through its own to_raw() (its declared write_transform, if any) on
-        the way to transmit()."""
+        """Write value(s) -- see class docstring for the dispatch.
+
+        Each endpoint value passes through its own to_raw() (its
+        declared write_transform, if any) on the way to transmit(); the
+        change only becomes observable via get() after the next
+        fetch()/update_state() cycle."""
         if name is not None:
             kind, target = self._resolve(name)
             if kind == "endpoint":
@@ -303,8 +323,9 @@ class Device:
             self._emit(writes)
 
     def get_text(self, name: str | None = None):
-        """Like get(), but returns each endpoint's formatted display text
-        (see Endpoint.to_text) instead of its raw value."""
+        """Like get(), but each endpoint's formatted display text.
+
+        (Endpoint.to_text) instead of its raw value."""
         if name is not None:
             kind, target = self._resolve(name)
             return target.to_text() if kind == "endpoint" else target.get_text()
@@ -315,8 +336,9 @@ class Device:
         return result
 
     def _prepare_text_writes(self, text, name: str | None = None):
-        """Shared set_text()/set_text_async() logic, stopping short of
-        emitting: -> ({endpoint_key: raw_value}, [(child_device, text)])."""
+        """Shared set_text()/set_text_async() logic, short of emitting.
+
+        -> ({endpoint_key: raw_value}, [(child_device, text)])."""
         if name is not None:
             kind, target = self._resolve(name)
             if kind == "endpoint":
@@ -344,8 +366,9 @@ class Device:
         return writes, children
 
     def set_text(self, text, name: str | None = None):
-        """Like set(), but `text` is formatted display text (see
-        Endpoint.from_text) rather than a raw value."""
+        """Like set(), but `text` is formatted display text.
+
+        (Endpoint.from_text) rather than a raw value."""
         writes, children = self._prepare_text_writes(text, name)
         for child, val in children:
             child.set_text(val)
@@ -361,8 +384,9 @@ class Device:
             await self._emit_async(writes)
 
     def get_event(self, name: str | None = None):
-        """Like get(), but returns each endpoint's change event (see
-        Endpoint.get_event) instead of its current value."""
+        """Like get(), but each endpoint's change event.
+
+        (Endpoint.get_event) instead of its current value."""
         if name is not None:
             _, target = self._resolve(name)
             return target.get_event()
@@ -373,8 +397,10 @@ class Device:
         return result
 
     def get_update_time(self, name: str | None = None):
-        """No args: the most recent update_time across all endpoints/children
-        (0.0 if none). With `name`: that one endpoint's or child's update_time."""
+        """No args: the most recent update_time across all endpoints/children.
+
+        0.0 if none. With `name`: that one endpoint's or child's
+        update_time."""
         if name is not None:
             _, target = self._resolve(name)
             return target.get_update_time()
@@ -387,9 +413,11 @@ class Device:
     update_time = property(get_update_time)
 
     def endpoint(self, name: str) -> Endpoint:
-        """Direct access to the Endpoint object itself, for callers that want
-        its full interface (get/set/event/update_time, readable/writable/
-        parameters) rather than the device-level get(name)/set(name, value)
+        """Direct access to the Endpoint object itself.
+
+        For callers that want its full interface
+        (get/set/event/update_time, readable/writable/parameters)
+        rather than the device-level get(name)/set(name, value)
         dispatchers."""
         return self.endpoints[name]
 

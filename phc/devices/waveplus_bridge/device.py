@@ -1,5 +1,7 @@
-"""WavePlusBridgeDevice: reads live radon/air-quality readings for one
-Airthings Wave Plus unit from a shared WavePlus_Bridge HTTP endpoint."""
+"""WavePlusBridgeDevice: live radon/air-quality readings for one unit.
+
+One Airthings Wave Plus unit, from a shared WavePlus_Bridge HTTP
+endpoint."""
 
 import asyncio
 import time
@@ -22,9 +24,11 @@ _response_cache_lock = asyncio.Lock()
 @register_module("waveplus_bridge")
 class WavePlusBridgeDevice(Device):
     """One Airthings Wave Plus sensor unit via a WavePlus_Bridge HTTP server.
-    Fetches shared bridge payload, selects this device's sensor by sensor_id,
-    and marks it unavailable if its reading (per update_time vs current_time)
-    is stale, even if the bridge itself is healthy. Read-only.
+
+    Fetches shared bridge payload, selects this device's sensor by
+    sensor_id, and marks it unavailable if its reading (per update_time
+    vs current_time) is stale, even if the bridge itself is healthy.
+    Read-only.
     """
 
     def setup(self):
@@ -38,8 +42,9 @@ class WavePlusBridgeDevice(Device):
         self._data_validity_time = parse_duration(self.params.get("data_validity_time", "5m"))
 
     async def receive_async(self) -> dict:
-        """Fetch shared bridge payload, select+validate this device's sensor,
-        return {endpoint_key: value}."""
+        """Fetch shared bridge payload, select+validate this device's sensor.
+
+        Returns {endpoint_key: value}."""
         try:
             payload = await self._get_payload()
         except (TimeoutError, aiohttp.ClientError) as exc:
@@ -54,8 +59,9 @@ class WavePlusBridgeDevice(Device):
                 for key, ep in self.endpoints.items()}
 
     def _select_sensor(self, payload: dict | None) -> dict | None:
-        """Return this device's sensor sub-dict, or None if bridge is
-        unreachable, sensor_id missing, or sensor reading is stale
+        """Return this device's sensor sub-dict, or None if unavailable.
+
+        Unreachable bridge, missing sensor_id, or stale reading
         (current_time - update_time > data_validity_time). If either
         timestamp is missing, staleness check is skipped (fails open)."""
         if payload is None:
@@ -72,18 +78,19 @@ class WavePlusBridgeDevice(Device):
 
     async def _get_payload(self) -> dict:
         """Return shared bridge payload, reusing cached copy if fresh.
+
         Uses double-checked locking to avoid cache stampedes."""
-        now = time.monotonic()
+        mono = time.monotonic()
         cached = _response_cache.get(self._base_url)
-        if cached is not None and (now - cached[0]) < self._cache_time:
+        if cached is not None and (mono - cached[0]) < self._cache_time:
             return cached[1]
         async with _response_cache_lock:
-            now = time.monotonic()
+            mono = time.monotonic()
             cached = _response_cache.get(self._base_url)
-            if cached is not None and (now - cached[0]) < self._cache_time:
+            if cached is not None and (mono - cached[0]) < self._cache_time:
                 return cached[1]
             payload = await self._download_payload()
-            _response_cache[self._base_url] = (now, payload)
+            _response_cache[self._base_url] = (mono, payload)
             return payload
 
     async def _download_payload(self) -> dict:

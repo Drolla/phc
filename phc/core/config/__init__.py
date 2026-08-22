@@ -1,9 +1,10 @@
-"""System YAML loading: parses a system config file into a System (devices,
-tasks, and scheduler settings), merging each device's params/endpoints
-against its module's declared module.yaml along the way.
+"""System YAML loading: parses a system config file into a System.
 
-This was a single 1450-line module. It is now a package, one module per
-stage of the load, in dependency order:
+A System holds devices, tasks, and scheduler settings, each device's
+params/endpoints merged against its module's declared module.yaml along
+the way.
+
+One module per stage of the load, in dependency order:
 
 - `yamlio` -- the `!include`/`!placeholder` tags; file to nested dict.
 - `descriptors` -- parsed module.yaml/extension.yaml, and the key sets
@@ -18,10 +19,10 @@ stage of the load, in dependency order:
   history sampling).
 - `system` -- the System object and `load_system()`, tying it together.
 
-Every name the package exposed as a flat module is re-exported here, so
-`from phc.core.config import load_system` (and the private names the test
-suite reaches for) keeps working unchanged. Import from a submodule
-directly when you want to be explicit about which stage you mean.
+Every name is re-exported here, so `from phc.core.config import
+load_system` (and the private names the test suite reaches for) works
+unchanged. Import from a submodule directly to be explicit about which
+stage you mean.
 """
 
 from phc.core.config.descriptors import (

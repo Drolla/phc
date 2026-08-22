@@ -1,12 +1,15 @@
-"""timer extension wiring: resolves an extensions.timer.<instance>'s
-`selectors` list against the live device tree (post-filtered to writable
-endpoints only, same rule as phc.extensions.recovery, since a timer's whole
-point is writing to its target), restores every persisted timer as a real
-phc.core.task.Task once at startup (see on_bind), and exposes the CRUD API
-`phc/extensions/web_ui`'s `kind: timers` panel drives (see
-phc/extensions/web_ui/panels.py's TimersPanel and phc/extensions/web_ui/server.py's
-timer routes) -- see phc.core.config._load_extensions for how configure() is
-invoked, and phc.core.scheduler.Scheduler for on_tick/on_bind timing.
+"""timer extension wiring: turns persisted timers into Tasks.
+
+Resolves an extensions.timer.<instance>'s `selectors` list against the
+live device tree (post-filtered to writable endpoints only, same rule
+as phc.extensions.recovery, since a timer's whole point is writing to
+its target), restores every persisted timer as a real
+phc.core.task.Task once at startup (see on_bind), and exposes the CRUD
+API `phc/extensions/web_ui`'s `kind: timers` panel drives (see
+phc/extensions/web_ui/panels.py's TimersPanel and
+phc/extensions/web_ui/server.py's timer routes) -- see
+phc.core.config._load_extensions for how configure() is invoked, and
+phc.core.scheduler.Scheduler for on_tick/on_bind timing.
 
 Timers are deliberately NOT a parallel scheduler: each becomes an ordinary
 phc.core.task.Task (via the system's TaskRegistry), tagged "<instance_key>.<id>",
@@ -28,13 +31,14 @@ logger = logging.getLogger("phc.timer")
 
 
 def _task_spec(timer: TimerDef, instance_key: str) -> dict:
-    """Build one timer's phc.core.task Task spec (the same shape as a `tasks:`
-    YAML entry -- see phc.core.config._build_task), consumed by
-    phc.core.task.TaskRegistry.create. `time:` is always the timer's own literal
-    Unix timestamp (parse_time's digit-string branch); `repeat:` (if set)
-    then drives parse_time's own "already past -> advance by whole
-    multiples" catch-up logic -- no separate rolling-forward code is
-    needed here for repeating timers."""
+    """Build one timer's phc.core.task Task spec.
+
+    Same shape as a `tasks:` YAML entry (see phc.core.config._build_task),
+    consumed by phc.core.task.TaskRegistry.create. `time:` is always the
+    timer's own literal Unix timestamp (parse_time's digit-string
+    branch); `repeat:` (if set) then drives parse_time's own "already
+    past -> advance by whole multiples" catch-up logic -- no separate
+    rolling-forward code is needed here for repeating timers."""
     action_spec = {"kind": timer.action, "device": f"{timer.device}.{timer.endpoint}"}
     if timer.action == "set":
         action_spec["value"] = timer.value
@@ -49,15 +53,18 @@ def _task_spec(timer: TimerDef, instance_key: str) -> dict:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "TimerInstance":
-    """Extension entry point (see phc.core.config._load_extensions): resolve
-    `selectors` once against the static device tree, reject at
-    configure-time (ConfigError) any selector that matches zero endpoints
-    or a non-writable one -- both are almost certainly configuration
-    mistakes, mirroring phc.extensions.recovery.extension.configure. Loading
-    persisted timers and registering their Tasks is deferred to on_bind
-    (see TimerInstance.on_bind), since `flat`/`extensions_registry` here
-    don't yet include the fully-built System.tasks list a Task needs to be
-    registered into -- see phc.core.config.load_system's on_bind docstring."""
+    """Extension entry point (see phc.core.config._load_extensions).
+
+    Resolves `selectors` once against the static device tree, rejects
+    at configure-time (ConfigError) any selector that matches zero
+    endpoints or a non-writable one -- both are almost certainly
+    configuration mistakes, mirroring
+    phc.extensions.recovery.extension.configure. Loading persisted
+    timers and registering their Tasks is deferred to on_bind (see
+    TimerInstance.on_bind), since `flat`/`extensions_registry` here
+    don't yet include the fully-built System.tasks list a Task needs to
+    be registered into -- see phc.core.config.load_system's on_bind
+    docstring."""
     pairs = resolve_selectors(params["selectors"], flat)
     if not pairs:
         raise ConfigError(
@@ -75,11 +82,13 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
 
 
 class TimerInstance:
-    """One configured timer instance: a TimerStore plus the resolved,
-    writable-only targets it may schedule against, and the live set of
-    user-defined TimerDefs (keyed by id) each mirrored into a
-    phc.core.task.Task. Looked up by name from phc/extensions/web_ui's
-    `kind: timers` panel (see phc/extensions/web_ui/server.py)."""
+    """One configured timer instance.
+
+    A TimerStore plus the resolved, writable-only targets it may
+    schedule against, and the live set of user-defined TimerDefs
+    (keyed by id) each mirrored into a phc.core.task.Task. Looked up by
+    name from phc/extensions/web_ui's `kind: timers` panel (see
+    phc/extensions/web_ui/server.py)."""
 
     def __init__(self, store: TimerStore, target_pairs: list[tuple[str, str]],
                  instance_key: str, catch_up: float):
@@ -98,11 +107,12 @@ class TimerInstance:
     # ---------- lifecycle hooks (auto-collected, see phc.core.config.load_system) ----------
 
     def on_bind(self, system) -> None:
-        """Capture the fully-built System, then load every persisted timer:
-        a one-shot missed by more than `catch_up` is dropped (INFO log,
+        """Capture the fully-built System, then load every persisted timer.
+
+        A one-shot missed by more than `catch_up` is dropped (INFO log,
         never fired); everything else is registered as a Task. Runs
-        synchronously at load time, before the Scheduler's first tick --
-        see phc.core.config.load_system's on_bind docstring."""
+        synchronously at load time, before the Scheduler's first tick
+        -- see phc.core.config.load_system's on_bind docstring."""
         self._flat = system.devices
         self._tasks = system.tasks
 
@@ -129,12 +139,13 @@ class TimerInstance:
                      self.instance_key, len(kept), dropped)
 
     def on_tick(self, devices: dict[str, Device]) -> None:
-        """Reconcile the persisted timers against this tick's live task
-        list: a one-shot whose Task the Scheduler already retired (see
-        phc.core.scheduler.Scheduler pass 2, task.finished) is removed here
-        too; a repeating timer whose Task.due_time advanced (it fired and
-        rearmed) has that new time mirrored back. Persists only if
-        something actually changed."""
+        """Reconcile the persisted timers against this tick's live task list.
+
+        A one-shot whose Task the Scheduler already retired (see
+        phc.core.scheduler.Scheduler pass 2, task.finished) is removed
+        here too; a repeating timer whose Task.due_time advanced (it
+        fired and rearmed) has that new time mirrored back. Persists
+        only if something actually changed."""
         if self._tasks is None:
             return
         tasks_by_tag = {t.tag: t for t in self._tasks}
@@ -161,6 +172,7 @@ class TimerInstance:
         return sorted(self._timers.values(), key=lambda t: t.time)
 
     def get_timer(self, timer_id: int) -> TimerDef:
+        """The timer with this id. Raises ValueError if it doesn't exist."""
         try:
             return self._timers[timer_id]
         except KeyError:
@@ -169,10 +181,10 @@ class TimerInstance:
     def add_timer(self, *, time_spec: str, device: str, endpoint: str, action: str,
                    value=None, repeat_spec: str | None = None, description: str = "",
                    enabled: bool = True) -> TimerDef:
-        """Validate and persist a new timer, registering its Task if
-        `enabled`. Raises ValueError (surfaced by the web UI as a 400) for
-        a bad time/repeat/value or a target outside this instance's
-        selectors."""
+        """Validate and persist a new timer, registering its Task if `enabled`.
+
+        Raises ValueError (surfaced by the web UI as a 400) for a bad
+        time/repeat/value or a target outside this instance's selectors."""
         t = self._build_timer(self._next_id, time_spec, device, endpoint, action,
                                value, repeat_spec, description, enabled)
         self._timers[t.id] = t
@@ -185,9 +197,10 @@ class TimerInstance:
     def update_timer(self, timer_id: int, *, time_spec: str, device: str, endpoint: str,
                       action: str, value=None, repeat_spec: str | None = None,
                       description: str = "", enabled: bool = True) -> TimerDef:
-        """Replace timer `timer_id`'s definition, re-registering its Task
-        (TaskRegistry.create replaces by tag) so
-        an in-flight edit takes effect on the very next tick."""
+        """Replace timer `timer_id`'s definition, re-registering its Task.
+
+        (TaskRegistry.create replaces by tag) so an in-flight edit
+        takes effect on the very next tick."""
         if timer_id not in self._timers:
             raise ValueError(f"timer {timer_id}: not found")
         t = self._build_timer(timer_id, time_spec, device, endpoint, action,
@@ -200,15 +213,17 @@ class TimerInstance:
         return t
 
     def delete_timer(self, timer_id: int) -> None:
+        """Remove timer `timer_id` and kill its live Task, if any."""
         t = self.get_timer(timer_id)
         self._tasks.kill([t.tag(self.instance_key)])
         del self._timers[timer_id]
         self._persist()
 
     def set_enabled(self, timer_id: int, enabled: bool) -> TimerDef:
-        """Enable/disable timer `timer_id` without deleting it -- a
-        disabled timer stays persisted (and keeps its own `time`), but has
-        no live Task, so it never fires until re-enabled."""
+        """Enable/disable timer `timer_id` without deleting it.
+
+        A disabled timer stays persisted (and keeps its own `time`),
+        but has no live Task, so it never fires until re-enabled."""
         t = self.get_timer(timer_id)
         if t.enabled == enabled:
             return t
@@ -225,13 +240,15 @@ class TimerInstance:
     def _build_timer(self, timer_id: int, time_spec: str, device: str, endpoint: str,
                       action: str, value, repeat_spec: str | None, description: str,
                       enabled: bool) -> TimerDef:
-        """Validate `device`/`endpoint` against this instance's configured
-        targets, `time_spec`/`repeat_spec` against phc.core.intervals, and (for
+        """Validate a timer's fields against this instance's configured targets.
+
+        `device`/`endpoint` against this instance's configured targets,
+        `time_spec`/`repeat_spec` against phc.core.intervals, and (for
         action "set") `value` against the target endpoint's own
-        Endpoint.from_text() -- the same conversion the Task will run at
-        fire time (see phc.core.device.Device.set_text), so a bad value is
-        rejected immediately rather than only when the timer next fires.
-        Raises ValueError on any failure."""
+        Endpoint.from_text() -- the same conversion the Task will run
+        at fire time (see phc.core.device.Device.set_text), so a bad
+        value is rejected immediately rather than only when the timer
+        next fires. Raises ValueError on any failure."""
         if (device, endpoint) not in self._target_set:
             raise ValueError(
                 f"timer: {device}.{endpoint} is not a configured timer target for "
@@ -247,11 +264,14 @@ class TimerInstance:
                          repeat=repeat, description=description, enabled=bool(enabled))
 
     def _register_task(self, t: TimerDef) -> None:
-        """Mirror one timer into the live task set. The registry supplies
-        the build context (devices, extensions, sticky endpoints, task
-        templates), so a timer's Task is built exactly like a hand-authored
-        `tasks:` entry rather than through a separately-assembled one."""
+        """Mirror one timer into the live task set.
+
+        The registry supplies the build context (devices, extensions,
+        sticky endpoints, task templates), so a timer's Task is built
+        exactly like a hand-authored `tasks:` entry rather than
+        through a separately-assembled one."""
         self._tasks.create(_task_spec(t, self.instance_key))
 
     def _persist(self) -> None:
+        """Write every held timer to the store."""
         self.store.write(self._next_id, sorted(self._timers.values(), key=lambda t: t.id))

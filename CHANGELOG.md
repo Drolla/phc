@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-08-21
+
+**Internal changes**
+
+- The scheduler's two clocks now travel as a single frozen `Now(wall, mono)`
+  value (`phc/core/clock.py`) instead of a `now`/`now_mono` parameter pair,
+  so every use site names the clock it reads. `Scheduler.tick()`,
+  `Task.run()` and the debug portal's `build_snapshot()` lost their
+  `now_mono` parameter; all three still accept a bare number, expanded to
+  both clocks reading that instant, so a caller driving ticks at explicit
+  times is unaffected. Functions needing only one clock now take a `mono:`
+  or `wall:` float rather than an ambiguous `now:` — `Device.due()`,
+  `Device.mark_run()`, `DeviceHealth.record_success()`/`record_failure()`
+  and `Endpoint.get_age()`. No behavior change, and no YAML change; the
+  wall/monotonic split itself is unchanged.
+
 ### 2026-08-16
 
 **Packaging**

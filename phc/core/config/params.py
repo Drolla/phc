@@ -1,6 +1,7 @@
-"""Parameter resolution: merging a device instance's declared parameters
-against its module, and the top-level `modules.<name>:` section that lets
-every device of one module type share configuration.
+"""Parameter resolution: instance params merged against module declarations.
+
+Includes the top-level `modules.<name>:` section that lets every device
+of one module type share configuration.
 
 Owns the scope (`module` vs `device`) and override (`allowed`/`required`/
 `none`) rules, and the profile-library overlay a system config may add on
@@ -28,18 +29,15 @@ class _ModuleConfig:
     """Resolved top-level `modules.<name>:` entry for one module type:
 
     - module_params: `scope: module` parameter values (one shared value for
-      every device of this module type) -- same as the old
-      _resolve_module_params() return value.
+      every device of this module type).
     - device_param_defaults: `scope: device` parameter values supplied
       directly under modules.<name>, which become a *default* for every
-      device of this module, still overridable per device -- new in this
-      scheme.
+      device of this module, still overridable per device.
     - update: this module's default update interval (falls between a
       device's own `update:` and module.yaml's `update:`), or the _UNSET
       sentinel if modules.<name>.update was not set.
 
-    Computed once per module name per load_system() call (see
-    _build_device's resolved_module_params_cache) -- unlike
+    Computed once per module name per load_system() call -- unlike
     _module_descriptors, this cannot be a cross-call global cache since
     modules_config is specific to the one system YAML being loaded."""
 
@@ -50,14 +48,16 @@ class _ModuleConfig:
 
 
 def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _ModuleConfig:
-    """Resolve one module type's top-level `modules.<name>:` entry (see
-    _ModuleConfig). `scope: module` params keep their original semantics
-    exactly: settable only here, `override: none` rejects a value set here,
-    `override: required` must be supplied here. `scope: device` params set
-    here become per-module defaults instead -- `override: required` is
-    satisfied by a module-level value, and `override: none` still rejects
-    one being set here at all. Raises ConfigError on an unrecognized
-    parameter (i.e. not declared by the module at any scope)."""
+    """Resolve one module type's top-level `modules.<name>:` entry.
+
+    See _ModuleConfig. `scope: module` params keep their original
+    semantics exactly: settable only here, `override: none` rejects a
+    value set here, `override: required` must be supplied here. For
+    `scope: device` params (see _ModuleConfig.device_param_defaults),
+    `override: required` is satisfied by a module-level value, and
+    `override: none` still rejects one being set here at all. Raises
+    ConfigError on an unrecognized parameter (i.e. not declared by the
+    module at any scope)."""
     module_entry = modules_config.get(module.name) or {}
     # A declared param is an ordinary top-level field here, same as on a
     # device entry -- the _MODULES_ENTRY_KEYS are reserved at this level
@@ -104,33 +104,24 @@ def _resolve_module_config(module: ModuleDescriptor, modules_config: dict) -> _M
 
 
 def _build_effective_module(module: ModuleDescriptor, modules_config: dict) -> ModuleDescriptor:
-    """Return the ModuleDescriptor `_expand_endpoint_specs` should actually
-    resolve device_profile:/endpoint_profile: against for this module:
-    `module` itself, unless modules.<name> supplies its own
-    device_profiles/endpoint_profiles, in which case those are merged in on
-    a COPY (module-scoped, exactly like a module's own module.yaml library
-    -- a system-supplied profile for module X is invisible to a device of
-    any other module).
+    """Return the effective ModuleDescriptor for `_expand_endpoint_specs`.
 
-    Never mutates `module` in place: `module` is the process-global,
-    never-invalidated object cached by _load_module_descriptor (shared
-    across every load_system() call in the process), so mutating its
-    .device_profiles/.endpoint_profiles would leak one system config's
-    profiles into another's use of the same module. The common case (no
-    system-level profiles for this module) returns `module` unchanged --
-    no copy, no cost.
+    `module` itself, unless modules.<name> supplies its own
+    device_profiles/endpoint_profiles, merged in on a COPY --
+    module-scoped, so a system-supplied profile for module X stays
+    invisible to any other module's devices. The common case (no
+    system-level profiles) returns `module` unchanged, no copy.
+
+    Never mutates `module` in place: it is the process-global object
+    cached by _load_module_descriptor, shared across every load_system()
+    call, so mutating it would leak one system config's profiles into
+    another's use of the same module.
 
     A system-supplied profile name colliding with one module.yaml already
-    declares is a ConfigError, not a silent override -- consistent with
-    this module's general refusal to let config ambiguously shadow itself
-    (see e.g. the parameter-name collision checks in ModuleDescriptor,
-    or the duplicate-device-id check in _build_device). The
-    device_profiles-vs-nonempty-endpoints: mutual exclusivity that
-    ModuleDescriptor.__init__ already enforces for module.yaml alone (see
-    its docstring) is extended here to also cover a system-supplied
-    device_profiles against the module's own `endpoints:` -- same
-    base/overlay ambiguity, regardless of which side the device_profiles
-    came from."""
+    declares is a ConfigError, not a silent override -- as is a
+    system-supplied device_profiles against the module's own non-empty
+    `endpoints:` (same base/overlay ambiguity ModuleDescriptor.__init__
+    already rejects for module.yaml alone)."""
     module_entry = modules_config.get(module.name) or {}
     raw_endpoint_profiles = module_entry.get("endpoint_profiles")
     raw_device_profiles = module_entry.get("device_profiles")
@@ -167,18 +158,18 @@ def _build_effective_module(module: ModuleDescriptor, modules_config: dict) -> M
 def _merge_params(module: ModuleDescriptor, instance_params: dict, device_id: str,
                    resolved_module_params: dict | None = None,
                    module_param_defaults: dict | None = None) -> dict:
-    """Merge one device instance's declared-parameter fields (already
-    separated from its other entry keys by the caller -- see _build_device)
-    against its module's declared parameters. `scope: module` params come
-    from the already-resolved `resolved_module_params`
-    (_ModuleConfig.module_params). `scope: device` params are resolved
-    device-entry field -> `module_param_defaults`
-    (_ModuleConfig.device_param_defaults, a per-module default set directly
-    under modules.<name> -- never popped, since it is shared/cached across
+    """Merge one device instance's params against its module's declared ones.
+
+    Instance params are already separated from the entry's other keys by
+    the caller (see _build_device). `scope: module` params come from the
+    already-resolved `resolved_module_params` (_ModuleConfig.module_params).
+    `scope: device` params are resolved device-entry field ->
+    `module_param_defaults` (_ModuleConfig.device_param_defaults -- never
+    popped here, unlike instance_params, since it is shared/cached across
     every device of this module) -> module.yaml's own `default:`, with
-    `override: required` satisfied by either the device or the module-level
-    default. Raises ConfigError on an unrecognized, missing-but-required, or
-    not-overridable parameter."""
+    `override: required` satisfied by either the device or the
+    module-level default. Raises ConfigError on an unrecognized,
+    missing-but-required, or not-overridable parameter."""
     instance_params = dict(instance_params or {})
     resolved_module_params = resolved_module_params or {}
     module_param_defaults = module_param_defaults or {}
