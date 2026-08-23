@@ -10,7 +10,7 @@ Gemini CLI, Copilot, ...) can build a new one largely on its own.
 conventions such an assistant should read first — see
 [`.agentic_flowspace/README.md`](.agentic_flowspace/README.md).
 
-## Development setup
+## Development Setup
 
 ```
 pip install -e ".[dev]"
@@ -27,6 +27,7 @@ modules that still have findings are listed as exempt under
 deleting a name from that list and fixing what it then reports — adding
 one back should need a reason.
 
+
 ## Workflow
 
 - Work on a dedicated branch — never commit directly to `main`.
@@ -38,6 +39,7 @@ one back should need a reason.
 - Add or update tests for any behavior change; `pytest` must pass before
   opening a pull request.
 
+
 ## Documentation
 
 - Python docstrings/comments are for developers: internal behavior, non-
@@ -46,13 +48,14 @@ one back should need a reason.
 - A `module.yaml`/`extension.yaml`'s `description` fields are user-facing
   (rendered in the web UI) — plain-English explanations, not implementation
   notes.
-- Extended user-facing documentation goes in `docs/`; extended developer
-  documentation (architecture, internals, guides for adding a device
-  module or extension) goes in `docs/developer/`.
+- Extended user-facing documentation goes in [`docs/`](docs/); extended
+  developer documentation (architecture, internals, guides for adding a
+  device module or extension) goes in [`docs/developer/`](docs/developer/).
 - `README.md` stays a concise summary linking out to `docs/` and
   `docs/developer/` rather than embedding details inline.
 
-## Adding a device module or extension
+
+## Adding a Device Module or Extension
 
 See [`docs/developer/architecture.md`](docs/developer/architecture.md) for
 how the pieces fit together,
