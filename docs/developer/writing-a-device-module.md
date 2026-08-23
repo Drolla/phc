@@ -1,4 +1,4 @@
-# Writing a device module
+# Writing a Device Module
 
 A new device type is a new package containing a `device.py` and a
 `module.yaml`. It does **not** have to live inside PHC — see [Shipping a
@@ -18,6 +18,7 @@ for the minimal shape, [`phc/devices/meteoswiss/`](../../phc/devices/meteoswiss/
 a fuller, network-backed example, or [`phc/devices/zway/`](../../phc/devices/zway/)
 for one using `endpoint_parameters:` and a two-axis endpoint/device profile
 library.
+
 
 ## `device.py`
 
@@ -84,7 +85,7 @@ class AcmeWidgetDevice(Device):
 - `self.context` — see [Sharing state between a module's
   devices](#sharing-state-between-a-modules-devices) below.
 
-### Reporting I/O failures
+### Reporting I/O Failures
 
 If your `receive()`/`receive_async()` lets an exception propagate, PHC
 records the failure for you: the device is marked unhealthy, shown as such
@@ -109,7 +110,7 @@ matter how many times you call it, and a fetch that reports nothing counts
 as a success. Every bundled network module (`zway`, `meteoswiss`,
 `open_meteo`, `waveplus_bridge`) does this.
 
-### Sharing state between a module's devices
+### Sharing State Between a Module's Devices
 
 A module often needs state shared by several of its own device instances:
 a connection or session, a cache, a registry that lets sibling devices
@@ -142,7 +143,8 @@ size (`_ZWayState`): a batched-fetch identifier registry, a response
 cache, session cookies and several locks, all shared between the devices
 of one system and isolated from any other.
 
-## `module.yaml` schema
+
+## `module.yaml` Schema
 
 `parameters:` declares the module's device-level params: a list of `{name,
 description, default, override, scope}` entries. A declared name becomes an
@@ -190,7 +192,8 @@ A system config can extend a module's profile library too, without
 touching the module's own `module.yaml` — see [Endpoint and device
 profiles](../profiles.md).
 
-## Shipping a module outside PHC
+
+## Shipping a Module Outside PHC
 
 A device module is discovered by the same mechanism wherever it lives, and
 a system YAML cannot tell the difference — `module: <name>` either way.
@@ -212,7 +215,7 @@ nothing to register and no PHC file to edit.
 
 **As a local directory** — for a private module not worth packaging, e.g.
 one belonging to a single household's config. Point `plugin_paths:` at a
-directory laid out like `phc/devices/`, one subdirectory per module:
+directory laid out like [`phc/devices/`](../../phc/devices/), one subdirectory per module:
 
 ```yaml
 plugin_paths: ["./my_modules"]

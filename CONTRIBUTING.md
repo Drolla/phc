@@ -1,6 +1,16 @@
 # Contributing
 
-## Development setup
+Thanks for considering a contribution to PHC! This is the starting point
+whether you're fixing a bug, extending the core, writing a new extension,
+or adding a device module — PHC was nearly entirely developed with AI
+coding assistants, and its module/extension patterns are small and
+consistently templated enough that an assistant (Claude Code, Codex,
+Gemini CLI, Copilot, ...) can build a new one largely on its own.
+[`.agentic_flowspace/`](.agentic_flowspace/) is this repo's shared set of
+conventions such an assistant should read first — see
+[`.agentic_flowspace/README.md`](.agentic_flowspace/README.md).
+
+## Development Setup
 
 ```
 pip install -e ".[dev]"
@@ -17,6 +27,7 @@ modules that still have findings are listed as exempt under
 deleting a name from that list and fixing what it then reports — adding
 one back should need a reason.
 
+
 ## Workflow
 
 - Work on a dedicated branch — never commit directly to `main`.
@@ -28,6 +39,7 @@ one back should need a reason.
 - Add or update tests for any behavior change; `pytest` must pass before
   opening a pull request.
 
+
 ## Documentation
 
 - Python docstrings/comments are for developers: internal behavior, non-
@@ -36,13 +48,14 @@ one back should need a reason.
 - A `module.yaml`/`extension.yaml`'s `description` fields are user-facing
   (rendered in the web UI) — plain-English explanations, not implementation
   notes.
-- Extended user-facing documentation goes in `docs/`; extended developer
-  documentation (architecture, internals, guides for adding a device
-  module or extension) goes in `docs/developer/`.
+- Extended user-facing documentation goes in [`docs/`](docs/); extended
+  developer documentation (architecture, internals, guides for adding a
+  device module or extension) goes in [`docs/developer/`](docs/developer/).
 - `README.md` stays a concise summary linking out to `docs/` and
   `docs/developer/` rather than embedding details inline.
 
-## Adding a device module or extension
+
+## Adding a Device Module or Extension
 
 See [`docs/developer/architecture.md`](docs/developer/architecture.md) for
 how the pieces fit together,
@@ -50,12 +63,6 @@ how the pieces fit together,
 for the module.yaml + device.py pattern, and
 [`writing-an-extension.md`](docs/developer/writing-an-extension.md) for the
 extension.yaml + extension.py one.
-
-Both patterns are small and consistently templated enough that an LLM
-coding assistant (Claude Code, Codex, Gemini CLI, Copilot) can build a new
-device module or extension from them. [`.agentic_flowspace/`](.agentic_flowspace/)
-is this repo's shared set of conventions such an assistant should read
-first — see [`.agentic_flowspace/README.md`](.agentic_flowspace/README.md).
 
 A descriptor (`module.yaml`/`extension.yaml`) and any web assets are
 package *data*, not code, so a new one must also be covered by

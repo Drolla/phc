@@ -1,4 +1,4 @@
-# Code style
+# Code Style
 
 - Avoid unnecessary duplication of logic (not just duplicated
   explanation) within a module: when the same logic appears more than

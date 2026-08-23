@@ -33,7 +33,8 @@ and [`phc/extensions/random_light/`](../phc/extensions/random_light/), randomize
 light control), following the same package-plus-descriptor pattern as
 device modules.
 
-## Device health
+
+## Device Health
 
 Polling fails sometimes — a controller reboots, WiFi drops, a sensor's
 battery dies. PHC never lets that stall the tick or affect other devices:
@@ -50,7 +51,8 @@ web UI marks as "not responding", what the debug portal shows in its poll
 queue, and what the `phc.health` logger reports when a device starts
 failing or recovers.
 
-## Endpoint types, units & text
+
+## Endpoint Types, Units & Text
 
 Unless otherwise specified, an endpoint's value is untyped and passes
 through unchanged. An endpoint definition may opt into:

@@ -1,4 +1,4 @@
-# Debug portal
+# Debug Portal
 
 [`phc/extensions/debug_portal/`](../phc/extensions/debug_portal/) is a small
 aiohttp.web server for watching a running system's internals live: the
@@ -54,6 +54,7 @@ would otherwise keep changing under you.
 
 `GET /api/snapshot` returns the same data as one JSON object, for
 `curl`/scripting rather than watching the page.
+
 
 ## Parameters
 

@@ -2,7 +2,7 @@
 
 - Before committing changes on PHC itself (excluding any gitignored personal
   configuration) that are relevant to a developer or user of the project, record them in
-  `CHANGELOG.md` under the `## [Unreleased]` section. Skip purely smaller
+  [`CHANGELOG.md`](../../CHANGELOG.md) under the `## [Unreleased]` section. Skip purely smaller
   or cosmetic edits (wording tweaks, UI color/spacing polish, comment
   rewording) — don't add an entry for those at all.
 - Group entries by the calendar date the change was merged into `main`,

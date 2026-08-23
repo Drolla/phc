@@ -1,6 +1,6 @@
-# Debug portal internals
+# Debug Portal Internals
 
-## Why push, not poll
+## Why Push, Not Poll
 
 [`phc/extensions/web_ui`](web-ui.md) works by having each widget poll its own
 small HTML fragment. That model can't show change events:
@@ -19,7 +19,8 @@ over Server-Sent Events. Nothing is buffered: a snapshot is built, sent,
 and discarded every tick, by design (see the extension's `extension.yaml`
 description for the user-facing rationale).
 
-## `on_bind`: a fourth hook kind
+
+## `on_bind`: A Fourth Hook Kind
 
 `configure()` runs during `core.config._load_extensions`, which happens
 *before* `tasks:` is parsed (`load_system()` builds `tasks` afterward) —
@@ -36,7 +37,8 @@ No other shipped extension currently uses `on_bind` — it exists because
 this is the first one that needs the *task list itself*, not just a
 per-tick callback into individual devices.
 
-## `SseHub`: single-slot mailbox, not a queue
+
+## `SseHub`: Single-Slot Mailbox, Not a Queue
 
 [`phc/extensions/debug_portal/server.py`](../../phc/extensions/debug_portal/server.py)'s
 `SseHub` gives each connected client an `asyncio.Queue(maxsize=1)`.
@@ -62,7 +64,8 @@ every open connection immediately — without it, `AppRunner.cleanup()`
 would wait out the full `shutdown_timeout` for each still-open SSE stream
 before the process could exit.
 
-## Snapshot shape
+
+## Snapshot Shape
 
 [`phc/extensions/debug_portal/snapshot.py`](../../phc/extensions/debug_portal/snapshot.py)'s
 `build_snapshot()` is deliberately free of any aiohttp/HTTP concern (same
@@ -93,7 +96,8 @@ removes a finished task from the live task list right after
 docstring), so it simply disappears from the snapshot rather than
 lingering in an "exhausted" (`due_time=+inf`) state.
 
-## Frontend: server-rendered skeleton, client-patched cells
+
+## Frontend: Server-Rendered Skeleton, Client-Patched Cells
 
 `GET /` renders the endpoint table's `<tr>` skeleton once via Jinja2, each
 row keyed by `data-key="device/endpoint"`. The task and device-poll tables
@@ -110,7 +114,7 @@ A full `innerHTML` swap at heartbeat rate was rejected early: it would
 destroy in-progress text selection and ship several times the bytes for
 no benefit, since the row set barely changes tick to tick.
 
-### Change highlighting
+### Change Highlighting
 
 Every cell that differs from its previous rendered value gets a
 `.changed` CSS class (toggled, not added-then-removed, so a cell that

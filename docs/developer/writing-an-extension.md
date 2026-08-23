@@ -1,4 +1,4 @@
-# Writing an extension
+# Writing an Extension
 
 An extension is anything PHC does that isn't a device: logging history to
 disk, serving a web UI, sending mail, persisting values across a restart.
@@ -14,6 +14,7 @@ live anywhere: see [shipping a module outside
 PHC](writing-a-device-module.md#shipping-a-module-outside-phc), which
 applies identically here (entry point group `phc.extensions`, or a
 `plugin_paths:` directory).
+
 
 ## Instances
 
@@ -34,6 +35,7 @@ Each instance's params are merged against `extension.yaml` and passed to
 `configure()` separately, so one extension can serve several unrelated
 purposes in one system. An extension with no entry in `extensions:` is
 never instantiated at all.
+
 
 ## `configure()`
 
@@ -63,7 +65,8 @@ much better than failing at 3am on the first tick that needs the value.
 Return an instance object. Whatever it is, PHC only looks for the
 lifecycle hooks below.
 
-## Lifecycle hooks
+
+## Lifecycle Hooks
 
 All four are optional. An extension that only registers a task action kind
 (`mail_alert`) implements none. They run in this order:
@@ -95,7 +98,8 @@ Hooks are found **by name**. A method called `on_tik` is not a broken hook,
 it is not a hook at all — so PHC checks for near-misses at load time and
 refuses to start rather than let an extension silently never run.
 
-## Registering a task action kind
+
+## Registering a Task Action Kind
 
 To give configs a new `kind:` for `action:`, register an `Action`
 subclass. The decorator runs on import, and PHC imports every discovered
@@ -128,7 +132,8 @@ key.
 Validate in `__init__` — it runs at config-load time, so an unknown
 instance name or missing argument is reported before the system starts.
 
-## Persisting state
+
+## Persisting State
 
 If your extension writes a file, write it atomically: to a sibling
 temp file, then `os.replace()`. A crash mid-write must never leave a
@@ -141,6 +146,7 @@ Declare a file parameter with `path: true` in `extension.yaml`, and PHC
 resolves a relative value against the system YAML's own directory before
 your `configure()` sees it — so a config directory stays self-contained,
 and you never handle the resolution (or the working directory) yourself.
+
 
 ## `extension.yaml`
 

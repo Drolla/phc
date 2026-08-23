@@ -1,4 +1,4 @@
-# Mail alerts
+# Mail Alerts
 
 [`phc/extensions/mail_alert/`](../phc/extensions/mail_alert/) sends a message through
 one configured SMTP server — an `extensions.mail_alert.<instance>` entry

@@ -44,7 +44,8 @@ extensions:
   never fired late. A repeating timer is unaffected — its next occurrence
   is always computed fresh at startup (see below).
 
-## How a timer fires
+
+## How a Timer Fires
 
 Each timer becomes an ordinary [scheduled task](configuration.md#tasks)
 internally (tag `"<instance>.<id>"`), so it fires on the normal heartbeat,
@@ -59,7 +60,8 @@ strings](configuration.md#time-and-duration-strings)) — so it always rolls
 forward to the next future slot rather than firing a backlog of missed
 occurrences.
 
-## Creating/editing a timer
+
+## Creating/Editing a Timer
 
 In the web UI's timer panel, pick a target (any endpoint matched by
 `selectors`), an action (**set** a value, or **toggle** between the

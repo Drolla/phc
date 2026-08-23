@@ -31,7 +31,8 @@ extensions:
   system YAML file's own directory (see
   [configuration](configuration.md#where-relative-paths-point)).
 
-## How restore interacts with hardware
+
+## How Restore Interacts With Hardware
 
 Restoring a value calls the same `Device.set()` a task action would use —
 it's a real write, pushed to the device immediately (there is no scheduler

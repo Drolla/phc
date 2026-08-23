@@ -1,11 +1,11 @@
-# Razberry/zWay Z-Wave integration
+# Razberry/zWay Z-Wave Integration
 
 [`phc/devices/zway/`](../phc/devices/zway/) controls Z-Wave devices through a
 Razberry/zWay controller, via
 [`thc_zWay.js`](../phc/devices/zway/thc_zWay.js), a small helper script from
 the earlier THC project
 (https://github.com/Drolla/thc/tree/master/modules/thc_zWay). Copy
-`thc_zWay.js` into the zWay server's automation folder yourself (PHC does
+[`thc_zWay.js`](../phc/devices/zway/thc_zWay.js) into the zWay server's automation folder yourself (PHC does
 not upload the file there); PHC then loads it into the running zWay
 server automatically the first time it's needed, retrying on every later
 poll if the controller isn't reachable yet — no separate startup wait is
@@ -43,7 +43,7 @@ additionally needs its own `node` param set (the zWay node number) — used
 for a one-time `Configure_TagReader` setup call the first time that device
 is polled, the same `node` used to fill in any `{node}` template below.
 
-`phc/devices/zway/module.yaml` ships a two-axis profile library instead of
+[`phc/devices/zway/module.yaml`](../phc/devices/zway/module.yaml) ships a two-axis profile library instead of
 writing every endpoint out fully explicitly: an `endpoint_profile` (named
 after its command group, e.g. `switch_binary`,
 `sensor_multilevel_temperature` — no module-name prefix needed, since a
@@ -99,10 +99,11 @@ See [zway internals](developer/zway.md) for the batching/caching/auth
 architecture behind this, and per-product wiring notes in the profile
 library.
 
-## Adding a new device profile
+
+## Adding a New Device Profile
 
 Adding a Z-Wave device this module doesn't have a profile for yet --
-either to `phc/devices/zway/module.yaml` for a real shared product, or to your
+either to [`phc/devices/zway/module.yaml`](../phc/devices/zway/module.yaml) for a real shared product, or to your
 own system config's `modules.zway.device_profiles` (see [Extending a
 module's profile library from a system
 config](profiles.md#extending-a-modules-profile-library-from-a-system-config))

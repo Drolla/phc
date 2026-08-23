@@ -86,7 +86,7 @@ own `GET /api/graph/{id}` JSON data route — fetched client-side, not
 embedded in the page render. `logdb_instance` (required) is resolved
 lazily, at request time, so it may be declared either before or after this
 `web_ui:` instance. `selectors` picks which endpoints to plot (same syntax
-as `phc/extensions/logdb`'s own `selectors`) — each must also be covered by the
+as [`phc/extensions/logdb`](logdb.md)'s own `selectors`) — each must also be covered by the
 referenced logdb instance, or its series is empty. `title` defaults to
 `id`. `unit` (optional) labels the Y axis. `window` (default `24h`) sets
 the chart's initial zoom; the full retained history is still fetched and
