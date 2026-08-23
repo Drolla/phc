@@ -11,11 +11,8 @@ import json
 import threading
 import time
 
-import pytest
-
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
-from phc.devices.open_meteo import device as open_meteo_device
 from phc.devices.open_meteo.device import OpenMeteoDevice
 
 CURRENT = {
@@ -28,17 +25,6 @@ CURRENT = {
     "weather_code": 2,
     "is_day": 1,
 }
-
-
-@pytest.fixture(autouse=True)
-def _clear_response_cache():
-    """The response cache is shared module-level state (by design -- see
-    OpenMeteoDevice). Each test already uses a fresh random-port URL so
-    cache keys never actually collide, but clearing explicitly keeps these
-    tests airtight against that assumption."""
-    open_meteo_device._response_cache.clear()
-    yield
-    open_meteo_device._response_cache.clear()
 
 
 def _serve(body: bytes, status: int = 200):
@@ -65,7 +51,14 @@ def _serve(body: bytes, status: int = 200):
     return server, base_url
 
 
-def _device(base_url, latitude=47.37, longitude=8.55, cache_time=None):
+def _device(base_url, latitude=47.37, longitude=8.55, cache_time=None, context=None):
+    """One OpenMeteoDevice.
+
+    `context` is the scratch dict load_system() would normally hand every
+    device of one system (see Device.context); the response cache lives
+    there, so two devices only share it when they are passed the SAME
+    dict. Omitted, each device gets its own -- an isolated cache per device.
+    """
     params = {"base_url": base_url, "latitude": latitude, "longitude": longitude}
     if cache_time is not None:
         params["cache_time"] = cache_time
@@ -77,6 +70,7 @@ def _device(base_url, latitude=47.37, longitude=8.55, cache_time=None):
             Endpoint("humidity", params={"field": "relative_humidity_2m"}),
         ],
         update_interval=0.0,
+        context=context,
     )
 
 
@@ -146,8 +140,11 @@ def test_open_meteo_cache_expires_after_cache_time():
 def test_open_meteo_shares_cache_across_two_device_instances_at_same_location():
     server, base_url = _serve(json.dumps({"current": CURRENT}).encode("utf-8"))
     try:
-        dev_a = _device(base_url, cache_time="60s")
-        dev_b = _device(base_url, cache_time="60s")
+        # One shared context, as load_system() gives every device of a
+        # system -- that is what puts both locations on the same cache.
+        context = {}
+        dev_a = _device(base_url, cache_time="60s", context=context)
+        dev_b = _device(base_url, cache_time="60s", context=context)
         # Both devices are due in the same tick, so the Scheduler gathers
         # their fetches concurrently -- exercising the cache lock's
         # double-checked locking, not just sequential reuse.

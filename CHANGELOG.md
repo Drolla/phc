@@ -8,6 +8,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-08-23
+
+**New features**
+
+- Added `examples/device-template/`, a complete and working device module
+  written to be copied when adding a new device. It demonstrates the whole
+  pattern in one place — `self.context` for state shared between a
+  module's devices, response caching with coalescing across siblings,
+  `report_failure`, reads and writes, an `endpoint_parameters` field, and
+  every `override`/`scope` combination a parameter can declare — and needs
+  no hardware or network, so it runs as shipped. All of its fake I/O sits
+  behind two methods, so swapping in a real protocol is a single edit.
+  `examples/device_template_system.yaml` runs it, and covers the
+  out-of-tree `plugin_paths:` path at the same time.
+- `docs/developer/writing-a-device-module.md`, `CONTRIBUTING.md`, the new
+  `phc/devices/README.md` and the `agentic-adding-a-device-module` skill
+  now all start from that template rather than from "read a few existing
+  modules and follow the pattern".
+
+**Internal changes**
+
+- `meteoswiss`, `open_meteo` and `waveplus_bridge` now hold their response
+  cache and its lock in a per-system object in `self.context`, as `zway`
+  already did, instead of in process-global module state. A module-scope
+  cache outlived the `System` it belonged to and could serve one system's
+  data to the next, and its `asyncio.Lock` bound to the first event loop
+  that contended for it and then failed against any later one — which the
+  `waveplus_bridge` tests had been working around by replacing the lock
+  between cases. No effect on a normal run, which has one system on one
+  event loop.
+- The three cache-clearing test fixtures that module-scope state required
+  are gone; the tests now pass an explicit shared `context` where they mean
+  devices to share a cache.
+
 ### 2026-08-22
 
 **Developer experience**

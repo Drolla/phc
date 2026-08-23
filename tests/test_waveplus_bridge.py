@@ -6,17 +6,13 @@ the failure-to-None behavior, the per-sensor staleness gate, and the shared
 cache_time behavior, end to end via the Scheduler.
 """
 
-import asyncio
 import http.server
 import json
 import threading
 import time
 
-import pytest
-
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
-from phc.devices.waveplus_bridge import device as waveplus_bridge_device
 from phc.devices.waveplus_bridge.device import WavePlusBridgeDevice
 
 # cellar_office is fresh (50s old); cellar_room is stale (500s old) relative
@@ -48,28 +44,6 @@ def _endpoints():
     ]
 
 
-@pytest.fixture(autouse=True)
-def _clear_response_cache():
-    """The response cache is shared module-level state (by design -- see
-    WavePlusBridgeDevice). Each test already uses a fresh random-port URL so
-    cache keys never actually collide, but clearing explicitly keeps these
-    tests airtight against that assumption.
-
-    The cache's guarding asyncio.Lock is also module-level, and each test
-    builds its own Scheduler (-> its own event loop). asyncio.Lock only
-    binds to a specific event loop lazily, the first time acquire() is
-    genuinely contended (not on every acquire's fast path) -- so two
-    *different* tests that both co-schedule two devices sharing one
-    base_url (real lock contention) would otherwise collide: the second
-    such test inherits a lock still bound to the first test's already-closed
-    loop and fails with "bound to a different event loop". Replacing the
-    lock with a fresh one alongside the cache keeps every test isolated."""
-    waveplus_bridge_device._response_cache.clear()
-    waveplus_bridge_device._response_cache_lock = asyncio.Lock()
-    yield
-    waveplus_bridge_device._response_cache.clear()
-
-
 def _serve(body: bytes, status: int = 200):
     """Start a throwaway local HTTP server returning `body`/`status` for any
     GET. Returns (server, base_url); call server.shutdown() when done. The
@@ -95,7 +69,15 @@ def _serve(body: bytes, status: int = 200):
 
 
 def _device(base_url, sensor_id="cellar_office", cache_time=None,
-            data_validity_time=None, endpoints=None):
+            data_validity_time=None, endpoints=None, context=None):
+    """One WavePlusBridgeDevice.
+
+    `context` is the scratch dict load_system() would normally hand every
+    device of one system (see Device.context); the response cache and its
+    lock live there, so two sensors only share them when passed the SAME
+    dict. Omitted, each device gets its own -- an isolated cache per
+    device, and a lock that cannot outlive this test's event loop.
+    """
     params = {"base_url": base_url, "sensor_id": sensor_id}
     if cache_time is not None:
         params["cache_time"] = cache_time
@@ -106,6 +88,7 @@ def _device(base_url, sensor_id="cellar_office", cache_time=None,
         params=params,
         endpoints=endpoints if endpoints is not None else _endpoints(),
         update_interval=0.0,
+        context=context,
     )
 
 
@@ -257,9 +240,14 @@ def test_waveplus_cache_expires_after_cache_time():
 def test_waveplus_shares_cache_across_two_sensors_on_same_bridge():
     server, base_url = _serve(json.dumps(PAYLOAD).encode("utf-8"))
     try:
-        office = _device(base_url, sensor_id="cellar_office", cache_time="60s")
+        # One shared context, as load_system() gives every device of a
+        # system -- that is what puts both sensors on the same cache.
+        context = {}
+        office = _device(base_url, sensor_id="cellar_office", cache_time="60s",
+                         context=context)
         room = _device(base_url, sensor_id="cellar_room", cache_time="60s",
-                        data_validity_time="10m")  # keep room fresh for this test
+                        data_validity_time="10m",  # keep room fresh for this test
+                        context=context)
         # Both devices are due in the same tick, so the Scheduler gathers
         # their fetches concurrently -- exercising the cache lock's
         # double-checked locking, not just sequential reuse.

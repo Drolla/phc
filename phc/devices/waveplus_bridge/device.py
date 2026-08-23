@@ -12,13 +12,23 @@ from phc.core.device import Device
 from phc.core.intervals import parse_duration
 from phc.core.registry import register_module
 
-# Shared by every WavePlusBridgeDevice instance pointed at the same bridge:
-# several sensor units behind one bridge share one JSON payload, so caching
-# by base_url means concurrently-due sensor devices coalesce into one HTTP
-# GET instead of each independently re-fetching the identical response --
-# same pattern as phc/devices/meteoswiss's _csv_cache, just JSON instead of CSV.
-_response_cache: dict[str, tuple[float, dict]] = {}   # base_url -> (fetched_at, payload)
-_response_cache_lock = asyncio.Lock()
+
+class _WavePlusBridgeState:
+    """Payload cache shared by every WavePlusBridgeDevice of ONE system.
+
+    Several sensor units behind one bridge share one JSON payload, so
+    caching by base_url means concurrently-due sensor devices coalesce into
+    one HTTP GET instead of each independently re-fetching the identical
+    response -- same pattern as phc/devices/meteoswiss's _MeteoSwissState,
+    just JSON instead of CSV.
+
+    Per-system, not per-process: see _MeteoSwissState for why a
+    module-scope cache and its asyncio.Lock are the wrong lifetime.
+    """
+
+    def __init__(self):
+        self.cache: dict[str, tuple[float, dict]] = {}   # base_url -> (fetched_at, payload)
+        self.lock = asyncio.Lock()
 
 
 @register_module("waveplus_bridge")
@@ -33,6 +43,15 @@ class WavePlusBridgeDevice(Device):
 
     def setup(self):
         """Read this device's resolved params."""
+        # One _WavePlusBridgeState per system, shared by every
+        # waveplus_bridge device in it -- `get`-then-assign rather than
+        # setdefault, which would build (and immediately discard) a fresh
+        # Lock for every device after the first.
+        state = self.context.get("waveplus_bridge")
+        if state is None:
+            state = self.context["waveplus_bridge"] = _WavePlusBridgeState()
+        self._state = state
+
         self._base_url = self.params["base_url"]
         self._sensor_id = self.params["sensor_id"]
         # .get(..., default) mirrors module.yaml's defaults for devices
@@ -81,16 +100,16 @@ class WavePlusBridgeDevice(Device):
 
         Uses double-checked locking to avoid cache stampedes."""
         mono = time.monotonic()
-        cached = _response_cache.get(self._base_url)
+        cached = self._state.cache.get(self._base_url)
         if cached is not None and (mono - cached[0]) < self._cache_time:
             return cached[1]
-        async with _response_cache_lock:
+        async with self._state.lock:
             mono = time.monotonic()
-            cached = _response_cache.get(self._base_url)
+            cached = self._state.cache.get(self._base_url)
             if cached is not None and (mono - cached[0]) < self._cache_time:
                 return cached[1]
             payload = await self._download_payload()
-            _response_cache[self._base_url] = (mono, payload)
+            self._state.cache[self._base_url] = (mono, payload)
             return payload
 
     async def _download_payload(self) -> dict:

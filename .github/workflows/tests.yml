@@ -42,8 +42,11 @@ jobs:
       - name: Install package with dev extras
         run: pip install -e ".[dev]"
 
+      # examples/device-template is linted alongside the package: it is a
+      # module written to be copied, so it has to be at least as clean as
+      # the code it seeds.
       - name: ruff
-        run: ruff check phc tests
+        run: ruff check phc tests examples/device-template
 
       - name: mypy
         run: mypy

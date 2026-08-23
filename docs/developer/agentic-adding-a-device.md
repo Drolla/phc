@@ -31,6 +31,14 @@ The assistant read [`writing-a-device-module.md`](writing-a-device-module.md), t
 existing module's caching/parameter-scope shape actually matched, rather
 than "following the docs" in the abstract.
 
+> **This step has since changed.** Copying whichever module looked closest
+> was the weak point of this workflow: the modules differed, and one of the
+> shapes on offer was a caching pattern the documentation elsewhere
+> forbids. There is now a single canonical
+> [`examples/device-template/`](../../examples/device-template/) to copy
+> instead, and the skill's step 3 says so. The rest of this walkthrough
+> still applies.
+
 
 ## 4. Verify Beyond the Unit Tests
 
