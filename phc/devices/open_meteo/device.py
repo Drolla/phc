@@ -11,13 +11,23 @@ from phc.core.device import Device
 from phc.core.intervals import parse_duration
 from phc.core.registry import register_module
 
-# Shared across every OpenMeteoDevice instance, keyed by full request URL
-# (which already encodes lat/lon, so co-located devices coalesce into one
-# HTTP GET instead of each independently re-downloading the identical
-# response -- same pattern as phc/devices/meteoswiss's _csv_cache, just keyed
-# more finely since each location has its own URL here).
-_response_cache: dict[str, tuple[float, dict]] = {}   # url -> (fetched_at, current)
-_response_cache_lock = asyncio.Lock()
+
+class _OpenMeteoState:
+    """Response cache shared by every OpenMeteoDevice of ONE system.
+
+    Keyed by full request URL (which already encodes lat/lon, so co-located
+    devices coalesce into one HTTP GET instead of each independently
+    re-downloading the identical response -- same pattern as
+    phc/devices/meteoswiss's _MeteoSwissState, just keyed more finely since
+    each location has its own URL here).
+
+    Per-system, not per-process: see _MeteoSwissState for why a
+    module-scope cache and its asyncio.Lock are the wrong lifetime.
+    """
+
+    def __init__(self):
+        self.cache: dict[str, tuple[float, dict]] = {}   # url -> (fetched_at, current)
+        self.lock = asyncio.Lock()
 
 
 @register_module("open_meteo")
@@ -29,6 +39,15 @@ class OpenMeteoDevice(Device):
 
     def setup(self):
         """Build this location's forecast request URL and read cache_time."""
+        # One _OpenMeteoState per system, shared by every open_meteo device
+        # in it -- `get`-then-assign rather than setdefault, which would
+        # build (and immediately discard) a fresh Lock for every device
+        # after the first.
+        state = self.context.get("open_meteo")
+        if state is None:
+            state = self.context["open_meteo"] = _OpenMeteoState()
+        self._state = state
+
         self._url = (
             f"{self.params['base_url']}"
             f"?latitude={self.params['latitude']}&longitude={self.params['longitude']}"
@@ -61,16 +80,16 @@ class OpenMeteoDevice(Device):
 
         Uses double-checked locking."""
         mono = time.monotonic()
-        cached = _response_cache.get(self._url)
+        cached = self._state.cache.get(self._url)
         if cached is not None and (mono - cached[0]) < self._cache_time:
             return cached[1]
-        async with _response_cache_lock:
+        async with self._state.lock:
             mono = time.monotonic()
-            cached = _response_cache.get(self._url)
+            cached = self._state.cache.get(self._url)
             if cached is not None and (mono - cached[0]) < self._cache_time:
                 return cached[1]
             current = await self._download_current()
-            _response_cache[self._url] = (mono, current)
+            self._state.cache[self._url] = (mono, current)
             return current
 
     async def _download_current(self) -> dict:

@@ -12,13 +12,28 @@ from phc.core.device import Device
 from phc.core.intervals import parse_duration
 from phc.core.registry import register_module
 
-# Shared by every MeteoSwissDevice instance: all stations read the same
-# published CSV (data_url has scope: module in module.yaml, i.e. one value
-# for every instance of this module), so caching by URL means
-# concurrently-due stations coalesce into one HTTP GET instead of each
-# independently re-downloading the identical file.
-_csv_cache: dict[str, tuple[float, str]] = {}   # data_url -> (fetched_at, text)
-_csv_cache_lock = asyncio.Lock()
+
+class _MeteoSwissState:
+    """CSV cache shared by every MeteoSwissDevice of ONE system.
+
+    All stations read the same published CSV (data_url has scope: module in
+    module.yaml, i.e. one value for every instance of this module), so
+    caching by URL means concurrently-due stations coalesce into one HTTP
+    GET instead of each independently re-downloading the identical file.
+
+    Per-system, not per-process: held in the shared device context (see
+    phc.core.device.Device.context) rather than at module scope. A
+    process-global cache has the wrong lifetime -- it outlives the System
+    it belongs to and serves one system's rows to the next, which for a
+    fixed data_url means every system shares the single cache entry. And
+    an asyncio.Lock binds to the first event loop that genuinely contends
+    for it, then raises "bound to a different event loop" against any
+    later one.
+    """
+
+    def __init__(self):
+        self.cache: dict[str, tuple[float, str]] = {}   # data_url -> (fetched_at, text)
+        self.lock = asyncio.Lock()
 
 
 @register_module("meteoswiss")
@@ -31,6 +46,15 @@ class MeteoSwissDevice(Device):
 
     def setup(self):
         """Read this device's resolved params (data_url, station, cache_time)."""
+        # One _MeteoSwissState per system, shared by every meteoswiss device
+        # in it -- `get`-then-assign rather than setdefault, which would
+        # build (and immediately discard) a fresh Lock for every device
+        # after the first.
+        state = self.context.get("meteoswiss")
+        if state is None:
+            state = self.context["meteoswiss"] = _MeteoSwissState()
+        self._state = state
+
         self._data_url = self.params["data_url"]
         self._station = self.params["station"]
         # .get(..., "10m") mirrors module.yaml's default for devices
@@ -69,18 +93,18 @@ class MeteoSwissDevice(Device):
         Cache is shared by data_url; freshness is per-caller (per-device
         cache_time)."""
         mono = time.monotonic()
-        cached = _csv_cache.get(self._data_url)
+        cached = self._state.cache.get(self._data_url)
         if cached is not None and (mono - cached[0]) < self._cache_time:
             return cached[1]
-        async with _csv_cache_lock:
+        async with self._state.lock:
             # Re-check: another device may have refreshed the cache while
             # this one was waiting for the lock.
             mono = time.monotonic()
-            cached = _csv_cache.get(self._data_url)
+            cached = self._state.cache.get(self._data_url)
             if cached is not None and (mono - cached[0]) < self._cache_time:
                 return cached[1]
             text = await self._download_csv()
-            _csv_cache[self._data_url] = (mono, text)
+            self._state.cache[self._data_url] = (mono, text)
             return text
 
     async def _download_csv(self) -> str:
