@@ -1,5 +1,15 @@
 # Contributing
 
+Thanks for considering a contribution to PHC! This is the starting point
+whether you're fixing a bug, extending the core, writing a new extension,
+or adding a device module — PHC was nearly entirely developed with AI
+coding assistants, and its module/extension patterns are small and
+consistently templated enough that an assistant (Claude Code, Codex,
+Gemini CLI, Copilot, ...) can build a new one largely on its own.
+[`.agentic_flowspace/`](.agentic_flowspace/) is this repo's shared set of
+conventions such an assistant should read first — see
+[`.agentic_flowspace/README.md`](.agentic_flowspace/README.md).
+
 ## Development setup
 
 ```
@@ -50,12 +60,6 @@ how the pieces fit together,
 for the module.yaml + device.py pattern, and
 [`writing-an-extension.md`](docs/developer/writing-an-extension.md) for the
 extension.yaml + extension.py one.
-
-Both patterns are small and consistently templated enough that an LLM
-coding assistant (Claude Code, Codex, Gemini CLI, Copilot) can build a new
-device module or extension from them. [`.agentic_flowspace/`](.agentic_flowspace/)
-is this repo's shared set of conventions such an assistant should read
-first — see [`.agentic_flowspace/README.md`](.agentic_flowspace/README.md).
 
 A descriptor (`module.yaml`/`extension.yaml`) and any web assets are
 package *data*, not code, so a new one must also be covered by

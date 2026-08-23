@@ -4,11 +4,32 @@
 
 # Pylon Home Control (PHC)
 
-Pylon Home Control (PHC) is a small, YAML-configured home automation
-framework. It polls and controls a tree of pluggable **devices** (weather
-stations, sun position, virtual/test devices, and anything you add), and
-runs **tasks** — condition- or time-driven automations — against their
-state, all on a fixed-heartbeat scheduler.
+Pylon Home Control (PHC) is a compact, Python‑based, YAML‑configured home automation framework for people who prefer describing their home to writing a full application for it. Point PHC at a configuration file and it will poll and control a tree of pluggable **devices** — light switches, PIR sensors, environmental sensors, and anything you choose to integrate — while running **tasks**, condition‑ or time‑driven actions that automate your home or any other system you want to orchestrate.
+
+It’s lightweight enough to run comfortably on a Raspberry Pi, flexible enough to grow with your setup, and designed so that adding a new device is simply a matter of extending the configuration and writing a small Python class.
+
+PHC is built with the help of modern AI coding assistants, and its development workflow embraces them. This makes extending the PHC core or creating new device interfaces approachable for developers of all experience levels (see [Contributing](#contributing)).
+
+
+## Concepts
+
+- **Device** — a node in a tree that exposes zero or more **endpoints**
+  (readable/writable state) and may have child devices, backed by a
+  plugin **module** declared in a system YAML file.
+- **Module** — a device plugin: a `phc/devices/<name>/device.py` (the `Device`
+  subclass) plus a `phc/devices/<name>/module.yaml` describing its parameters
+  and endpoints declaratively. Modules are discovered automatically at
+  startup.
+- **Task** — an automation triggered either by a schedule (`time`/`repeat`)
+  or by a device endpoint changing (`condition`), performing one or more
+  **actions** (`set`, `toggle`, `log`, `create_task`, `kill_task`, `script`,
+  ...).
+- **Scheduler** — drives each device's fetch on its own interval and
+  evaluates tasks once per heartbeat tick, running device I/O concurrently.
+
+See [`docs/concepts.md`](docs/concepts.md) for the full picture (including
+endpoint types/units/formatting), and [`examples/`](examples/) for complete
+system configurations.
 
 ## Documentation
 
@@ -34,51 +55,20 @@ state, all on a fixed-heartbeat scheduler.
   [timer](docs/developer/timer.md), and the
   [debug portal](docs/developer/debug-portal.md).
 
-## Concepts
+## Installation and usage
 
-- **Device** — a node in a tree that exposes zero or more **endpoints**
-  (readable/writable state) and may have child devices, backed by a
-  plugin **module** declared in a system YAML file.
-- **Module** — a device plugin: a `phc/devices/<name>/device.py` (the `Device`
-  subclass) plus a `phc/devices/<name>/module.yaml` describing its parameters
-  and endpoints declaratively. Modules are discovered automatically at
-  startup.
-- **Task** — an automation triggered either by a schedule (`time`/`repeat`)
-  or by a device endpoint changing (`condition`), performing one or more
-  **actions** (`set`, `toggle`, `log`, `create_task`, `kill_task`, `script`,
-  ...).
-- **Scheduler** — drives each device's fetch on its own interval and
-  evaluates tasks once per heartbeat tick, running device I/O concurrently.
-
-See [`docs/concepts.md`](docs/concepts.md) for the full picture (including
-endpoint types/units/formatting), [`examples/`](examples/) for complete
-system configurations, and the `module.yaml` file in each
-[`phc/devices/`](phc/devices/) subfolder for what parameters/endpoints a given
-device module supports. [`phc/extensions/`](phc/extensions/) is the home for
-non-device PHC extensions, following the same package-plus-descriptor
-pattern as device modules. Both patterns are consistent enough to build
-with an LLM coding assistant — see [CONTRIBUTING.md](CONTRIBUTING.md) and
-[`.agentic_flowspace/`](.agentic_flowspace/) for the shared conventions one
-should follow in this repo.
-
-## Requirements
+### Requirements
 
 - Python >= 3.11
 - Dependencies: `PyYAML`, `aiohttp`, `astral`, `Jinja2` (see `pyproject.toml`)
 
-## Install
+### Install
 
 ```
 pip install -e .
 ```
 
-For running the test suite, install the `dev` extra instead:
-
-```
-pip install -e ".[dev]"
-```
-
-## Usage
+### Usage
 
 Run PHC against one of the example systems:
 
@@ -109,29 +99,11 @@ Useful flags:
 
 Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
 
-## Development
-
-PHC was nearly entirely developed with AI coding assistants — see
-[CONTRIBUTING.md](CONTRIBUTING.md) and
-[`.agentic_flowspace/`](.agentic_flowspace/) for the shared conventions one
-should follow in this repo. Beyond general-purpose assistance,
-[`docs/developer/agentic-creating-a-skill.md`](docs/developer/agentic-creating-a-skill.md)
-walks through having an assistant draft a new AI skill for a PHC-specific
-development workflow, and the
-[`agentic-adding-a-device-module`](.agentic_flowspace/skills/agentic-adding-a-device-module.md)
-skill scaffolds a new device module end to end — see
-[`docs/developer/agentic-adding-a-device.md`](docs/developer/agentic-adding-a-device.md)
-for a worked example.
-
-Run the test suite with:
-
-```
-pytest
-```
-
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, and
+Contributions of all kinds are welcome — bug fixes, new devices,
+extensions, docs. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+development workflow, including how to add a new device interface, and
 [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
