@@ -264,16 +264,18 @@ class TemplateDevice(Device):
 # does) does not receive writes issued by a bare set() outside a scheduler
 # tick -- use set_text_async() there. A device overriding transmit() has no
 # such caveat. See phc/core/device.py's _emit()/_emit_async().
-#
-#
+# ----------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------
 # ENDPOINT AND DEVICE PROFILES
 #
-# module.yaml below declares its endpoints explicitly, which is the right
-# choice for a module serving one shape of device. A module supporting many
-# similar products can instead ship a reusable profile library
-# (endpoint_profiles/device_profiles) and let a config opt in per device --
-# but device_profiles is mutually exclusive with a non-empty `endpoints:`
-# list on the same module, so that is an either/or decision, not an
-# addition. See phc/devices/zway/module.yaml for a full-size example and
-# docs/profiles.md for the reference.
+# This module's module.yaml declares its endpoints explicitly, which is the
+# right choice for a module serving one shape of device. A module
+# supporting many similar products can instead ship a reusable profile
+# library (endpoint_profiles/device_profiles) and let a config opt in per
+# device -- but device_profiles is mutually exclusive with a non-empty
+# `endpoints:` list on the same module, so that is an either/or decision,
+# not an addition. See phc/devices/zway/module.yaml for a full-size example
+# and docs/profiles.md for the reference.
 # ----------------------------------------------------------------------
