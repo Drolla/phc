@@ -1,0 +1,97 @@
+# Every field a device module's descriptor can declare, annotated. The
+# `description:` texts here are USER-FACING -- they are parsed at runtime
+# and rendered in the web UI -- so they stay plain English. Implementation
+# rationale belongs in device.py's docstrings instead.
+description: >
+  Reference template for a new PHC device module. Simulates one unit behind
+  an "Acme Hub" controller, exposing two readings and a switchable relay --
+  no real hardware or network involved. Copy this module to start a new one.
+
+# Default poll interval for every device of this module. A system config can
+# override it per device with `update:`, or point it at a named interval.
+update: "10s"
+
+# Device-level parameters. Each declared name becomes an ordinary top-level
+# field on a device entry -- there is no `params:` nesting. Between them the
+# five below cover every combination the schema allows:
+#
+#   override: required  -- a config MUST supply it
+#   override: allowed   -- a config MAY override the default (the default)
+#   override: none      -- fixed by the module, a config may not set it
+#
+#   scope: device       -- one value per device (the default)
+#   scope: module       -- one shared value for every device of this module,
+#                          settable once under `modules.<name>:`
+parameters:
+  - name: host
+    override: required
+    description: >
+      Address of the Acme Hub this unit is connected to, e.g. "10.0.0.42".
+      Units sharing a host are read in a single request per poll.
+  - name: unit
+    override: required
+    description: >
+      Which unit on the hub this device represents, e.g. "hall" or
+      "cellar".
+  - name: request_timeout
+    override: allowed
+    default: "5s"
+    description: >
+      How long to wait for the hub to answer before giving up on a poll
+      (e.g. "5s", "500ms").
+  - name: cache_time
+    override: allowed
+    scope: module
+    default: "10s"
+    description: >
+      How long one hub response may be reused before it is fetched again.
+      Shared by every unit, so it is set once for the whole module. Set to
+      "0s" to always re-fetch.
+  - name: api_version
+    override: none
+    scope: module
+    default: "v1"
+    description: The hub protocol version this module speaks. Not configurable.
+  # SIMULATION ONLY -- delete this parameter along with device.py's
+  # simulated-hardware section. It exists so the template's own tests can
+  # exercise the failure path without an unreachable host.
+  - name: simulate_failure
+    override: allowed
+    default: false
+    description: >
+      Testing aid: when true, every read and write fails as if the hub were
+      unreachable.
+
+# Per-endpoint protocol fields this module understands. A declared name
+# becomes a legal key on any endpoint spec of this module, and device.py
+# reads it back with self.endpoints[key].params.get("channel"). Declaring
+# it here is what lets a config add an endpoint without touching code.
+endpoint_parameters:
+  - name: channel
+    description: Which value of the unit's reading this endpoint exposes.
+
+# Endpoints every device of this module gets. `type` is one of int/float/
+# bool/str; `unit` and `values` are presentation only (a `values` mapping
+# turns a raw number into a label in the UI and in logs).
+endpoints:
+  - key: temperature
+    readable: true
+    writable: false
+    type: float
+    unit: "°C"
+    description: Air temperature measured by this unit, degrees Celsius
+    channel: temp
+  - key: humidity
+    readable: true
+    writable: false
+    type: float
+    unit: "%"
+    description: Relative humidity measured by this unit, percent
+    channel: hum
+  - key: relay
+    readable: true
+    writable: true
+    type: int
+    values: { 0: "off", 1: "on" }
+    description: Switchable relay output on this unit
+    channel: relay
