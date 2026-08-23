@@ -9,11 +9,8 @@ import http.server
 import threading
 import time
 
-import pytest
-
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
-from phc.devices.meteoswiss import device as meteoswiss_device
 from phc.devices.meteoswiss.device import MeteoSwissDevice
 
 CSV = (
@@ -21,17 +18,6 @@ CSV = (
     "BER;12.3;65\n"
     "ZRH;9.9;80\n"
 )
-
-
-@pytest.fixture(autouse=True)
-def _clear_csv_cache():
-    """The CSV cache is shared module-level state (by design -- see
-    MeteoSwissDevice). Each test already uses a fresh random-port URL so
-    cache keys never actually collide, but clearing explicitly keeps these
-    tests airtight against that assumption."""
-    meteoswiss_device._csv_cache.clear()
-    yield
-    meteoswiss_device._csv_cache.clear()
 
 
 def _serve(body: bytes, status: int = 200):
@@ -58,7 +44,14 @@ def _serve(body: bytes, status: int = 200):
     return server, url
 
 
-def _device(url, station="BER", cache_time=None):
+def _device(url, station="BER", cache_time=None, context=None):
+    """One MeteoSwissDevice.
+
+    `context` is the scratch dict load_system() would normally hand every
+    device of one system (see Device.context); the CSV cache lives there,
+    so two devices only share it when they are passed the SAME dict.
+    Omitted, each device gets its own -- an isolated cache per device.
+    """
     params = {"data_url": url, "station": station}
     if cache_time is not None:
         params["cache_time"] = cache_time
@@ -70,6 +63,7 @@ def _device(url, station="BER", cache_time=None):
             Endpoint("humidity", params={"column": "ure200s0"}),
         ],
         update_interval=0.0,
+        context=context,
     )
 
 
@@ -132,8 +126,11 @@ def test_meteoswiss_cache_expires_after_cache_time():
 def test_meteoswiss_shares_cache_across_two_device_instances():
     server, url = _serve(CSV.encode("utf-8"))
     try:
-        dev_ber = _device(url, station="BER", cache_time="60s")
-        dev_zrh = _device(url, station="ZRH", cache_time="60s")
+        # One shared context, as load_system() gives every device of a
+        # system -- that is what puts both stations on the same cache.
+        context = {}
+        dev_ber = _device(url, station="BER", cache_time="60s", context=context)
+        dev_zrh = _device(url, station="ZRH", cache_time="60s", context=context)
         # Both devices are due in the same tick, so the Scheduler gathers
         # their fetches concurrently -- exercising the cache lock's
         # double-checked locking, not just sequential reuse.
@@ -143,6 +140,34 @@ def test_meteoswiss_shares_cache_across_two_device_instances():
         assert server.hit_count == 1
         assert dev_ber.get("temperature") == 12.3
         assert dev_zrh.get("temperature") == 9.9
+    finally:
+        server.shutdown()
+
+
+def test_meteoswiss_two_systems_do_not_share_a_cache_or_its_lock():
+    """Regression guard: the cache and its lock are per-system, not
+    per-process.
+
+    Both stations share a base_url with cache_time "0s", so every poll
+    takes the lock and the two co-scheduled devices genuinely contend for
+    it -- which is what makes an asyncio.Lock bind to the running loop.
+    Each iteration then builds a fresh Scheduler, and so a fresh event
+    loop. Held at module scope the lock would survive into the second
+    iteration still bound to the first one's closed loop and fail with
+    "bound to a different event loop"; held in each system's own context
+    it cannot.
+    """
+    server, url = _serve(CSV.encode("utf-8"))
+    try:
+        for _ in range(2):
+            context = {}
+            dev_ber = _device(url, station="BER", cache_time="0s", context=context)
+            dev_zrh = _device(url, station="ZRH", cache_time="0s", context=context)
+            scheduler = Scheduler({"ber": dev_ber, "zrh": dev_zrh})
+            scheduler.tick(now=0.0)
+            scheduler.close()
+            assert dev_ber.get("temperature") == 12.3
+            assert dev_zrh.get("temperature") == 9.9
     finally:
         server.shutdown()
 
