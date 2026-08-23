@@ -32,27 +32,49 @@ incomplete endpoint list is expensive to unwind once `device.py` and an
 example config both depend on it.
 
 
-## 2. Read the Pattern First
+## 2. Read the Template and the Pattern
 
-Read
+Read [`examples/device-template/device_template/`](../../examples/device-template/device_template/)
+— a complete, working module written to be copied. Its `device.py` and
+`module.yaml` demonstrate the whole surface in one place: `setup()`,
+`receive_async`/`transmit_async` (with the blocking `receive`/`transmit`
+alternative commented alongside), `report_failure`, `self.context` for
+state shared between a module's devices, an `endpoint_parameters` field,
+and every `override`/`scope` combination a parameter can declare.
+
+Then read
 [`docs/developer/writing-a-device-module.md`](../../docs/developer/writing-a-device-module.md)
-for the full `device.py`/`module.yaml` pattern (the `Device` subclass
-shape, `receive`/`transmit` vs the `_async` pair, `report_failure`,
-`self.context` for module-shared state, the `module.yaml` schema
-including `endpoint_parameters`/`device_profiles`/`endpoint_profiles`,
-and how to ship a module outside PHC). Also skim
+for the reference behind it — the same pattern explained, plus
+`device_profiles`/`endpoint_profiles` and how to ship a module outside
+PHC. Also skim
 [`docs/developer/architecture.md`](../../docs/developer/architecture.md)
 for how a device module fits into the rest of PHC, and
 [`docs/configuration.md`](../../docs/configuration.md) /
 [`docs/profiles.md`](../../docs/profiles.md) if the device needs shared
 module config or a profile library.
 
+Do NOT copy a caching or shared-state shape from an arbitrary existing
+module without checking it against the template: state shared between a
+module's devices belongs in `self.context`, never at module scope.
+
 
 ## 3. Scaffold the Module
 
-Create `device.py` and `module.yaml` following that pattern, using the
-endpoints and parameters settled in step 1, in the location settled
-there (`phc/devices/<name>/`, or an equivalent package out-of-tree).
+**Copy the template rather than writing from scratch.** Copy
+[`examples/device-template/device_template/`](../../examples/device-template/device_template/)
+to the location settled in step 1 (`phc/devices/<name>/`, or an equivalent
+package out-of-tree), then:
+
+- Rename it in `@register_module()`, the class name, and `module.yaml`.
+- Replace `_read_payload()`/`_write_payload()` with the real protocol —
+  they are the template's entire I/O surface, deliberately isolated so
+  this is a single-site edit.
+- Replace the parameters and endpoints with the ones settled in step 1.
+- Delete what this device doesn't need: the write half for a read-only
+  device, `_TemplateState`/`self.context` if its devices share nothing,
+  and every part marked `SIMULATION ONLY` (including the
+  `simulate_failure` parameter and `_SIMULATED_UNITS`).
+
 `module.yaml` `description` fields are user-facing (rendered in the web
 UI) — plain English, not implementation notes; put implementation
 rationale in `device.py` docstrings instead.
@@ -65,7 +87,9 @@ example system config under `examples/` that demonstrates it end to end.
 Follow the existing conventions: a bare device-list file at
 `examples/devices/<name>_*.yaml` (see [`meteoswiss_stations.yaml`](../../examples/devices/meteoswiss_stations.yaml) for the
 `!include`-able list pattern) and/or a runnable system file at
-`examples/<name>_*.yaml` (see [`meteo_multi_city.yaml`](../../examples/meteo_multi_city.yaml)) wiring it into a
+`examples/<name>_*.yaml` (see [`meteo_multi_city.yaml`](../../examples/meteo_multi_city.yaml), or
+[`device_template_system.yaml`](../../examples/device_template_system.yaml)
+for the template's own minimal one) wiring it into a
 minimal `tasks:`/`intervals:` setup that reads or writes the device's
 endpoints. Confirm which shape fits before writing it if the device
 doesn't obviously match one of the existing examples' style.
@@ -75,9 +99,15 @@ doesn't obviously match one of the existing examples' style.
 
 Add `tests/test_<name>.py` covering `receive`/`transmit` (or their async
 counterparts), including the failure-to-`None` path. Follow
-[`tests/test_meteoswiss.py`](../../tests/test_meteoswiss.py)'s pattern of driving the device through a real
-`Scheduler` against a throwaway local server/fixture rather than mocking
-internals.
+[`tests/test_device_template.py`](../../tests/test_device_template.py),
+the template's own test, for the shape — and
+[`tests/test_meteoswiss.py`](../../tests/test_meteoswiss.py) for the same
+thing against a throwaway local HTTP server. Both drive the device through
+a real `Scheduler` rather than mocking internals.
+
+If the module shares state between its devices, note how those tests pass
+one `context` dict to several devices to exercise it — a directly
+constructed `Device` otherwise gets its own.
 
 
 ## 6. Package Data

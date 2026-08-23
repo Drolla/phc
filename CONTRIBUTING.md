@@ -15,11 +15,14 @@ conventions such an assistant should read first — see
 ```
 pip install -e ".[dev]"
 pytest
-ruff check phc tests
+ruff check phc tests examples/device-template
 mypy
 ```
 
 All three run in CI. `ruff` and `mypy` are configured in `pyproject.toml`.
+`examples/device-template` is linted alongside the package because it is
+code people copy — see [Adding a Device Module or
+Extension](#adding-a-device-module-or-extension).
 
 `mypy` is a **ratchet**: the codebase was never type-checked, so the
 modules that still have findings are listed as exempt under
@@ -57,12 +60,18 @@ one back should need a reason.
 
 ## Adding a Device Module or Extension
 
+For a device module, start from
+[`examples/device-template/`](examples/device-template/): a complete,
+working module written to be copied, which runs with no hardware or
+network and demonstrates every pattern in one place. Copy it, swap in your
+protocol, and delete what you don't need.
+
 See [`docs/developer/architecture.md`](docs/developer/architecture.md) for
 how the pieces fit together,
 [`writing-a-device-module.md`](docs/developer/writing-a-device-module.md)
-for the module.yaml + device.py pattern, and
+for the reference behind that template, and
 [`writing-an-extension.md`](docs/developer/writing-an-extension.md) for the
-extension.yaml + extension.py one.
+extension.yaml + extension.py pattern.
 
 A descriptor (`module.yaml`/`extension.yaml`) and any web assets are
 package *data*, not code, so a new one must also be covered by

@@ -13,11 +13,22 @@ A new bundled device type is a new `phc/devices/<name>/` package containing:
   needs a protocol field like zway's `command_group`/`address`) declared
   `endpoint_parameters:`.
 
-See any existing module (e.g. [`phc/devices/virtual/`](../../phc/devices/virtual/))
-for the minimal shape, [`phc/devices/meteoswiss/`](../../phc/devices/meteoswiss/) for
-a fuller, network-backed example, or [`phc/devices/zway/`](../../phc/devices/zway/)
-for one using `endpoint_parameters:` and a two-axis endpoint/device profile
-library.
+**Start from the template.**
+[`examples/device-template/`](../../examples/device-template/) is a
+complete, working module written to be copied. It demonstrates everything
+on this page in one place, runs with no hardware and no network, and has
+its own test so it cannot quietly rot against a changed API. Copy it,
+replace its two I/O methods with your protocol, and delete what your device
+doesn't need — its
+[README](../../examples/device-template/README.md) lists what each part is
+for and when to keep it.
+
+The rest of this page is the reference behind that template: what each
+piece does, and why. For real modules at other points on the spectrum, see
+[`phc/devices/virtual/`](../../phc/devices/virtual/) for the minimal shape,
+[`phc/devices/meteoswiss/`](../../phc/devices/meteoswiss/) for a
+network-backed one, or [`phc/devices/zway/`](../../phc/devices/zway/) for
+`endpoint_parameters:` and a two-axis endpoint/device profile library.
 
 
 ## `device.py`
@@ -138,10 +149,13 @@ by hand. It is a particularly bad home for an `asyncio.Lock`, which binds
 to the first event loop that contends for it and then fails against any
 later one.
 
+Every bundled module that shares state does it this way:
 [`phc/devices/zway/`](../../phc/devices/zway/) shows the pattern at full
-size (`_ZWayState`): a batched-fetch identifier registry, a response
-cache, session cookies and several locks, all shared between the devices
-of one system and isolated from any other.
+size (`_ZWayState` — a batched-fetch identifier registry, a response cache,
+session cookies and several locks), while `meteoswiss`, `open_meteo` and
+`waveplus_bridge` each keep just a response cache and its lock there. All
+of them are shared between the devices of one system and isolated from any
+other.
 
 
 ## `module.yaml` Schema
