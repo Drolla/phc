@@ -1,0 +1,63 @@
+heartbeat: 1s
+
+# Runnable demonstration of the device-module template in
+# examples/device-template/. Nothing here touches real hardware or the
+# network: device_template simulates its own "Acme Hub", so this config can
+# be run as-is.
+#
+# It doubles as a demonstration of the out-of-tree plugin path -- the module
+# lives outside the phc package entirely and is loaded from a directory,
+# exactly as a private module belonging to one household's config would be.
+# See docs/developer/writing-a-device-module.md ("Shipping a Module Outside
+# PHC").
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+# One directory per module inside it, laid out like phc/devices/. Resolved
+# relative to THIS file's own directory, so the pair stays relocatable.
+plugin_paths: ["./device-template"]
+
+# cache_time is a `scope: module` parameter, so it is set once here for every
+# device of the module rather than repeated on each one. Both units below
+# share a host, so one poll fetches the hub once and serves both.
+modules:
+  device_template:
+    cache_time: 5s
+
+devices:
+  - id: hall
+    module: device_template
+    name: Hall Unit
+    host: 10.0.0.42
+    unit: hall
+
+  - id: cellar
+    module: device_template
+    name: Cellar Unit
+    host: 10.0.0.42
+    unit: cellar
+
+tasks:
+  - tag: toggle_hall_relay
+    description: "Switch the hall relay every 10s, to show a write round-trip"
+    time: +2s
+    repeat: 10s
+    action: { kind: toggle, device: "hall.relay" }
+
+  - tag: report_relay
+    description: "Log whenever a relay actually changes state"
+    condition: { device: "hall.relay", changed: true }
+    action: { kind: log, device: "hall.relay", message: "hall relay is now {text}" }
+
+  - tag: report_readings
+    description: "Log both units' temperatures periodically"
+    time: +3s
+    repeat: 15s
+    action:
+      kind: script
+      code: |
+        log(f"hall {state('hall.temperature')} degC, "
+            f"cellar {state('cellar.temperature')} degC")
