@@ -1,6 +1,6 @@
-# Configuration reference
+# Configuration Reference
 
-## Splitting configuration across files
+## Splitting Configuration Across Files
 
 A system YAML can pull in another YAML file with `!include <relative-path>`,
 anywhere a value is expected -- a mapping value, a list item, nested
@@ -72,7 +72,8 @@ tasks:
   - !include radon_tasks.yaml # spliced in as two tasks, not one nested list
 ```
 
-## Placeholder values
+
+## Placeholder Values
 
 A value that has to be filled in with something real before a config can
 run -- a credential, another system's URL -- can be tagged
@@ -97,7 +98,8 @@ un-tagged example text (e.g. `smtp_host: "smtp.example.com"`) is just
 illustrative and isn't checked -- use `!placeholder` for anything that
 must not be left as-is.
 
-## Where relative paths point
+
+## Where Relative Paths Point
 
 Every relative path in a system YAML resolves against **that file's own
 directory** — a `log:` file destination, `plugin_paths:`, and an
@@ -114,7 +116,8 @@ absolute path if you want data somewhere else deliberately.
 > move it next to your config — PHC logs a warning naming both locations
 > when it finds data at the old one and nothing at the new one.
 
-## Using device modules and extensions from outside PHC
+
+## Using Device Modules and Extensions From Outside PHC
 
 `plugin_paths:` is a list of directories holding device modules or
 extensions that aren't bundled with PHC — each laid out like
@@ -139,7 +142,8 @@ the `phc.devices`/`phc.extensions` entry point group. Either way,
 `module:` names it exactly as it would a bundled one. See [writing a
 device module](developer/writing-a-device-module.md#shipping-a-module-outside-phc).
 
-## Modules and shared configuration
+
+## Modules and Shared Configuration
 
 A `module.yaml` declares each parameter's `scope` (default `device`) and
 `override` (default `allowed`; `required` or `none` are the other two). A
@@ -203,6 +207,7 @@ profiles. There is no `params: { ... }` nesting on a device entry or an
 endpoint any more; an undeclared field anywhere on either (a typo, or a
 value meant for the other one) is a `ConfigError` naming the field.
 
+
 ## Logging
 
 `log:` is a list of independently-levelled destinations:
@@ -235,6 +240,7 @@ the command line.
 There is no `log_levels:` top-level key — every destination carries its own
 `levels:` instead.
 
+
 ## Tasks
 
 A task fires its `action:`/`actions:` when it's *due* and its `condition:`
@@ -259,7 +265,7 @@ exclusive -- a task may give either, both, or neither:
   that moment if one is given (e.g. "check at 22:00, but only if the light
   is still on").
 
-### `repeat:` — one-shot, permanent, or repeating
+### `repeat:` — One-Shot, Permanent, or Repeating
 
 `repeat:` controls what happens after a due-time task fires:
 
@@ -290,7 +296,7 @@ and a `condition:` given, which has no due-time schedule at all:
 ("either" means `condition:` may or may not also be given; it just adds
 the condition gate on top of the due-time behavior in that row.)
 
-### `min_interval:` — retrigger cooldown
+### `min_interval:` — Retrigger Cooldown
 
 An optional `min_interval:` adds a retrigger cooldown on top of the above:
 once fired, a task won't fire again until at least that long has passed,
@@ -306,7 +312,7 @@ a cooldown still in effect stops the check right there — the task's
 actions never run, and `min_interval:`'s own retrigger timer isn't touched
 by a fire that didn't happen.
 
-### Tasks and the heartbeat: a one-tick lag
+### Tasks and the Heartbeat: A One-Tick Lag
 
 Every task in a running system is checked once per heartbeat `tick`, all
 against the *same* snapshot of device state -- specifically, whatever the
@@ -319,7 +325,7 @@ never on the same tick the change was observed. This is deliberate and
 keeps every task's view of the world consistent within a tick, rather than
 having task order affect which tasks see a change first.
 
-### Which clock each schedule runs on
+### Which Clock Each Schedule Runs On
 
 PHC measures **intervals** and **absolute times** on two different clocks,
 so that a clock correction can't disturb the polling loop:
@@ -361,7 +367,8 @@ task list, or an extension -- `set`, `toggle`, `log`, `create_task`,
 for each, and [Reusable task templates](scripting.md#reusable-task-templates)
 for spawning/replacing tasks at runtime via `create_task`.
 
-## Time and duration strings
+
+## Time and Duration Strings
 
 `update:` intervals, a task's `repeat:`/`min_interval:`, an endpoint's
 `history.interval` (see [Value history & fractiles](scripting.md#value-history--fractiles)),

@@ -1,6 +1,6 @@
-# Timer internals
+# Timer Internals
 
-## Timers are Tasks, not a parallel scheduler
+## Timers Are Tasks, Not a Parallel Scheduler
 
 [`phc/extensions/timer/extension.py`](../../phc/extensions/timer/extension.py)'s
 `TimerInstance` deliberately does not implement its own due-time loop.
@@ -20,7 +20,8 @@ own "already past → advance by whole multiples" catch-up logic — no
 separate rolling-forward code exists in this extension for repeating
 timers.
 
-## `on_bind`, not `configure()`, is where timers are restored
+
+## `on_bind`, Not `configure()`, Is Where Timers Are Restored
 
 `configure()` runs during `core.config._load_extensions`, before `tasks:`
 is built (see [`docs/developer/debug-portal.md`](debug-portal.md)'s own
@@ -36,7 +37,8 @@ rather than registered — it never becomes a Task, so it can never fire
 late. A repeating timer is never subject to this check: `parse_time`'s own
 catch-up (above) already rolls it forward to a future slot.
 
-## `on_tick` reconciles the store against the live task list
+
+## `on_tick` Reconciles the Store Against the Live Task List
 
 Two things can make a `TimerDef`'s persisted state stale without any CRUD
 call happening:
@@ -57,7 +59,8 @@ like `extensions.recovery`'s, see `core.config.load_system`) that walks
 the live task list once per tick, keyed by tag, and reconciles both cases
 — writing the store only when something actually changed.
 
-## Web UI seam: same pattern as `GraphPanel` → `logdb`
+
+## Web UI Seam: Same Pattern as `GraphPanel` → `logdb`
 
 [`phc/extensions/web_ui/panels.py`](../../phc/extensions/web_ui/panels.py)'s
 `TimersPanel` holds a `timer_instance` name, not a resolved reference — the
@@ -89,7 +92,8 @@ widget kind a newly-selected target needs. Listeners are delegated at the
 document level (not bound per-element) because htmx replaces the whole
 panel, form included, on every poll/mutation.
 
-## Runtime task mutation is safe by construction
+
+## Runtime Task Mutation Is Safe by Construction
 
 A web request handler mutating `system.tasks` (via `add_timer`/
 `update_timer`/`delete_timer`/`set_enabled`) runs on the same event loop as
@@ -99,7 +103,8 @@ Scheduler._tick_async` iterates a *snapshot* of the task list in its pass 2
 the same guarantee `core.task.CreateTaskAction`/`KillTaskAction` already
 rely on. No additional locking is needed here.
 
-## Validation happens before persisting, not only at fire time
+
+## Validation Happens Before Persisting, Not Only at Fire Time
 
 `TimerInstance._build_timer()` validates a "set" action's `value` against
 the target endpoint's own `Endpoint.from_text()` at CRUD time — the same

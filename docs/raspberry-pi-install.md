@@ -4,6 +4,7 @@ This guide sets up PHC on a Raspberry Pi running Raspberry Pi OS (Bookworm
 or later), running under a dedicated system user, and optionally as a
 `systemd` service that starts on boot and restarts on failure.
 
+
 ## 1. Prerequisites
 
 PHC needs Python 3.11+. Raspberry Pi OS Bookworm ships Python 3.11 by
@@ -24,7 +25,8 @@ sudo apt update
 sudo apt install -y python3-venv python3-pip git
 ```
 
-## 2. Create a dedicated user (recommended)
+
+## 2. Create a Dedicated User (Recommended)
 
 Running PHC as its own unprivileged user (rather than `pi`) limits what a
 bug or a compromised dependency could touch on the rest of the system:
@@ -37,6 +39,7 @@ Everything below assumes PHC lives at `/opt/phc` and runs as the `phc`
 user. If you'd rather run it under your own account (e.g. `pi`), skip this
 step and substitute your own home directory/user throughout.
 
+
 ## 3. Fetch PHC
 
 ```
@@ -48,7 +51,8 @@ sudo chown -R phc:phc /opt/phc
 or copy the project tree over with `rsync`/`scp` and `chown` it to `phc`
 afterwards.)
 
-## 4. Install PHC into a virtual environment
+
+## 4. Install PHC Into a Virtual Environment
 
 ```
 sudo -u phc -H bash -c '
@@ -74,9 +78,10 @@ sudo -u phc /opt/phc/.venv/bin/phc --config examples/virtual_system.yaml
 You should see startup log lines on stdout and a live tick countdown; stop
 it with Ctrl+C.
 
-## 5. Write your system configuration
 
-Copy one of the `examples/` files as a starting point for your own house,
+## 5. Write Your System Configuration
+
+Copy one of the [`examples/`](../examples/) files as a starting point for your own house,
 rather than editing an example in place:
 
 ```
@@ -122,7 +127,8 @@ sudo -u phc /opt/phc/.venv/bin/phc --config /opt/phc/system.yaml
 
 Ctrl+C to stop once you're satisfied it starts cleanly.
 
-## 6. Run as a systemd service
+
+## 6. Run as a systemd Service
 
 Create `/etc/systemd/system/phc.service`:
 
@@ -179,7 +185,8 @@ Stop or restart after a config change:
 sudo systemctl restart phc.service
 ```
 
-## 7. Optional: web UI dashboard
+
+## 7. Optional: Web UI Dashboard
 
 If your config includes [`phc/extensions/web_ui`](web-ui.md), it binds to
 `127.0.0.1` by default (loopback-only, no authentication) — safe to leave
@@ -195,6 +202,7 @@ change `host:` to the Pi's LAN address or `0.0.0.0` — but since there's no
 built-in authentication, only do this on a network you trust, or put a
 reverse proxy with auth (e.g. `nginx`) in front of it.
 
+
 ## 8. Updating PHC
 
 ```
@@ -209,6 +217,7 @@ sudo systemctl start phc.service
 
 Re-run `pip install -e .` after every update in case dependencies changed
 — it's a no-op if they haven't.
+
 
 ## Troubleshooting
 

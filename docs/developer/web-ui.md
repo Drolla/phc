@@ -1,6 +1,6 @@
-# Web UI internals
+# Web UI Internals
 
-## Panel-kind registry
+## Panel-Kind Registry
 
 [`phc/extensions/web_ui/panels.py`](../../phc/extensions/web_ui/panels.py) keeps its
 own kind → class registry, local to this extension — `phc/core/registry.py` is
@@ -27,7 +27,8 @@ lists are small enough to be embedded directly in the page render, like a
 `DevicesPanel`'s widgets — see `_render_panel_data`'s `extensions_registry`
 parameter.
 
-## Widget-rendering architecture
+
+## Widget-Rendering Architecture
 
 [`phc/extensions/web_ui/widgets.py`](../../phc/extensions/web_ui/widgets.py) is the
 **one and only** place that decides which widget kind (`toggle`, `dropdown`,
@@ -42,6 +43,7 @@ single `/widget/{device}/{endpoint}` fragment alike) — `_macros.html`'s
 branches that lead to at least one visible endpoint, so a page/section
 with a narrow selector doesn't render empty group headers for devices
 outside its own selection.
+
 
 ## `server.py`
 
@@ -87,6 +89,7 @@ extension state, already committed by the time the handler returns, so
 there's no next-tick staleness to avoid rendering. See
 [`docs/developer/timer.md`](timer.md) for the full writeup, including how
 `phc/extensions/timer` itself turns a timer into a real `core.task.Task`.
+
 
 ## `extension.py`
 

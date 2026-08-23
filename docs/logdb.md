@@ -1,4 +1,4 @@
-# Log database (logdb)
+# Log Database (logdb)
 
 [`phc/extensions/logdb/`](../phc/extensions/logdb/) is a CSV-backed,
 in-memory-buffered log of numeric device endpoint state: an

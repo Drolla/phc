@@ -37,17 +37,18 @@
   `.py` docstrings instead.
 - Extended user-facing documentation (concepts, configuration reference,
   profiles, per-module or per-extension deep dives, etc.) lives in
-  `docs/` as topic-based Markdown files — e.g. `docs/configuration.md`,
-  `docs/profiles.md`, `docs/zway.md`. Everything extended and
+  [`docs/`](../../docs/) as topic-based Markdown files — e.g. [`docs/configuration.md`](../../docs/configuration.md),
+  [`docs/profiles.md`](../../docs/profiles.md), [`docs/zway.md`](../../docs/zway.md). Everything extended and
   user-facing goes here, whether cross-cutting or module-specific — one
   rule, one location, no exceptions carved out for individual modules.
 - Extended developer-facing documentation (architecture, internals,
   guides for adding a device module or extension, etc.) lives in
-  `docs/developer/` as topic-based Markdown files — e.g.
-  `docs/developer/architecture.md`,
-  `docs/developer/adding-a-device-module.md`, `docs/developer/zway.md`.
+  [`docs/developer/`](../../docs/developer/) as topic-based Markdown files — e.g.
+  [`docs/developer/architecture.md`](../../docs/developer/architecture.md),
+  [`docs/developer/writing-a-device-module.md`](../../docs/developer/writing-a-device-module.md),
+  [`docs/developer/zway.md`](../../docs/developer/zway.md).
   Same rule as above: one location for all extended developer docs,
   cross-cutting or module-specific alike.
-- `README.md` stays a concise summary covering both audiences, weighted
-  toward user documentation as the main focus, linking out to `docs/`
-  and `docs/developer/` for details rather than embedding them inline.
+- [`README.md`](../../README.md) stays a concise summary covering both audiences, weighted
+  toward user documentation as the main focus, linking out to [`docs/`](../../docs/)
+  and [`docs/developer/`](../../docs/developer/) for details rather than embedding them inline.

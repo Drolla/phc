@@ -3,7 +3,8 @@
 How PHC is put together, and why. For the user-facing view of the same
 concepts, see [concepts](../concepts.md).
 
-## The shape of it
+
+## The Shape of It
 
 PHC is a fixed-heartbeat loop over a tree of devices, with tasks evaluated
 against their state. Three ideas carry most of the design:
@@ -17,6 +18,7 @@ against their state. Three ideas carry most of the design:
   half-updated world.
 - **Everything above the core is an extension.** History logging, the web
   UI, timers, mail — none of it is special-cased in the core.
+
 
 ## Layers
 
@@ -68,7 +70,8 @@ Two dependency inversions were removed and are worth not reintroducing:
   into `TaskRegistry`, which owns the live task list and the context needed
   to build more.
 
-## A tick
+
+## A Tick
 
 `Scheduler._tick_async` runs four passes, in this order, and the order is
 load-bearing:
@@ -93,7 +96,8 @@ Failures are isolated per device: a raising or timing-out fetch is
 recorded and logged, never propagated, so one flaky device cannot take down
 a tick. That isolation is why [device health](#device-health) has to exist.
 
-## Two clocks
+
+## Two Clocks
 
 Every *interval* runs on `time.monotonic()`; only an absolute *time of day*
 runs on the wall clock.
@@ -114,7 +118,7 @@ task set for `22:00` genuinely should move with the clock, which is why the
 split exists rather than one clock winning.
 
 Both readings travel together as one frozen `Now(wall, mono)`
-(`phc/core/clock.py`), passed explicitly into `tick()` rather than read from
+([`phc/core/clock.py`](../../phc/core/clock.py)), passed explicitly into `tick()` rather than read from
 the clock inside — so a caller can drive ticks at whatever times it likes.
 Each use site names the clock it reads (`now.wall`, `now.mono`), and a
 function needing only one takes a plain `mono:` or `wall:` float instead.
@@ -127,7 +131,8 @@ heartbeat after the previous tick's *start*. Sleeping a heartbeat after it
 *finishes* would make the real period `heartbeat + tick duration` — every
 interval in the system running proportionally slow, forever.
 
-## Devices and endpoints
+
+## Devices and Endpoints
 
 A `Device` holds endpoints and child devices; there is no separate
 host/leaf class. A "room" is just a device with no endpoints.
@@ -150,7 +155,8 @@ batched-request registry) belongs in `Device.context`, a dict scoped to one
 loaded system — not at module scope, which would outlive the `System` and
 leak between two loaded in one process.
 
-## Device health
+
+## Device Health
 
 Because I/O failures are swallowed to protect the tick, a dead device would
 otherwise be invisible: its endpoints keep their last-good values, and a
@@ -164,6 +170,7 @@ Most modules never raise, though: they catch their own network errors and
 report `None` values on purpose. `Device.report_failure()` is how they say
 so, and without it health would never trip for exactly the network-backed
 modules it matters most for.
+
 
 ## Tasks
 
@@ -184,6 +191,7 @@ knows nothing about devices; what a script can call is decided in one
 place, `task._build_rule_namespace`, so conditions and scripts can never
 drift apart in what they expose.
 
+
 ## Plugins
 
 Two plugin kinds, both discovered the same three ways: bundled, from a
@@ -200,6 +208,7 @@ must say so, rather than silently not existing and surfacing later as
 
 See [writing a device module](writing-a-device-module.md) and [writing an
 extension](writing-an-extension.md).
+
 
 ## Configuration
 

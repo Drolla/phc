@@ -1,4 +1,4 @@
-# AI skill: zway device profile generator
+# AI Skill: zway Device Profile Generator
 
 ## Purpose
 
@@ -7,6 +7,7 @@ Given a description of one or more Z-Wave devices, produce an
 Display the snippet in chat only -- do not add it to
 [`phc/devices/zway/module.yaml`](../../phc/devices/zway/module.yaml) or any other
 file.
+
 
 ## References
 
@@ -29,6 +30,7 @@ Consult these two files:
     https://github.com/OpenZWave/open-zwave/tree/master/config
 
 Do not check other files from this project/repo.
+
 
 ## Rules
 

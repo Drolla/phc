@@ -1,11 +1,12 @@
-# Writing a skill
+# Writing a Skill
 
 A skill under `.agentic_flowspace/skills/` doesn't have to be written by
 hand. `agentic-adding-a-device-module` was built entirely through a conversation
 with Claude Code. Below is that conversation as a worked example,
 condensed and cleaned up.
 
-## 1. Ask for the right mechanism first
+
+## 1. Ask for the Right Mechanism First
 
 > I'd like AI support for adding a new device to PHC. Should this be a
 > prompt, an instruction, a skill, or an agent?
@@ -20,14 +21,15 @@ than a one-off prompt, not a background rule the way `instructions/` is,
 and not enough need for isolated context to justify a subagent. It named
 that tradeoff and asked whether to build one.
 
-## 2. Build it from the existing documentation
+
+## 2. Build It From the Existing Documentation
 
 > Yes, create this skill using the available documentation in docs. It
 > should ask the user which physical device should be the endpoints, and
 > propose to implement an example configuration that demonstrates the use
 > of the device.
 
-Claude read `writing-a-device-module.md` in full, alongside a working
+Claude read [`writing-a-device-module.md`](writing-a-device-module.md) in full, alongside a working
 example of everything it describes: `module.yaml` from `virtual` and
 `meteoswiss`, the `meteoswiss_stations.yaml` / `meteo_multi_city.yaml`
 example configs, `test_meteoswiss.py` for the test pattern, the
@@ -36,7 +38,8 @@ changelog instructions. It then wrote
 `.agentic_flowspace/skills/agentic-adding-a-device-module.md`, registered it in
 `index.json`, and logged the addition in `CHANGELOG.md`.
 
-## 3. Add a missing clarifying question
+
+## 3. Add a Missing Clarifying Question
 
 > Ask the user also whether the device shall be stored within the PHC
 > project or repo, or outside.
@@ -46,12 +49,14 @@ the module itself should live. Claude added that as a second clarifying
 question next to it, since it decides where the module actually gets
 scaffolded (`phc/devices/<name>/` vs. an out-of-tree package).
 
-## 4. Trim it
+
+## 4. Trim It
 
 > Reduce the text you've added — this is too verbose.
 
 One line was enough to cut the two additions from step 3 down to match
 the density of the rest of the skill.
+
 
 ## Takeaways
 

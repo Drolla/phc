@@ -1,4 +1,4 @@
-# zway internals
+# zway Internals
 
 [`phc/devices/zway/device.py`](../../phc/devices/zway/device.py) batches every
 `zway` device behind the same controller (`base_url`) into shared caching/
@@ -52,7 +52,8 @@ auth state, keyed by `base_url`:
   simply retried on the next poll — the same idiom as
   `_configured_tag_readers` above.
 
-## Profile library notes
+
+## Profile Library Notes
 
 A few `device_profiles` entries in
 [`module.yaml`](../../phc/devices/zway/module.yaml) encode wiring that isn't

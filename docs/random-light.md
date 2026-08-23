@@ -1,4 +1,4 @@
-# Random light control
+# Random Light Control
 
 [`phc/extensions/random_light/`](../phc/extensions/random_light/) randomizes a set of
 "light" devices to make an empty house look occupied — each light gets one

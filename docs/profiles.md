@@ -1,4 +1,4 @@
-# Endpoint and device profiles
+# Endpoint and Device Profiles
 
 A module can also declare a reusable library of endpoints in its
 `module.yaml`, split along two independent axes: an **endpoint profile**
@@ -74,7 +74,8 @@ for a worked example mixing a whole-device profile with named endpoints, a
 device profile with one field overridden, and a single endpoint profile
 without a device profile.
 
-## Extending a module's profile library from a system config
+
+## Extending a Module's Profile Library From a System Config
 
 A system config can add to a module's `device_profiles`/`endpoint_profiles`
 library too, under that module's own entry in the top-level `modules:`
@@ -113,7 +114,7 @@ same base/overlay ambiguity either way.
 Reach for this instead of editing the module's own `module.yaml` when a
 profile is specific to your setup rather than a real shared product — e.g.
 a `virtual` siren with no real hardware behind it doesn't belong in
-`phc/devices/virtual/module.yaml`'s generic library. It also composes with
+[`phc/devices/virtual/module.yaml`](../phc/devices/virtual/module.yaml)'s generic library. It also composes with
 `<<: !include` for free, since that's a plain YAML merge key: a
 `device_profiles:` block can live in a shared fragment file included from
 multiple system configs (see [Splitting configuration across

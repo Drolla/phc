@@ -1,4 +1,4 @@
-# Conditions, scripted actions & sticky values
+# Conditions, Scripted Actions & Sticky Values
 
 ## Overview
 
@@ -27,14 +27,15 @@ tasks:
 No imports, no method-call chains beyond what's explicitly allowed, no
 unbounded loops — this is mistake-containment for a trusted, locally-
 authored YAML file, not a sandbox against a hostile author (see
-`phc/core/scripting.py`'s own docstring). The rest of this page covers what
+[`phc/core/scripting.py`](../phc/core/scripting.py)'s own docstring). The rest of this page covers what
 [the shared sandbox](#the-shared-sandbox) offers all three surfaces, the
 two ways to write a task's [condition](#conditions), the different
 `kind:`s an [action](#actions) can take and when to reach for each, and
 the [sticky/history](#sticky-values--history) mechanisms available
 throughout.
 
-## The shared sandbox
+
+## The Shared Sandbox
 
 `condition.expr`, a `script` action's `code`, and a `set` action's `expr`
 all run against one shared set of functions, so these three surfaces can
@@ -72,6 +73,7 @@ underlying expression compiler but *not* the same namespace: they only see
 builtins — no `state()`/`changed()`/refs, since a transform runs on one
 endpoint's own value in isolation, not against the wider device tree.
 
+
 ## Conditions
 
 A task's schedule (`time`/`repeat`) and its `condition` are independent
@@ -80,7 +82,7 @@ gates — see [Tasks](configuration.md#tasks) for how they combine — and a
 shorthand, for gating on one endpoint, or `expr:`, a general boolean
 expression, for anything involving more than one device or richer logic.
 
-### The `{device, changed, value}` shorthand
+### The `{device, changed, value}` Shorthand
 
 `changed` and `value` are independent filters, ANDed together — either
 one left out is trivially satisfied and doesn't constrain the result at
@@ -135,7 +137,7 @@ condition:
   expr: "armed.state == 1 and motion.changed and motion.state == 1"
 ```
 
-### Five equivalent ways to say the same thing
+### Five Equivalent Ways to Say the Same Thing
 
 To compare the shorthand against `expr:`'s different styles directly, here
 are five conditions that all fire on the exact same tick — the one
@@ -164,13 +166,14 @@ condition: { expr: "event('surveillance.armed') == 1" }
 
 Forms 2/3 and 4/5 are equivalent pairs because `event(ref)` *is*
 `state(ref)` on the tick of a change (both come from the same
-`update_state()` commit — see `phc/core/endpoint.py`) and `None` on every
+`update_state()` commit — see [`phc/core/endpoint.py`](../phc/core/endpoint.py)) and `None` on every
 other tick, so `event(ref) == 1` already implies "changed, to 1" in one
 comparison. Reach for the shorthand (form 1) when a single endpoint's
 value is all the condition needs — it's the shortest, and doesn't require
 naming any of the sandbox's functions at all; reach for `expr:` when the
 condition spans more than one device or needs boolean logic the shorthand
 can't express.
+
 
 ## Actions
 
@@ -192,7 +195,7 @@ registered across the codebase:
 `set` and `script` are the two kinds this sandbox actually powers, and
 often overlap — the same effect can usually be written either way.
 
-### The same fixed effect, three ways
+### The Same Fixed Effect, Three Ways
 
 Turning the siren off is a fixed target (`0`), achievable with any of the
 three general-purpose kinds:
@@ -209,7 +212,7 @@ All three write the same raw value the same way (`Endpoint.from_text()`/
 simplest choice — reach for `expr:`/`script` once the target stops being a
 constant.
 
-### The same dynamic effect, two ways
+### The Same Dynamic Effect, Two Ways
 
 `value:` can only ever be a literal — deriving a value from *another*
 endpoint needs `expr:` or `script`:
@@ -233,7 +236,7 @@ the expr to produce the target's own raw value or label explicitly, e.g. a
 ternary: `expr: "'clear' if not motion.state else 'motion'"` (ternaries,
 comparisons, `and`/`or`/`not`, and arithmetic are all allowed).
 
-### Beyond a single value: when to reach for `script`
+### Beyond a Single Value: When to Reach for `script`
 
 `set`'s `expr:` is a single expression — it can only ever produce the one
 value it writes. `script`'s `code:` is a sequence of statements, and is
@@ -257,7 +260,8 @@ or via named templates
 ([`_2-tempated.yaml`](../examples/virtual_surveillance-task_defs_2-tempated.yaml),
 see [Reusable task templates](#reusable-task-templates) below).
 
-## Reusable task templates
+
+## Reusable Task Templates
 
 A `create_task` action's nested `specs:` can get deeply repetitive when the
 same follow-up shape is spawned from several places, or when a task's own
@@ -305,7 +309,8 @@ doesn't need a `code:` string embedded inside another `code:` string. See
 [`examples/virtual_surveillance-task_defs_3-coded.yaml`](../examples/virtual_surveillance-task_defs_3-coded.yaml)'s
 `surv_intrusion` template for a worked example of exactly that.
 
-## Is this reading still trustworthy?
+
+## Is This Reading Still Trustworthy?
 
 `state(ref)` returns the last value a device successfully reported. If
 that device has since stopped answering, the value is still there and
@@ -349,9 +354,10 @@ the [web UI](web-ui.md) marks affected widgets "not responding", and a
 device changing state is logged on the `phc.health` logger — once when it
 starts failing and once when it recovers, rather than on every tick.
 
-## Sticky values & history
 
-### Sticky values
+## Sticky Values & History
+
+### Sticky Values
 
 `sticky(ref)` reads a since-last-`reset_sticky()` min/max window on one
 endpoint — the same mechanism [`phc/extensions/logdb`](logdb.md) uses to make
@@ -378,7 +384,7 @@ tasks:
 since the last reset (or since startup) — the same "nothing yet"
 convention as `state()`/`history()`/`fractile()`.
 
-### Value history & fractiles
+### Value History & Fractiles
 
 An endpoint can keep a short in-memory buffer of its own past numeric
 values, sampled on a cadence, for combining several recent readings into
