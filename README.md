@@ -4,30 +4,92 @@
 
 # Pylon Home Control (PHC)
 
-Pylon Home Control (PHC) is a compact, Python-based, YAML-configured home automation framework for people who prefer describing their home to writing a full application for it. Point PHC at a configuration file and it will poll and control a tree of pluggable **devices** — light switches, PIR sensors, environmental sensors, and anything you choose to integrate — while running **tasks**, condition- or time-driven actions that automate your home or any other system you want to orchestrate.
+[![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![AI-friendly](https://img.shields.io/badge/workflow-AI--friendly-8A63D2)](docs/developer/agentic-adding-a-device.md)
 
-It's lightweight enough to run comfortably on a Raspberry Pi, flexible enough to grow with your setup, and designed so that adding a new device is simply a matter of extending the configuration and writing a small Python class.
+Pylon Home Control is a compact home automation framework: describe your home
+in YAML, and PHC polls and controls a tree of pluggable **devices** — light
+switches, PIR sensors, environmental sensors, anything you integrate — while
+running **tasks**, the condition- and time-driven actions that automate it.
 
-PHC is built with the help of modern AI coding assistants, and its development workflow embraces them. This makes extending the PHC core or creating new device interfaces approachable for developers of all experience levels (see [Contributing](#contributing)).
+It runs comfortably on a Raspberry Pi, and adding a new device means writing a
+small Python class plus a YAML descriptor — nothing in the core changes.
 
-PHC aims to be a transparent, minimal alternative to heavy home-automation platforms. It is ideal for people who want automation without running a full server stack, and for developers who enjoy understanding and controlling the entire system.
+
+## Contents
+
+- [Why PHC?](#why-phc)
+- [Concepts](#concepts)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Installation and Usage](#installation-and-usage)
+- [Contributing](#contributing)
+- [License](#license)
 
 
-## Features at a Glance
+## Why PHC?
 
-- YAML-based configuration — describe your home declaratively.
-- Auto-discovered device modules — plug in new devices without touching the core.
-- Declarative tasks — time-based or condition-based automation.
-- Concurrent scheduler — efficient polling and task evaluation.
-- Lightweight footprint — runs comfortably on a Raspberry Pi.
-- Extensible architecture — add devices, extensions, or skills with small Python classes.
-- Built-in integrations — mail alerts, random lights, log database, web UI, Z-Wave, timers, recovery, debug portal.
-- AI-friendly development workflow — PHC is intentionally structured so AI assistants can help build modules and extensions quickly.
+PHC is a transparent, minimal alternative to heavy home-automation platforms.
+You don't run a server stack, manage dozens of services, or need a database,
+message bus or plugin manager — and you can read the entire core and
+understand it in an afternoon.
+
+- **YAML-based configuration** — describe your home declaratively.
+- **Auto-discovered device modules** — plug in new devices without touching the core.
+- **Declarative tasks** — time-based or condition-based automation.
+- **Concurrent scheduler** — efficient polling and task evaluation.
+- **Lightweight footprint** — runs comfortably on a Raspberry Pi.
+- **Built-in integrations** — mail alerts, random lights, log database, web UI,
+  Z-Wave, timers, recovery, debug portal.
+- **AI-friendly development workflow** — PHC is intentionally structured so AI
+  assistants can help build modules and extensions quickly, which makes
+  extending it approachable for developers of all experience levels.
+
+It suits Raspberry Pi setups, custom hardware integrations, and developers who
+prefer YAML plus small Python classes over large GUIs.
+
+
+## Concepts
+
+- **Device** — a node in a tree that exposes zero or more **endpoints**
+  (readable/writable state) and may have child devices, backed by a
+  plugin **module** declared in a system YAML file.
+
+- **Module** — a device plugin: a `phc/devices/<name>/device.py` (the `Device`
+  subclass) plus a `phc/devices/<name>/module.yaml` describing its parameters
+  and endpoints declaratively. Modules are discovered automatically at
+  startup.
+
+- **Task** — an automation triggered either by a schedule (`time`/`repeat`)
+  or by a device endpoint changing (`condition`), performing one or more
+  **actions** (`set`, `toggle`, `log`, `create_task`, `kill_task`, `script`,
+  ...).
+
+- **Scheduler** — drives each device's fetch on its own interval and
+  evaluates tasks once per heartbeat tick, running device I/O concurrently.
+
+See [`docs/concepts.md`](docs/concepts.md) for the full picture (including endpoint types/units/formatting), and [`examples/`](examples/) for complete system configurations.
 
 
 ## Quick Start
 
-A minimal PHC configuration looks like this:
+Clone the repository and enter it:
+
+```bash
+git clone https://github.com/Drolla/phc.git
+cd phc
+```
+
+Install the required Python modules:
+
+```bash
+pip install -e .
+```
+
+Write the configuration file of your system, using
+[`docs/configuration.md`](docs/configuration.md) as reference. A minimal PHC
+configuration looks like this:
 
 ```yaml
 devices:
@@ -56,37 +118,15 @@ tasks:
 
 Validate your configuration:
 
-```
-phc validate --config myhome.yaml
+```bash
+python -m phc validate --config myhome.yaml
 ```
 
 Run PHC:
 
+```bash
+python -m phc --config myhome.yaml
 ```
-phc --config myhome.yaml
-```
-
-
-## Concepts
-
-- **Device** — a node in a tree that exposes zero or more **endpoints**
-  (readable/writable state) and may have child devices, backed by a
-  plugin **module** declared in a system YAML file.
-
-- **Module** — a device plugin: a `phc/devices/<name>/device.py` (the `Device`
-  subclass) plus a `phc/devices/<name>/module.yaml` describing its parameters
-  and endpoints declaratively. Modules are discovered automatically at
-  startup.
-
-- **Task** — an automation triggered either by a schedule (`time`/`repeat`)
-  or by a device endpoint changing (`condition`), performing one or more
-  **actions** (`set`, `toggle`, `log`, `create_task`, `kill_task`, `script`,
-  ...).
-
-- **Scheduler** — drives each device's fetch on its own interval and
-  evaluates tasks once per heartbeat tick, running device I/O concurrently.
-
-See [`docs/concepts.md`](docs/concepts.md) for the full picture (including endpoint types/units/formatting), and [`examples/`](examples/) for complete system configurations.
 
 
 ## Documentation
@@ -110,7 +150,10 @@ Located in [`docs/`](docs/):
 - Raspberry Pi installation — [`docs/raspberry-pi-install.md`](docs/raspberry-pi-install.md)
 
 ### Developer Guide
-Located in [`docs/developer/`](docs/developer/):
+
+Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow, setup instructions, and how to add a device module or extension.
+
+Detailed documentation is located in [`docs/developer/`](docs/developer/):
 
 - Architecture — [`docs/developer/architecture.md`](docs/developer/architecture.md)
 - Writing a device module — [`docs/developer/writing-a-device-module.md`](docs/developer/writing-a-device-module.md)
@@ -131,17 +174,11 @@ Located in [`docs/developer/`](docs/developer/):
 - Python >= 3.11
 - Dependencies: `PyYAML`, `aiohttp`, `astral`, `Jinja2` (see `pyproject.toml`)
 
-### Install
-
-```
-pip install -e .
-```
-
 ### Usage
 
 Run PHC against one of the example systems:
 
-```
+```bash
 phc --config examples/virtual_system.yaml
 ```
 
@@ -171,30 +208,11 @@ Useful flags:
 Stop with Ctrl+C (SIGINT) or SIGTERM for a graceful shutdown.
 
 
-## Why PHC?
-
-PHC is intentionally small, transparent, and easy to understand. Unlike large
-home-automation platforms:
-
-- You don't run a full server stack.
-- You don't manage dozens of services.
-- You don't need a database, message bus, or plugin manager.
-- You can read the entire core and understand it in an afternoon.
-
-PHC is ideal for:
-
-- Raspberry Pi setups
-- Custom hardware integrations
-- Developers who want full control
-- People who prefer YAML + small Python classes over large GUIs
-- AI-assisted development workflows
-
-
 ## Contributing
 
 Contributions of all kinds are welcome — bug fixes, new devices,
-extensions, docs. See `CONTRIBUTING.md` for the development workflow,
-including how to add a new device interface, and `CHANGELOG.md` for
+extensions, docs. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development workflow,
+including how to add a new device interface, and [`CHANGELOG.md`](CHANGELOG.md) for
 release history.
 
 AI coding assistants will help you build modules, extensions, and skills
