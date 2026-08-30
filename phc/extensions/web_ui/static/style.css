@@ -138,9 +138,16 @@ input[type="range"].widget-input {
    (dropdown/number/text) -- input[type=range] has no fill to color (its
    thumb/track are handled separately below), and the toggle's
    .form-switch wrapper div would show as an unwanted colored rectangle
-   behind the switch pill if it picked this up too. */
+   behind the switch pill if it picked this up too.
+
+   .timers-form's own form-select/form-control inputs (target/action/
+   value/time/repeat/description) get the same treatment for the same
+   reason: that form now sits on --widget-bg too, so its inputs need the
+   matching pale fill or they'd read as plain white boxes again. */
 .widget-input.form-select,
-.widget-input.form-control {
+.widget-input.form-control,
+.timers-form .form-select,
+.timers-form .form-control {
   background-color: var(--bs-primary-bg-subtle);
 }
 
@@ -238,14 +245,14 @@ input[type="range"].widget-input {
   white-space: nowrap;
 }
 
-/* Body-bg, not tertiary-bg, for the same reason as .widget above: this
-   form sits inside .timers-panel's now-teal-washed card and needs to read
-   as a distinct neutral surface rather than blend into it. */
+/* --widget-bg, matching .widget's own rows above: keeps the add/edit form
+   in the same teal family as the rest of the timers panel instead of
+   reading as a plain white/gray box dropped onto it. */
 .timers-form {
   padding: 0.75rem;
   border: 1px solid var(--bs-border-color);
   border-radius: var(--bs-border-radius);
-  background: var(--bs-body-bg);
+  background: var(--widget-bg);
 }
 
 .timers-form-row {
