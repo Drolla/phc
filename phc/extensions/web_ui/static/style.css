@@ -42,9 +42,9 @@ header .nav-link:hover:not(.active) {
 .section-content,
 .children {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   align-items: start;
-  gap: 1rem;
+  gap: 0.5rem;
 }
 
 /* Each device is now a grid item, so it needs to look like a self-contained
@@ -58,24 +58,32 @@ header .nav-link:hover:not(.active) {
 .device,
 .graph-panel,
 .timers-panel {
-  padding: 0.75rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid var(--bs-primary-border-subtle);
   border-radius: var(--bs-border-radius);
   background: var(--bs-primary-bg-subtle);
 }
 
 .device > h4 {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
 }
 
 .device > .children {
-  margin-top: 0.75rem;
+  margin-top: 0.4rem;
 }
 
+/* min(260px, 100%), not a bare 260px: a bare floor is a HARD minimum, so a
+   device card sitting in a narrow outer-grid column would still demand a
+   260px endpoint track and spill its widget rows out past the card's right
+   edge. Wrapping it in min() lets the track collapse to the card's own
+   width whenever the card is narrower than the floor, while still giving
+   multiple columns once there is room for them. */
 .endpoints {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  align-items: start;
+  gap: 0.25rem;
 }
 
 /* --widget-bg (not body-bg) so each widget row reads as a distinct, still
@@ -89,15 +97,16 @@ header .nav-link:hover:not(.active) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
   border-radius: var(--bs-border-radius);
   background: var(--widget-bg);
+  min-width: 0;
 }
 
 .widget-label {
-  min-width: 10rem;
   font-weight: 600;
+  font-size: 0.875rem;
 }
 
 /* Bootstrap's form-control/form-select/form-range classes set width:100%,
@@ -107,11 +116,15 @@ header .nav-link:hover:not(.active) {
   flex: 0 1 auto;
   margin: 0;
   width: auto;
-  max-width: 14rem;
+  min-width: 0;
+  max-width: min(10rem, 100%);
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  font-size: 0.875rem;
 }
 
 input[type="range"].widget-input {
-  max-width: 10rem;
+  max-width: min(7rem, 100%);
 }
 
 /* Bootstrap's form-select/form-control paint themselves with plain
@@ -148,16 +161,15 @@ input[type="range"].widget-input {
 }
 
 .widget-value {
-  min-width: 3.5rem;
   margin-left: auto;
   text-align: right;
-  white-space: nowrap;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   color: var(--bs-secondary-color);
 }
 
 .section {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 /* Native <details>/<summary> has no styling of its own beyond the browser
