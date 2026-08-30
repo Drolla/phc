@@ -259,6 +259,48 @@ def test_bool_to_text_and_from_text():
     assert ep.from_text("false") is False
 
 
+def test_bool_endpoint_coerces_raw_readings_to_bool():
+    """Hardware and web APIs report 0/1, not native booleans.
+
+    Without coercion `type: bool` would be metadata only -- get() would
+    hand a script an int, so `is True` would fail. None (a failed read)
+    must still survive as None rather than becoming False."""
+    ep = Endpoint("is_day", value_type="bool")
+    for raw, expected in ((0, False), (1, True), (255, True)):
+        ep.set_raw(raw)
+        ep.update_state()
+        assert ep.get() is expected
+
+    ep.set_raw(None)
+    ep.update_state()
+    assert ep.get() is None
+
+
+def test_bool_coercion_runs_after_read_transform():
+    """An inverting transform yields an int; it must still land as a bool."""
+    ep = Endpoint("motion", value_type="bool", read_transform="1 - value")
+    ep.set_raw(1)
+    ep.update_state()
+    assert ep.get() is False
+
+    ep.set_raw(0)
+    ep.update_state()
+    assert ep.get() is True
+
+
+def test_non_bool_endpoints_keep_their_raw_reading():
+    """Coercion is scoped to bool -- nothing else changes shape."""
+    ep = Endpoint("count", value_type="int")
+    ep.set_raw(3)
+    ep.update_state()
+    assert ep.get() == 3
+
+    untyped = Endpoint("mode")
+    untyped.set_raw("auto")
+    untyped.update_state()
+    assert untyped.get() == "auto"
+
+
 def test_values_mapping_to_text_uses_label():
     ep = Endpoint("state", value_type="int", values={0: "off", 1: "on"})
     ep.set(1)
