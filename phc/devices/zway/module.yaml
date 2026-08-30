@@ -90,10 +90,20 @@ endpoint_parameters:
 endpoints: []
 
 endpoint_profiles:
+  # Logically a bool; 0/255 only on the wire. The transforms keep that
+  # protocol detail here rather than in every task and condition that
+  # switches a light. read_transform accepts any non-zero as on, which
+  # also covers a dimmer-capable node reporting an intermediate 1..99
+  # (previously such a reading matched neither mapping key and showed up
+  # as a bare "99"). The values mapping is retained so the UI still reads
+  # "off"/"on" rather than "false"/"true" -- with a bool type it renders
+  # as a toggle either way.
   switch_binary:
-    type: int
+    type: bool
     writable: true
-    values: { 0: "off", 255: "on" }
+    values: { false: "off", true: "on" }
+    read_transform: "value != 0"
+    write_transform: "255 if value else 0"
     command_group: SwitchBinary
   switch_multilevel:
     type: int
@@ -102,8 +112,8 @@ endpoint_profiles:
     max: 99
     command_group: SwitchMultilevel
   sensor_binary:
-    type: int
-    values: { 0: "clear", 1: "triggered" }
+    type: bool
+    values: { false: "clear", true: "triggered" }
     command_group: SensorBinary
   battery:
     type: int
@@ -174,7 +184,7 @@ device_profiles:
     description: Door Window Sensor
     endpoints:
       - { key: state, endpoint_profile: sensor_binary, address: "{node}.1",
-          values: { 0: "closed", 1: "open" } }
+          values: { false: "closed", true: "open" } }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   duwi:
@@ -233,7 +243,7 @@ device_profiles:
     description: Motion Detector with Light Detection
     endpoints:
       - { key: state, endpoint_profile: sensor_binary, address: "{node}",
-          values: { 0: "clear", 1: "motion" } }
+          values: { false: "clear", true: "motion" } }
       - { key: battery, endpoint_profile: battery, address: "{node}" }
 
   rm80-radiation_monitor:
