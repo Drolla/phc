@@ -119,5 +119,5 @@ a `virtual` siren with no real hardware behind it doesn't belong in
 `device_profiles:` block can live in a shared fragment file included from
 multiple system configs (see [Splitting configuration across
 files](configuration.md#splitting-configuration-across-files)). See
-[`examples/virtual_system.yaml`](../examples/virtual_system.yaml) for a
+[`examples/emulated_system.yaml`](../examples/emulated_system.yaml) for a
 worked example.

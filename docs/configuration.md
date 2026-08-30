@@ -258,7 +258,7 @@ log:
 ```
 
 `dest` is `stdout`, `stderr`, or any other string (a file path). Each
-destination's `levels` map works like `virtual_system.yaml`'s comment
+destination's `levels` map works like `emulated_system.yaml`'s comment
 explains: `default` sets the base level for any logger that doesn't have
 its own entry; every other key overrides one logger by the dotted suffix
 of its `"phc.<name>"` name (`scheduler`, `tasks`, `scripting`, `logdb`,

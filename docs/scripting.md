@@ -255,16 +255,16 @@ case: one action logs, sets two endpoints, and schedules a timed follow-up
 task, all together.
 
 See
-[`examples/virtual_surveillance-task_defs_3-coded.yaml`](../examples/virtual_surveillance-task_defs_3-coded.yaml)
+[`examples/emulated_surveillance-task_defs_3-coded.yaml`](../examples/emulated_surveillance-task_defs_3-coded.yaml)
 for a fuller worked example (arm/disarm, retriggered intrusion detection,
 timed follow-ups, mass-cancel on disarm) — paired with
-[`examples/virtual_surveillance-system_setup.yaml`](../examples/virtual_surveillance-system_setup.yaml)
+[`examples/emulated_surveillance-system_setup.yaml`](../examples/emulated_surveillance-system_setup.yaml)
 via `!include` (see [Splitting configuration across
 files](configuration.md#splitting-configuration-across-files)). The same
 task set is also available written two other ways: fully inlined
-([`_1-nested.yaml`](../examples/virtual_surveillance-task_defs_1-nested.yaml))
+([`_1-nested.yaml`](../examples/emulated_surveillance-task_defs_1-nested.yaml))
 or via named templates
-([`_2-tempated.yaml`](../examples/virtual_surveillance-task_defs_2-tempated.yaml),
+([`_2-tempated.yaml`](../examples/emulated_surveillance-task_defs_2-tempated.yaml),
 see [Reusable task templates](#reusable-task-templates) below).
 
 
@@ -313,7 +313,7 @@ A `task_specs:` entry's own `actions:` can itself use `create_task`/
 `template:` to spawn further tasks — useful for pulling a task's nested
 follow-ups out of a `script` action's `code:`, so a `create_task` call
 doesn't need a `code:` string embedded inside another `code:` string. See
-[`examples/virtual_surveillance-task_defs_3-coded.yaml`](../examples/virtual_surveillance-task_defs_3-coded.yaml)'s
+[`examples/emulated_surveillance-task_defs_3-coded.yaml`](../examples/emulated_surveillance-task_defs_3-coded.yaml)'s
 `surv_intrusion` template for a worked example of exactly that.
 
 

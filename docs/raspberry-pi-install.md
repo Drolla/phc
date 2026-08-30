@@ -72,7 +72,7 @@ put it on `PATH`.
 Confirm it works:
 
 ```
-sudo -u phc /opt/phc/.venv/bin/phc --config examples/virtual_system.yaml
+sudo -u phc /opt/phc/.venv/bin/phc --config examples/emulated_system.yaml
 ```
 
 You should see startup log lines on stdout and a live tick countdown; stop
@@ -85,7 +85,7 @@ Copy one of the [`examples/`](../examples/) files as a starting point for your o
 rather than editing an example in place:
 
 ```
-sudo -u phc cp /opt/phc/examples/virtual_system.yaml /opt/phc/system.yaml
+sudo -u phc cp /opt/phc/examples/emulated_system.yaml /opt/phc/system.yaml
 ```
 
 Edit `/opt/phc/system.yaml` to describe your actual devices — see
