@@ -28,9 +28,9 @@
       endpoints:
         - key: state
           writable: true
-          type: int
-          values: { 0: "off", 1: "on" }
-          default: 0
+          type: bool
+          values: { false: "off", true: "on" }
+          default: false
 
     - id: desk_lamp
       module: virtual
@@ -38,9 +38,9 @@
       endpoints:
         - key: power
           writable: true
-          type: int
-          values: { 0: "off", 1: "on" }
-          default: 0
+          type: bool
+          values: { false: "off", true: "on" }
+          default: false
         - key: brightness
           writable: true
           type: int
@@ -56,10 +56,11 @@
           log_aggregation: min
           history: 5
 
-    # Typed bool rather than int+values -- for an example that
-    # specifically wants to exercise a bool-typed endpoint's UI widget (a
-    # toggle) rather than an int-with-values dropdown (see living_light
-    # above for that shape).
+    # A bool with no values mapping, unlike living_light above: both
+    # render as a toggle, but this one has no labels to show, so its text
+    # falls back to "true"/"false". Kept as the bare-bool example -- the
+    # dropdown widget is exercised by fan.speed below, which is genuinely
+    # three-state.
     - id: kitchen_light
       module: virtual
       name: Kitchen Light
@@ -85,9 +86,9 @@
   endpoints:
     - key: state
       writable: true
-      type: int
-      values: { 0: "off", 1: "on" }
-      default: 0
+      type: bool
+      values: { false: "off", true: "on" }
+      default: false
 
 - id: fan
   module: virtual

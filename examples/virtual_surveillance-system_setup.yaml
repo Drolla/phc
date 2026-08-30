@@ -39,8 +39,8 @@ devices:
       # condition, so they start truly unset instead.
       - key: armed
         writable: true
-        type: int
-        values: { 0: "disarmed", 1: "armed" }
+        type: bool
+        values: { false: "disarmed", true: "armed" }
 
   - id: hallway_motion
     module: virtual
@@ -48,8 +48,8 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "clear", 1: "detected" }
+        type: bool
+        values: { false: "clear", true: "detected" }
 
   - id: cellar_motion
     module: virtual
@@ -57,8 +57,8 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "clear", 1: "detected" }
+        type: bool
+        values: { false: "clear", true: "detected" }
 
   - id: alarm
     module: virtual
@@ -66,9 +66,9 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "clear", 1: "active" }
-        default: 0
+        type: bool
+        values: { false: "clear", true: "active" }
+        default: false
 
   - id: all_lights
     module: virtual
@@ -78,8 +78,8 @@ devices:
       # watched by a `changed` condition below.
       - key: state
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
+        type: bool
+        values: { false: "off", true: "on" }
 
   # lights.living_light stands in for the hallway light, lights.kitchen_light
   # for the porch light, and siren for this house's siren -- see

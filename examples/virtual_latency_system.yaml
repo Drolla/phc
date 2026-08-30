@@ -21,9 +21,9 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+        type: bool
+        values: { false: "off", true: "on" }
+        default: false
 
   - id: slow_sensor
     module: virtual_latency
@@ -39,9 +39,9 @@ devices:
         default: 0
       - key: alert
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+        type: bool
+        values: { false: "off", true: "on" }
+        default: false
 
   - id: flaky_sensor
     module: virtual_latency

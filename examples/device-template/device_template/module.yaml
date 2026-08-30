@@ -72,7 +72,15 @@ endpoint_parameters:
 
 # Endpoints every device of this module gets. `type` is one of int/float/
 # bool/str; `unit` and `values` are presentation only (a `values` mapping
-# turns a raw number into a label in the UI and in logs).
+# turns a raw value into a label in the UI and in logs).
+#
+# Anything genuinely two-state -- on/off, open/closed, armed/disarmed --
+# belongs as `type: bool` with a `{false: ..., true: ...}` mapping, the
+# way `relay` below is declared. Conditions then read as plain truth
+# tests rather than comparisons against a magic 0/1, and the web UI
+# gives it a toggle instead of a dropdown while still showing the
+# mapping's wording. Reserve `values` on an int for something with three
+# or more states.
 endpoints:
   - key: temperature
     readable: true
@@ -91,7 +99,7 @@ endpoints:
   - key: relay
     readable: true
     writable: true
-    type: int
-    values: { 0: "off", 1: "on" }
+    type: bool
+    values: { false: "off", true: "on" }
     description: Switchable relay output on this unit
     channel: relay

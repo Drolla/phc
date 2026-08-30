@@ -21,10 +21,10 @@
 tasks:
   - tag: surveillance_enable
     description: "Arming resets the alarm flag and forces lights off before random control takes over"
-    condition: { device: "surveillance.armed", changed: true, value: 1 }
+    condition: { device: "surveillance.armed", changed: true, value: true }
     actions:
       - {kind: log, device: "surveillance.armed", message: "surveillance enabled"}
-      - {kind: set, device: "alarm.state", value: 0}
+      - {kind: set, device: "alarm.state", value: false}
       - {kind: random_light, instance: "random_light.house", force: 0}
       - kind: create_task
         specs:
@@ -32,7 +32,7 @@ tasks:
           description: "While armed and not alarmed, randomize the hallway/porch lights"
           time: +5s
           repeat: 1m
-          condition: { device: "alarm.state", value: 0 }
+          condition: { device: "alarm.state", value: false }
           action: { kind: random_light, instance: "random_light.house" }
       - kind: create_task
         specs:
@@ -40,12 +40,12 @@ tasks:
           description: "Motion while armed raises the alarm, at most once per 5 minutes"
           condition:
             refs: { hallway: "hallway_motion.state", cellar: "cellar_motion.state" }
-            expr: "(hallway.changed and hallway.state == 1) or (cellar.changed and cellar.state == 1)"
+            expr: "(hallway.changed and hallway.state) or (cellar.changed and cellar.state)"
           min_interval: 5m
           actions:
             - {kind: log, device: "alarm.state", message: "intrusion detected"}
-            - {kind: set, device: "alarm.state", value: 1}
-            - {kind: set, device: "siren.state", value: 1}
+            - {kind: set, device: "alarm.state", value: true}
+            - {kind: set, device: "siren.state", value: true}
             - kind: create_task
               specs:
                 tag: surv_alert_log
@@ -55,14 +55,14 @@ tasks:
               specs:
                 tag: surv_siren_off
                 time: "+3m"
-                action: { kind: set, device: "siren.state", value: 0 }
+                action: { kind: set, device: "siren.state", value: false }
             - kind: create_task
               specs:
                 tag: surv_light_off
                 time: "+45m"
                 actions:
-                  - { kind: set, device: "lights.living_light.state", value: 0 }
-                  - { kind: set, device: "alarm.state", value: 0 }
+                  - { kind: set, device: "lights.living_light.state", value: false }
+                  - { kind: set, device: "alarm.state", value: false }
                   - { kind: random_light, instance: "random_light.house", force: 0 }
             - {kind: random_light, instance: "random_light.house", force: 1}
             - kind: create_task
@@ -75,27 +75,27 @@ tasks:
 
   - tag: surveillance_disable
     description: "Disarming clears the siren/lights and cancels pending follow-ups"
-    condition: { device: "surveillance.armed", changed: true, value: 0 }
+    condition: { device: "surveillance.armed", changed: true, value: false }
     actions:
       - {kind: log, device: "surveillance.armed", message: "surveillance disabled"}
-      - {kind: set, device: "siren.state", value: 0}
-      - {kind: set, device: "lights.living_light.state", value: 0}
-      - {kind: set, device: "alarm.state", value: 0}
+      - {kind: set, device: "siren.state", value: false}
+      - {kind: set, device: "lights.living_light.state", value: false}
+      - {kind: set, device: "alarm.state", value: false}
       - {kind: kill_task, tags: ["surv_*"]}
       - {kind: random_light, instance: "random_light.house", force: 0}
 
   - tag: surveillance_all_lights_on
     description: "Manual override: force every light on and silence the siren"
-    condition: { device: "all_lights.state", changed: true, value: 1 }
+    condition: { device: "all_lights.state", changed: true, value: true }
     actions:
       - {kind: log, device: "all_lights.state", message: "all lights on"}
-      - {kind: set, device: "siren.state", value: 0}
+      - {kind: set, device: "siren.state", value: false}
       - {kind: random_light, instance: "random_light.house", force: 1}
 
   - tag: surveillance_all_lights_off
     description: "Manual override: force every light off and silence the siren"
-    condition: { device: "all_lights.state", changed: true, value: 0 }
+    condition: { device: "all_lights.state", changed: true, value: false }
     actions:
       - {kind: log, device: "all_lights.state", message: "all lights off"}
-      - {kind: set, device: "siren.state", value: 0}
+      - {kind: set, device: "siren.state", value: false}
       - {kind: random_light, instance: "random_light.house", force: 0}

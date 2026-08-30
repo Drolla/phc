@@ -50,7 +50,7 @@ tasks:
     action:
       kind: set
       device: "light_corridor.sw1"
-      value: 255
+      value: true
 
   - tag: report_low_battery
     description: "Log the garage sensor's battery level whenever it changes"

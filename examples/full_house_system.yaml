@@ -132,8 +132,8 @@ devices:
         endpoints:
           - key: armed
             writable: true
-            type: int
-            values: { 0: "disarmed", 1: "armed" }
+            type: bool
+            values: { false: "disarmed", true: "armed" }
 
       - id: porch_light
         module: virtual
@@ -142,9 +142,9 @@ devices:
         endpoints:
           - key: state
             writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
+            type: bool
+            values: { false: "off", true: "on" }
+            default: false
 
       - id: alarm
         module: virtual
@@ -153,9 +153,9 @@ devices:
         endpoints:
           - key: state
             writable: true
-            type: int
-            values: { 0: "clear", 1: "active" }
-            default: 0
+            type: bool
+            values: { false: "clear", true: "active" }
+            default: false
 
   # The shared MeteoSwiss station list from
   # examples/devices/meteoswiss_stations.yaml; only meteo-bern is
@@ -342,22 +342,22 @@ tasks:
         event = state('house.tag_reader_front.state')
         log(f'tag reader event: {event}')
         if 'lock' in event:
-            set_state('house.surveillance.armed', 1)
+            set_state('house.surveillance.armed', True)
         elif 'unlock' in event:
-            set_state('house.surveillance.armed', 0)
+            set_state('house.surveillance.armed', False)
 
   - tag: surveillance_enable
     description: "Arming resets the alarm flag and forces lights off before random control takes over"
     # The {device, changed, value} shorthand -- equivalent to (and shorter
-    # than) an expr like "armed.changed and armed.state == 1" -- see
+    # than) an expr like "armed.changed and armed.state" -- see
     # docs/scripting.md's Conditions section for five equivalent ways to
     # write this same gate.
-    condition: { device: "house.surveillance.armed", changed: true, value: 1 }
+    condition: { device: "house.surveillance.armed", changed: true, value: true }
     actions:
       - kind: script
         code: |
           log('surveillance enabled')
-          set_state('house.alarm.state', 0)
+          set_state('house.alarm.state', False)
       - kind: random_light
         instance: "random_light.house"
         force: 0
@@ -365,14 +365,14 @@ tasks:
   - tag: surveillance_disable
     description: "Disarming clears the siren/lights and cancels pending follow-ups"
     condition:
-      expr: "changed('house.surveillance.armed') and state('house.surveillance.armed') == 0"
+      expr: "changed('house.surveillance.armed') and not state('house.surveillance.armed')"
     actions:
       - kind: script
         code: |
           log('surveillance disabled')
-          set_state('house.siren.state', 0)
-          set_state('house.light_corridor.sw1', 0)
-          set_state('house.alarm.state', 0)
+          set_state('house.siren.state', False)
+          set_state('house.light_corridor.sw1', False)
+          set_state('house.alarm.state', False)
           kill_task('surv_*')
       - kind: random_light
         instance: "random_light.house"
@@ -384,7 +384,7 @@ tasks:
     repeat: 1m
     condition:
       refs: { armed: "house.surveillance.armed", alarm: "house.alarm.state" }
-      expr: "armed.state == 1 and alarm.state == 0"
+      expr: "armed.state and not alarm.state"
     action: { kind: random_light, instance: "random_light.house" }
 
   - tag: surveillance_intrusion
@@ -398,9 +398,9 @@ tasks:
         motion_garage: "house.sensor_garage.state"
         motion_cellar: "house.sensor_cellar.state"
       expr: >-
-        armed.state == 1 and
-        ((motion_garage.changed and motion_garage.state == 1) or
-         (motion_cellar.changed and motion_cellar.state == 1))
+        armed.state and
+        ((motion_garage.changed and motion_garage.state) or
+         (motion_cellar.changed and motion_cellar.state))
     min_interval: 5m
     # Declarative actions throughout (including the two create_task
     # follow-ups below via kind: create_task/specs:) rather than a single
@@ -409,20 +409,20 @@ tasks:
     # same kind of follow-up work.
     actions:
       - { kind: log, device: "house.surveillance.armed", message: "intrusion detected" }
-      - { kind: set, device: "house.alarm.state", value: 1 }
-      - { kind: set, device: "house.siren.state", value: 255 }
+      - { kind: set, device: "house.alarm.state", value: true }
+      - { kind: set, device: "house.siren.state", value: true }
       - kind: create_task
         specs:
           tag: surv_siren_off
           time: "+3m"
-          action: { kind: set, device: "house.siren.state", value: 0 }
+          action: { kind: set, device: "house.siren.state", value: false }
       - kind: create_task
         specs:
           tag: surv_light_off
           time: "+45m"
           actions:
-            - { kind: set, device: "house.light_corridor.sw1", value: 0 }
-            - { kind: set, device: "house.alarm.state", value: 0 }
+            - { kind: set, device: "house.light_corridor.sw1", value: false }
+            - { kind: set, device: "house.alarm.state", value: false }
             - { kind: random_light, instance: "random_light.house", force: 0 }
       - kind: random_light
         instance: "random_light.house"
