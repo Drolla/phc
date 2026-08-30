@@ -1,9 +1,12 @@
 description: >
-  Virtual device with injected latency for testing scheduler behavior under
-  slow I/O. Like `virtual` but each read/write is delayed with natural
-  variation (jitter) and occasional random spikes to simulate flakiness.
-  All latency values are in seconds (fractions allowed, e.g. 0.2 for 200ms).
-  Define whatever endpoints your device instance needs.
+  Emulates a real device's imperfect behavior: no hardware or network
+  involved, but each read/write is delayed with natural variation (jitter)
+  and occasional random spikes to simulate flakiness, like `virtual` with
+  injected latency. All latency values are in seconds (fractions allowed,
+  e.g. 0.2 for 200ms). An endpoint can also declare `simulate:` to generate
+  its own reading each poll -- for something that stands in for a read-only
+  real device (a sensor, a battery gauge) rather than an actuator a task
+  writes to. Define whatever endpoints your device instance needs.
 
 update: "5s"
 
