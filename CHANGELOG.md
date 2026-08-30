@@ -53,6 +53,29 @@ Changes merged into `main` since the 0.1.0 release, in order.
   task that switches a light. Its read side now accepts any non-zero as
   on, so a dimmer-capable node reporting an intermediate `1..99` is no
   longer displayed as a bare `"99"`.
+- `examples/virtual_full_system.yaml`, `virtual_surveillance-system_setup.yaml`
+  (and its `-task_defs_{1,2,3}` companions), and `virtual_system.yaml` are
+  renamed to `emulated_full_system.yaml`/`emulated_surveillance-*`/
+  `emulated_system.yaml` — they demonstrate the same real systems as
+  `full_house_system.yaml`/a surveillance setup with real hardware swapped
+  for emulated stand-ins, not "a virtual system" in the abstract. The
+  devices they mirror (`light_corridor`, `siren`, `tag_reader_front`,
+  `porch_light`) now use `module: emulated_device` accordingly, matching
+  the read-only sensors already switched over; `surveillance`/`alarm`,
+  with no physical device behind them, stay `module: virtual`. The shared
+  filler devices in `examples/devices/virtual_demo_devices.yaml` (now
+  `emulated_demo_devices.yaml`) move the same way.
+- `emulated_full_system.yaml`'s web UI gains two graph sections — indoor
+  vs. outdoor temperature on Home, radon on Environment — and drops the
+  now-redundant second graph on the History page that covered the same
+  ground.
+- A `report_*` task that logs a continuous environmental/battery/meteo
+  reading (temperature, humidity, radon, battery level) now declares
+  `min_interval: 1m`, so a fast-drifting `simulate:`d value — or ordinary
+  sensor noise — logs at most once a minute instead of on every tick.
+  Event-like tasks (motion, a relay flip, sunset/daylight, CPU load) are
+  unaffected.
+- The README shows a screenshot of the web UI instead of the project logo.
 
 **Bug fixes**
 
@@ -65,6 +88,11 @@ Changes merged into `main` since the 0.1.0 release, in order.
 - `recovery` restored persisted values with a raw write, skipping the
   `write_transform` that converts a logical value into what the hardware
   expects.
+- `full_house_system.yaml`'s `porch_light` was modeled as a software flag
+  (`module: virtual`) alongside `surveillance`/`alarm`, even though it's a
+  physical light like `light_corridor`. It's now a real `module: zway`
+  device (the `duwi` single-relay profile), and its endpoint is `sw`
+  (matching that profile) rather than `state`.
 
 **Breaking changes**
 
@@ -80,6 +108,12 @@ Changes merged into `main` since the 0.1.0 release, in order.
 - A recovery file written before this change is still restored
   correctly — the restore now normalizes it — but an endpoint whose type
   changed will be re-typed on the next write.
+- `examples/virtual_full_system.yaml`, `virtual_surveillance-system_setup.yaml`,
+  `virtual_surveillance-task_defs_{1,2,3}-*.yaml`, `virtual_system.yaml`, and
+  `examples/devices/virtual_demo_devices.yaml` no longer exist under those
+  names — see the `emulated_*` renames above. `house.porch_light.state` is
+  now `house.porch_light.sw` in both `full_house_system.yaml` and its
+  emulated mirror.
 
 ### 2026-08-23
 
