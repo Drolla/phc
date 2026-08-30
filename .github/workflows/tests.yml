@@ -108,7 +108,7 @@ jobs:
           # then stop it: the run must reach "started" and bind its
           # servers, which requires every descriptor and asset above to
           # have been found at runtime, not just to exist.
-          timeout -s INT 15 /tmp/venv/bin/phc --config virtual_full_system.yaml > run.log 2>&1 || true
+          timeout -s INT 15 /tmp/venv/bin/phc --config emulated_full_system.yaml > run.log 2>&1 || true
           cat run.log
           grep -q "phc: started:" run.log
           grep -q "web_ui.home listening" run.log
