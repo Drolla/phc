@@ -52,12 +52,15 @@ tasks:
       device: "light_corridor.sw1"
       value: true
 
+  # min_interval: 1m caps how often each reading is logged.
   - tag: report_low_battery
-    description: "Log the garage sensor's battery level whenever it changes"
+    description: "Log the garage sensor's battery level, at most once a minute"
     condition: { device: "sensor_garage.battery", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "sensor_garage", message: "garage sensor battery changed to {text}" }
 
   - tag: report_outdoor_temperature
-    description: "Log whenever the weather station's temperature reading changes"
+    description: "Log the weather station's temperature reading, at most once a minute"
     condition: { device: "weather_station.temp", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "weather_station.temp", message: "outdoor temperature changed to {text}" }

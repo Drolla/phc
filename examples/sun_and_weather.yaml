@@ -50,12 +50,17 @@ tasks:
     condition: { device: "sun_zurich.is_daylight", changed: true }
     action: { kind: log, device: "sun_zurich", message: "is_daylight changed to {state}" }
 
+  # min_interval: 1m caps how often a temperature reading is logged, in
+  # case its update: is ever shortened -- unlike sunset/daylight above,
+  # which change at most a couple times a day and need no cap.
   - tag: report_temperature
-    description: "Log whenever the Zurich temperature reading changes"
+    description: "Log the Zurich temperature reading, at most once a minute"
     condition: { device: "zurich-weather.temperature", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "zurich-weather", message: "zurich-weather temperature changed to {state}" }
 
   - tag: report_weather
-    description: "Log whenever the Bern temperature reading changes"
+    description: "Log the Bern temperature reading, at most once a minute"
     condition: { device: "meteo-bern.temperature", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "meteo-bern", message: "meteo-bern changed to {state}" }
