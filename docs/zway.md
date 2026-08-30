@@ -29,8 +29,10 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "off", 255: "on" }
+        type: bool
+        values: { false: "off", true: "on" }
+        read_transform: "value != 0"
+        write_transform: "255 if value else 0"
         command_group: SwitchBinary
         address: "7.1"
 ```
@@ -38,7 +40,15 @@ devices:
 `command_group` is one of `SwitchBinary`, `SwitchMultilevel`,
 `SwitchMultiBinary`, `SensorBinary`, `SensorMultilevel`, `Battery`, or
 `TagReader`; `address` is an opaque zWay `"node.instance[.datarecord]"`
-identifier, passed through verbatim. A device with a `TagReader` endpoint
+identifier, passed through verbatim.
+
+A `SwitchBinary` is a [two-state
+endpoint](concepts.md#two-state-endpoints), but zWave spells its two
+states `0` and `255` on the wire (and a dimmer-capable node may report
+anything in `1..99`). The transforms above keep that protocol detail on
+the endpoint, so tasks and conditions just read and write `true`/`false`
+— the shipped `switch_binary` profile below declares exactly this, so a
+device using it needs none of the above spelled out. A device with a `TagReader` endpoint
 additionally needs its own `node` param set (the zWay node number) — used
 for a one-time `Configure_TagReader` setup call the first time that device
 is polled, the same `node` used to fill in any `{node}` template below.

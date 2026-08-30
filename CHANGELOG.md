@@ -8,6 +8,113 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-08-30
+
+**New features**
+
+- `virtual_latency` is renamed `emulated_device`, and its endpoints can now
+  declare `simulate: { kind: toggle | drift, ... }` to generate their own
+  readings each poll — `toggle` flips a bool on with some probability and
+  clears it again after a delay (a motion sensor, a momentary tag-reader
+  event); `drift` random-walks a numeric value within its own `min`/`max`
+  (a battery gauge, a temperature reading). This is independent of
+  `writable:`, and exists specifically so an endpoint standing in for
+  read-only real hardware can still be genuinely read-only (see the next
+  entry) while still moving on its own in a demo — a task/script has no way
+  to write to a non-writable endpoint (`set_state`/`set_text`/`set` all
+  reject it), so generation has to live in the device itself. See
+  [`docs/configuration.md`](docs/configuration.md)'s `endpoint_parameters:`
+  section.
+
+**Improvements**
+
+- Endpoints in the example configs that stand in for a real device's
+  read-only reading (motion/PIR sensors, battery levels, an outdoor
+  temperature/humidity/radon station) are now declared `writable: false`
+  and, where the demo benefits from the value changing, `simulate:`-driven
+  — they no longer render as a dropdown/toggle a person could click, which
+  misrepresented what the real hardware they emulate can do.
+- Endpoints that are genuinely two-state — on/off, open/closed,
+  armed/disarmed, clear/motion — are now declared `type: bool` with a
+  `{false: ..., true: ...}` label mapping instead of `type: int` with a
+  `{0: ..., 1: ...}` one. Conditions read as plain truth tests
+  (`armed.state`, `not alarm.state`) rather than comparisons against a
+  magic `0`/`1`, and the web UI renders each as a toggle rather than a
+  two-item dropdown while still displaying the mapping's own wording.
+  Applied across the zway and open_meteo modules, the example configs,
+  and the device template. See "Two-state endpoints" in
+  [`docs/concepts.md`](docs/concepts.md).
+- A `type: bool` endpoint's reading is now coerced to an actual bool.
+  Hardware and web APIs report `0`/`1`, so the declared type had been
+  metadata only — `get()` handed a script an int. A failed read is still
+  `None`, not `False`.
+- zway's `switch_binary` keeps its `0`/`255` wire values behind
+  `read_transform`/`write_transform` rather than exposing them to every
+  task that switches a light. Its read side now accepts any non-zero as
+  on, so a dimmer-capable node reporting an intermediate `1..99` is no
+  longer displayed as a bare `"99"`.
+- `examples/virtual_full_system.yaml`, `virtual_surveillance-system_setup.yaml`
+  (and its `-task_defs_{1,2,3}` companions), and `virtual_system.yaml` are
+  renamed to `emulated_full_system.yaml`/`emulated_surveillance-*`/
+  `emulated_system.yaml` — they demonstrate the same real systems as
+  `full_house_system.yaml`/a surveillance setup with real hardware swapped
+  for emulated stand-ins, not "a virtual system" in the abstract. The
+  devices they mirror (`light_corridor`, `siren`, `tag_reader_front`,
+  `porch_light`) now use `module: emulated_device` accordingly, matching
+  the read-only sensors already switched over; `surveillance`/`alarm`,
+  with no physical device behind them, stay `module: virtual`. The shared
+  filler devices in `examples/devices/virtual_demo_devices.yaml` (now
+  `emulated_demo_devices.yaml`) move the same way.
+- `emulated_full_system.yaml`'s web UI gains two graph sections — indoor
+  vs. outdoor temperature on Home, radon on Environment — and drops the
+  now-redundant second graph on the History page that covered the same
+  ground.
+- A `report_*` task that logs a continuous environmental/battery/meteo
+  reading (temperature, humidity, radon, battery level) now declares
+  `min_interval: 1m`, so a fast-drifting `simulate:`d value — or ordinary
+  sensor noise — logs at most once a minute instead of on every tick.
+  Event-like tasks (motion, a relay flip, sunset/daylight, CPU load) are
+  unaffected.
+- The README shows a screenshot of the web UI instead of the project logo.
+
+**Bug fixes**
+
+- The `toggle` action had no bool case: it wrote the literal string
+  `"on"`/`"off"` via a raw write, and since both are truthy the endpoint
+  reported `"true"` either way and the toggle froze in the on position.
+- The timers panel inferred its value control with `bool` and `values`
+  in the opposite order to the dashboard, so one endpoint could render
+  as a toggle in one place and a dropdown in the other.
+- `recovery` restored persisted values with a raw write, skipping the
+  `write_transform` that converts a logical value into what the hardware
+  expects.
+- `full_house_system.yaml`'s `porch_light` was modeled as a software flag
+  (`module: virtual`) alongside `surveillance`/`alarm`, even though it's a
+  physical light like `light_corridor`. It's now a real `module: zway`
+  device (the `duwi` single-relay profile), and its endpoint is `sw`
+  (matching that profile) rather than `state`.
+
+**Breaking changes**
+
+- A config using `module: virtual_latency` fails to load — rename it to
+  `module: emulated_device` (its parameters and endpoint behavior are
+  otherwise unchanged; only the module name and its example file,
+  `examples/emulated_device_system.yaml`, moved).
+- A config that writes zway's raw switch values directly needs updating:
+  `value: 255` now parses as `false` (255 is not recognized truthy text),
+  which would silently turn a light or siren *off*. Write `true`/`false`
+  instead. Raw `1`/`0` still work, since `True == 1` in Python, as do
+  `== 1`/`== 0` comparisons and the `"on"`/`"off"` labels.
+- A recovery file written before this change is still restored
+  correctly — the restore now normalizes it — but an endpoint whose type
+  changed will be re-typed on the next write.
+- `examples/virtual_full_system.yaml`, `virtual_surveillance-system_setup.yaml`,
+  `virtual_surveillance-task_defs_{1,2,3}-*.yaml`, `virtual_system.yaml`, and
+  `examples/devices/virtual_demo_devices.yaml` no longer exist under those
+  names — see the `emulated_*` renames above. `house.porch_light.state` is
+  now `house.porch_light.sw` in both `full_house_system.yaml` and its
+  emulated mirror.
+
 ### 2026-08-23
 
 **New features**

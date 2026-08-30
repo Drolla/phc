@@ -9,7 +9,7 @@ log:
 # Demonstrates the effect of slow/flaky devices on the scheduler, which
 # runs every due device's fetch() synchronously, one after another in a
 # single tick. Compare "fast_light"'s tick timing against the two
-# virtual_latency devices below -- watch the scheduler DEBUG log to see
+# emulated_device devices below -- watch the scheduler DEBUG log to see
 # how a slow or spiking device stretches out the whole tick, even though
 # fast_light itself never got any slower.
 
@@ -21,12 +21,12 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+        type: bool
+        values: { false: "off", true: "on" }
+        default: false
 
   - id: slow_sensor
-    module: virtual_latency
+    module: emulated_device
     name: Slow Sensor (0.5s read delay, +/-20% natural jitter)
     update: 2s
     read_latency: 0.5
@@ -39,12 +39,12 @@ devices:
         default: 0
       - key: alert
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
-        default: 0
+        type: bool
+        values: { false: "off", true: "on" }
+        default: false
 
   - id: flaky_sensor
-    module: virtual_latency
+    module: emulated_device
     name: Flaky Sensor (fast + jittery, but spikes to ~2-4s ~20% of the time)
     update: 2s
     read_latency: 0.1

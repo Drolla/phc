@@ -36,12 +36,15 @@ devices:
     data_validity_time: 5m
 
 tasks:
+  # min_interval: 1m caps how often each reading is logged.
   - tag: report_cellar_office_radon
-    description: "Log whenever the cellar office's short-term radon reading changes"
+    description: "Log the cellar office's short-term radon reading, at most once a minute"
     condition: { device: "cellar_office.radon_st", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "cellar_office", message: "cellar_office radon_st changed to {state}" }
 
   - tag: report_cellar_room_radon
-    description: "Log whenever the cellar room's short-term radon reading changes"
+    description: "Log the cellar room's short-term radon reading, at most once a minute"
     condition: { device: "cellar_room.radon_st", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "cellar_room", message: "cellar_room radon_st changed to {state}" }

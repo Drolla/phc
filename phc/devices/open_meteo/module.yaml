@@ -85,7 +85,7 @@ endpoints:
   - key: is_day
     readable: true
     writable: false
-    type: int
-    values: { 0: "night", 1: "day" }
-    description: 1 if it is currently daytime at the location, 0 if night
+    type: bool
+    values: { false: "night", true: "day" }
+    description: True while it is daytime at the location, False at night
     field: is_day

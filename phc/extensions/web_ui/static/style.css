@@ -42,9 +42,9 @@ header .nav-link:hover:not(.active) {
 .section-content,
 .children {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   align-items: start;
-  gap: 1rem;
+  gap: 0.5rem;
 }
 
 /* Each device is now a grid item, so it needs to look like a self-contained
@@ -58,24 +58,32 @@ header .nav-link:hover:not(.active) {
 .device,
 .graph-panel,
 .timers-panel {
-  padding: 0.75rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid var(--bs-primary-border-subtle);
   border-radius: var(--bs-border-radius);
   background: var(--bs-primary-bg-subtle);
 }
 
 .device > h4 {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
 }
 
 .device > .children {
-  margin-top: 0.75rem;
+  margin-top: 0.4rem;
 }
 
+/* min(260px, 100%), not a bare 260px: a bare floor is a HARD minimum, so a
+   device card sitting in a narrow outer-grid column would still demand a
+   260px endpoint track and spill its widget rows out past the card's right
+   edge. Wrapping it in min() lets the track collapse to the card's own
+   width whenever the card is narrower than the floor, while still giving
+   multiple columns once there is room for them. */
 .endpoints {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  align-items: start;
+  gap: 0.25rem;
 }
 
 /* --widget-bg (not body-bg) so each widget row reads as a distinct, still
@@ -89,15 +97,16 @@ header .nav-link:hover:not(.active) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
   border-radius: var(--bs-border-radius);
   background: var(--widget-bg);
+  min-width: 0;
 }
 
 .widget-label {
-  min-width: 10rem;
   font-weight: 600;
+  font-size: 0.875rem;
 }
 
 /* Bootstrap's form-control/form-select/form-range classes set width:100%,
@@ -107,11 +116,15 @@ header .nav-link:hover:not(.active) {
   flex: 0 1 auto;
   margin: 0;
   width: auto;
-  max-width: 14rem;
+  min-width: 0;
+  max-width: min(10rem, 100%);
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  font-size: 0.875rem;
 }
 
 input[type="range"].widget-input {
-  max-width: 10rem;
+  max-width: min(7rem, 100%);
 }
 
 /* Bootstrap's form-select/form-control paint themselves with plain
@@ -125,9 +138,16 @@ input[type="range"].widget-input {
    (dropdown/number/text) -- input[type=range] has no fill to color (its
    thumb/track are handled separately below), and the toggle's
    .form-switch wrapper div would show as an unwanted colored rectangle
-   behind the switch pill if it picked this up too. */
+   behind the switch pill if it picked this up too.
+
+   .timers-form's own form-select/form-control inputs (target/action/
+   value/time/repeat/description) get the same treatment for the same
+   reason: that form now sits on --widget-bg too, so its inputs need the
+   matching pale fill or they'd read as plain white boxes again. */
 .widget-input.form-select,
-.widget-input.form-control {
+.widget-input.form-control,
+.timers-form .form-select,
+.timers-form .form-control {
   background-color: var(--bs-primary-bg-subtle);
 }
 
@@ -148,16 +168,15 @@ input[type="range"].widget-input {
 }
 
 .widget-value {
-  min-width: 3.5rem;
   margin-left: auto;
   text-align: right;
-  white-space: nowrap;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   color: var(--bs-secondary-color);
 }
 
 .section {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 /* Native <details>/<summary> has no styling of its own beyond the browser
@@ -226,14 +245,14 @@ input[type="range"].widget-input {
   white-space: nowrap;
 }
 
-/* Body-bg, not tertiary-bg, for the same reason as .widget above: this
-   form sits inside .timers-panel's now-teal-washed card and needs to read
-   as a distinct neutral surface rather than blend into it. */
+/* --widget-bg, matching .widget's own rows above: keeps the add/edit form
+   in the same teal family as the rest of the timers panel instead of
+   reading as a plain white/gray box dropped onto it. */
 .timers-form {
   padding: 0.75rem;
   border: 1px solid var(--bs-border-color);
   border-radius: var(--bs-border-radius);
-  background: var(--bs-body-bg);
+  background: var(--widget-bg);
 }
 
 .timers-form-row {

@@ -21,14 +21,17 @@ log:
       debug_portal: DEBUG
 
 # lights.living_light is the shared filler device from
-# examples/devices/virtual_demo_devices.yaml; sun_zurich is
+# examples/devices/emulated_demo_devices.yaml; sun_zurich is
 # examples/devices/sun_zurich.yaml. This example is about the debug portal,
 # not any one device module, so it just needs a few devices with different
 # poll cadences to show the poll queue reordering (see the header comment
 # above). house.motion1 stays local -- it demonstrates the
 # condition-driven "report_motion" task below, nested under a host device.
+# A real motion sensor only ever reports, so state is read-only and
+# `simulate:` keeps it changing on its own -- no manual toggle needed to
+# see report_motion's "cond" row flash in the portal.
 devices:
-  - !include devices/virtual_demo_devices.yaml
+  - !include devices/emulated_demo_devices.yaml
   - !include devices/sun_zurich.yaml
 
   - id: house
@@ -36,14 +39,15 @@ devices:
     name: House
     children:
       - id: motion1
-        module: virtual
+        module: emulated_device
         name: Hallway Motion
         update: 1s
         endpoints:
           - key: state
-            writable: true
+            writable: false
             type: bool
             default: false
+            simulate: { kind: toggle, on_probability: 0.1, auto_clear_after: 5s }
 
 extensions:
   debug_portal:

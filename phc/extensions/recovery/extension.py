@@ -45,12 +45,22 @@ class RecoveryInstance:
         Each persisted entry is restored independently: a device/endpoint
         that no longer exists, or is no longer writable (config may have
         changed since the file was written), is skipped with a warning;
-        any exception from Device.set() itself (bad value, transmit
+        any exception from Device.set_text() itself (bad value, transmit
         failure, ...) is caught, logged, and does not block the rest of
         the restore or abort startup. Restoring is a normal write (routed
-        through Device.set() -> transmit()), pushed to the device
+        through Device.set_text() -> transmit()), pushed to the device
         immediately -- whether it's later observable via get() depends on
-        that device's own read path, same as any other write."""
+        that device's own read path, same as any other write.
+
+        set_text(), not set(): _persist writes each endpoint's LOGICAL
+        value (Endpoint.get(), i.e. after any read_transform), so the
+        restore has to run the matching write_transform on the way back
+        out -- and only the set_text() path applies it (Device.to_raw).
+        A zway switch_binary, for instance, is a bool logically but 0/255
+        on the wire; a raw set() would put the bool straight onto the
+        wire. Going through from_text() also normalizes a file written
+        before an endpoint's type changed (an older 0/1 where a bool now
+        lives)."""
         values = self.store.load()
         restored, skipped = 0, 0
         for pair_key, value in values.items():
@@ -67,7 +77,7 @@ class RecoveryInstance:
                 skipped += 1
                 continue
             try:
-                device.set(value, name=endpoint_key)
+                device.set_text(value, name=endpoint_key)
                 restored += 1
             except Exception:
                 logger.exception("%s: failed to restore %r to %r",

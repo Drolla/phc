@@ -207,6 +207,40 @@ profiles. There is no `params: { ... }` nesting on a device entry or an
 endpoint any more; an undeclared field anywhere on either (a typo, or a
 value meant for the other one) is a `ConfigError` naming the field.
 
+`emulated_device`'s `simulate:` is an `endpoint_parameters:` field of this
+kind, worth calling out because it addresses a specific problem examples run
+into: a device standing in for a read-only piece of real hardware (a motion
+sensor, a battery gauge) has no writable endpoint for a task or the web UI
+to hand-drive, so without `simulate:` its value would never move on its own.
+`simulate:` and `writable:` are independent — an endpoint can be simulated,
+writable, both, or neither:
+
+```yaml
+- id: sensor_garage
+  module: emulated_device
+  endpoints:
+    - key: state
+      writable: false
+      type: bool
+      values: { false: "clear", true: "motion" }
+      simulate: { kind: toggle, on_probability: 0.05, auto_clear_after: 30s }
+    - key: battery
+      writable: false
+      type: int
+      min: 0
+      max: 100
+      default: 100
+      simulate: { kind: drift, step: 1 }
+```
+
+Two kinds: `toggle` flips a bool endpoint on with `on_probability` chance
+each poll, then reports it clear again after `auto_clear_after` — a motion
+sensor or a momentary tag-reader event, not a switch someone leaves set.
+`drift` random-walks a numeric endpoint by up to `step` each poll, clamped
+to its own `min`/`max` if declared. Both start from the endpoint's own
+current value (its `default:` seed, for the very first reading), so
+`simulate:` needs no start value of its own.
+
 
 ## Logging
 
@@ -224,7 +258,7 @@ log:
 ```
 
 `dest` is `stdout`, `stderr`, or any other string (a file path). Each
-destination's `levels` map works like `virtual_system.yaml`'s comment
+destination's `levels` map works like `emulated_system.yaml`'s comment
 explains: `default` sets the base level for any logger that doesn't have
 its own entry; every other key overrides one logger by the dotted suffix
 of its `"phc.<name>"` name (`scheduler`, `tasks`, `scripting`, `logdb`,

@@ -2915,8 +2915,8 @@ def test_load_system_examples_load_without_error(example_path, _restore_phc_logg
     # credential/URL to another system with no sane default -- that must be
     # filled in with something real before the file can run (including
     # examples that only inherit one via `<<: !include`, e.g.
-    # virtual_surveillance-task_defs_*.yaml including
-    # virtual_surveillance-system_setup.yaml's mail_alert block). Detected
+    # emulated_surveillance-task_defs_*.yaml including
+    # emulated_surveillance-system_setup.yaml's mail_alert block). Detected
     # from load_system()'s own error message rather than a hand-maintained
     # filename list, so this stays correct as examples gain/lose
     # placeholders; any other ConfigError still fails the test.

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Pylon Home Control logo" width="220">
+  <img src="docs/screenshot.png" alt="Pylon Home Control web UI screenshot">
 </p>
 
 # Pylon Home Control (PHC)
@@ -103,8 +103,8 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
+        type: bool
+        values: { false: "off", true: "on" }
 
 tasks:
   - tag: evening_lights
@@ -113,7 +113,7 @@ tasks:
     action:
       kind: set
       device: "living_light.state"
-      expr: "0 if state('sun.is_daylight') else 1"
+      expr: "not state('sun.is_daylight')"
 ```
 
 Validate your configuration:
@@ -179,7 +179,7 @@ Detailed documentation is located in [`docs/developer/`](docs/developer/):
 Run PHC against one of the example systems:
 
 ```bash
-phc --config examples/virtual_system.yaml
+phc --config examples/emulated_system.yaml
 ```
 
 (`pip install -e .` installs the `phc` console command; `python -m phc

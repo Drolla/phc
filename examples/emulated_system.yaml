@@ -16,13 +16,13 @@ log:
       # tasks: INFO
 
 # lights.living_light/lights.kitchen_light/lights.desk_lamp/siren/... are
-# the shared filler devices from examples/devices/virtual_demo_devices.yaml
+# the shared filler devices from examples/devices/emulated_demo_devices.yaml
 # -- desk_lamp's brightness endpoint has a history: (see that file)
 # demonstrating value history/fractile() below. See
 # examples/logdb_system.yaml/full_house_system.yaml for the same shared
 # devices used elsewhere.
 devices:
-  - !include devices/virtual_demo_devices.yaml
+  - !include devices/emulated_demo_devices.yaml
 
 # Both extensions run side by side, each on its own port: web_ui at
 # http://127.0.0.1:8080/ (widgets for the shared devices above) and

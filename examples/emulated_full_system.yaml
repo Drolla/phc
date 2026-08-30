@@ -1,32 +1,40 @@
 # Demonstrates a complete PHC system tying together the same set of tasks
 # and extensions as examples/full_house_system.yaml, but with every
-# zway/waveplus_bridge/meteoswiss device there replaced by a bare
-# `module: virtual` stand-in here -- no real hardware, no base_url/user/
-# password to fill in. Run with:
-#   python -m phc --config examples/virtual_full_system.yaml
+# zway/waveplus_bridge/meteoswiss device there replaced by a `module:
+# emulated_device`/`virtual` stand-in here -- no real hardware, no
+# base_url/user/password to fill in. Run with:
+#   python -m phc --config examples/emulated_full_system.yaml
 # then open http://127.0.0.1:8080/ in a browser (or http://127.0.0.1:8081/
 # for the live debug view -- see extensions.debug_portal below).
 #
 # Device ids/names below deliberately match full_house_system.yaml's own
-# one-for-one, so the two files can be read side by side: light_corridor/
-# sensor_garage/sensor_cellar/tag_reader_front/siren/cellar_air all echo
-# back whatever's written to them (see devices/virtual/module.yaml) instead
-# of talking to a controller/bridge, and weather.outdoor stands in for the
-# meteoswiss station. Toggle them directly (web UI, debug portal, or a
-# script) to exercise the tasks below, the same way
-# examples/virtual_surveillance-system_setup.yaml's devices are meant to be
-# toggled by hand.
+# one-for-one, so the two files can be read side by side. Everything
+# mirroring a real zway/waveplus_bridge/meteoswiss device (light_corridor,
+# sensor_garage/sensor_cellar, tag_reader_front, siren, porch_light,
+# cellar_air, weather.outdoor) uses `module: emulated_device`. A writable
+# one (light_corridor, siren, porch_light, tag_reader_front -- a real
+# switch/siren/reader genuinely accepts commands) stays writable and
+# echoes back whatever's written to it (toggle it directly from the web
+# UI, debug portal, or a script, the same way
+# examples/emulated_surveillance-system_setup.yaml's devices are meant to
+# be toggled by hand), plus gets realistic I/O latency/jitter like a real
+# zway HTTP round-trip has. A read-only one (sensor_garage/sensor_cellar,
+# cellar_air, weather.outdoor -- a real PIR/battery/weather station only
+# ever reports) is `writable: false` and moves on its own via `simulate:`
+# instead of needing a hand-driven write (see
+# devices/emulated_device/module.yaml). `surveillance`/`alarm` have no
+# physical device behind them at all, so they stay `module: virtual`.
 #
 # For the minimal "no hardware, single device module" walkthrough instead
-# of this full-system one, see examples/virtual_system.yaml.
+# of this full-system one, see examples/emulated_system.yaml.
 #
 # Ties together:
-#   - virtual      -- every device below, standing in for zway/
-#                      waveplus_bridge (see the per-device comments)
+#   - emulated_device/virtual -- every device below, standing in for
+#                      zway/waveplus_bridge (see the per-device comments)
 #   - sun          -- sun position, feeding random_light's sunset/sunrise
 #                      windows below (examples/devices/sun_zurich.yaml,
 #                      the same computed, hardware-free device used by
-#                      examples/virtual_surveillance-system_setup.yaml)
+#                      examples/emulated_surveillance-system_setup.yaml)
 #   - logdb + web_ui  -- history logging and the pages/graphs that display it
 #   - mail_alert + random_light -- an intrusion alert and randomized lighting
 #     while armed
@@ -62,69 +70,80 @@ devices:
     name: House
     children:
       # Stands in for full_house_system.yaml's zway-backed light_corridor
-      # (a fibaro-fgs222 relay, 0-255 range) -- same 0-255 range kept here
-      # so surveillance_disable's `value: 0` below reads the same either
-      # way.
+      # (a fibaro-fgs222 relay). Bool here to match that switch_binary
+      # profile, which is a bool whose 0/255 wire values are hidden behind
+      # its read/write transforms -- so the task bodies below read the
+      # same either way. A real light switch genuinely accepts commands,
+      # so this stays writable: true on emulated_device -- only the
+      # module changes, which also gives it realistic I/O latency/jitter
+      # like a real zway HTTP round-trip has.
       - id: light_corridor
-        module: virtual
+        module: emulated_device
         name: Corridor Light
         update: 2s
         endpoints:
           - key: sw1
             writable: true
-            type: int
-            min: 0
-            max: 255
-            default: 0
+            type: bool
+            values: { false: "off", true: "on" }
+            default: false
 
-      # Stands in for zway's everspring-pir_sensor motion sensors -- state
-      # writable here (a real PIR only ever reports), so this can be
-      # toggled by hand from the web UI/debug portal to simulate motion.
+      # Stands in for zway's everspring-pir_sensor motion sensors -- a real
+      # PIR only ever reports, so state/battery are read-only here too;
+      # simulate: is what makes them move on their own instead (a
+      # non-writable endpoint has no path a task/web UI could otherwise
+      # drive by hand -- see phc/devices/emulated_device).
       - id: sensor_garage
-        module: virtual
+        module: emulated_device
         name: Hallway Motion Sensor
         update: 2s
         endpoints:
           - key: state
-            writable: true
-            type: int
-            values: { 0: "clear", 1: "motion" }
-            default: 0
+            writable: false
+            type: bool
+            values: { false: "clear", true: "motion" }
+            default: false
+            simulate: { kind: toggle, on_probability: 0.05, auto_clear_after: 30s }
           - key: battery
-            writable: true
+            writable: false
             type: int
             min: 0
             max: 100
             unit: "%"
             default: 100
+            simulate: { kind: drift, step: 1 }
 
       # A second motion sensor on its own device -- lets
       # surveillance_intrusion below combine two sources with refs:/expr,
       # same as full_house_system.yaml's sensor_cellar.
       - id: sensor_cellar
-        module: virtual
+        module: emulated_device
         name: Cellar Motion Sensor
         update: 2s
         endpoints:
           - key: state
-            writable: true
-            type: int
-            values: { 0: "clear", 1: "motion" }
-            default: 0
+            writable: false
+            type: bool
+            values: { false: "clear", true: "motion" }
+            default: false
+            simulate: { kind: toggle, on_probability: 0.05, auto_clear_after: 30s }
           - key: battery
-            writable: true
+            writable: false
             type: int
             min: 0
             max: 100
             unit: "%"
             default: 100
+            simulate: { kind: drift, step: 1 }
 
       # Stands in for zway's benext-tag_reader -- a real reader reports its
       # own lock/unlock events; here `state` is a plain writable string, so
       # writing "lock"/"unlock" by hand (web UI, debug portal, or a script)
-      # simulates a badge scan for surveillance_tag_reader below.
+      # simulates a badge scan for surveillance_tag_reader below. No
+      # simulate: -- its event value (a "none"/"lock"/"unlock"/"wrongcode"
+      # string, not a two-state signal) isn't toggle/drift-shaped.
       - id: tag_reader_front
-        module: virtual
+        module: emulated_device
         name: Front Door Tag Reader
         update: 2s
         endpoints:
@@ -133,45 +152,56 @@ devices:
             type: str
             default: "none"
 
-      # Stands in for zway's everspring-siren_300_series -- same 0-255
-      # range as light_corridor.sw1 above, so surveillance_intrusion's
-      # `value: 255` below reads the same either way.
+      # Stands in for zway's everspring-siren_300_series -- bool, like
+      # light_corridor.sw1 above and the switch_binary profile both stand
+      # in for, so surveillance_intrusion's `value: true` below reads the
+      # same either way. Genuinely writable, like light_corridor above.
       - id: siren
-        module: virtual
+        module: emulated_device
         name: Siren
         update: 2s
         endpoints:
           - key: state
             writable: true
-            type: int
-            min: 0
-            max: 255
-            default: 0
+            type: bool
+            values: { false: "off", true: "on" }
+            default: false
 
       # Stands in for a waveplus_bridge Airthings Wave Plus unit -- same
       # endpoint keys/units as devices/waveplus_bridge/module.yaml, so
       # house.cellar_air/radon_st below (used in the environment_history
-      # graph) matches that module's own reading.
+      # graph) matches that module's own reading. A real Wave Plus unit
+      # only ever reports, so these are read-only; simulate: drift keeps
+      # them moving without a hand-driven write.
       - id: cellar_air
-        module: virtual
+        module: emulated_device
         name: Cellar Air Quality
         update: 2s
         endpoints:
           - key: temperature
-            writable: true
+            writable: false
             type: float
             unit: "°C"
+            min: 10.0
+            max: 30.0
             default: 20.0
+            simulate: { kind: drift, step: 0.2 }
           - key: humidity
-            writable: true
+            writable: false
             type: float
             unit: "%"
+            min: 0.0
+            max: 100.0
             default: 45.0
+            simulate: { kind: drift, step: 0.5 }
           - key: radon_st
-            writable: true
+            writable: false
             type: int
             unit: "Bq/m3"
+            min: 0
+            max: 200
             default: 30
+            simulate: { kind: drift, step: 2 }
 
       # No `default:` here (unlike the devices above): a seeded default
       # commits an initial change event at config-load time, which would
@@ -179,7 +209,7 @@ devices:
       # Scheduler's very first tick (task pass runs before that tick's own
       # commit clears it). armed is watched by a `changed` condition, so it
       # starts truly unset instead -- see
-      # examples/virtual_surveillance-system_setup.yaml.
+      # examples/emulated_surveillance-system_setup.yaml.
       - id: surveillance
         module: virtual
         name: Surveillance control
@@ -187,19 +217,22 @@ devices:
         endpoints:
           - key: armed
             writable: true
-            type: int
-            values: { 0: "disarmed", 1: "armed" }
+            type: bool
+            values: { false: "disarmed", true: "armed" }
 
+      # Stands in for full_house_system.yaml's zway-backed porch_light (a
+      # duwi single-relay switch) -- genuinely writable, like light_corridor
+      # above. Endpoint key is `sw`, matching duwi's own, not `state`.
       - id: porch_light
-        module: virtual
+        module: emulated_device
         name: Porch Light
         update: 2s
         endpoints:
-          - key: state
+          - key: sw
             writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
+            type: bool
+            values: { false: "off", true: "on" }
+            default: false
 
       - id: alarm
         module: virtual
@@ -208,28 +241,31 @@ devices:
         endpoints:
           - key: state
             writable: true
-            type: int
-            values: { 0: "clear", 1: "active" }
-            default: 0
+            type: bool
+            values: { false: "clear", true: "active" }
+            default: false
 
   # Stands in for full_house_system.yaml's meteoswiss station (only
-  # meteo-bern was used there) -- a single writable temperature endpoint,
-  # toggled by hand or a script to exercise report_outdoor_temperature
-  # below.
+  # meteo-bern was used there) -- a read-only temperature endpoint (a real
+  # weather station only ever reports), drifting on its own to exercise
+  # report_outdoor_temperature below.
   - id: weather
     module: host
     name: Weather
     children:
       - id: outdoor
-        module: virtual
+        module: emulated_device
         name: Outdoor Weather
         update: 2s
         endpoints:
           - key: temperature
-            writable: true
+            writable: false
             type: float
             unit: "°C"
+            min: -10.0
+            max: 35.0
             default: 15.0
+            simulate: { kind: drift, step: 0.2 }
 
   # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
   - !include devices/sun_zurich.yaml
@@ -262,7 +298,7 @@ extensions:
         - device: "house.light_corridor.sw1"
           default: true
         # porch_light overrides all three per-light instead.
-        - device: "house.porch_light.state"
+        - device: "house.porch_light.sw"
           windows:
             - { start: "20:00", end: "23:00" }
           min_interval: 25m
@@ -275,7 +311,7 @@ extensions:
   recovery:
     critical_state:
       selectors: ["house.surveillance/armed"]
-      path: "logs/virtual_full_recovery.yaml"
+      path: "logs/emulated_full_recovery.yaml"
 
   # User-programmable timers (created/edited from the web UI's "Timers"
   # section below), scoped to the house's writable, individually-meaningful
@@ -284,16 +320,16 @@ extensions:
     house:
       selectors:
         - "house.light_corridor/sw1"
-        - "house.porch_light/state"
+        - "house.porch_light/sw"
         - "house.siren/state"
         - "house.alarm/state"
         - "house.surveillance/armed"
-      path: "logs/virtual_full_timers.yaml"
+      path: "logs/emulated_full_timers.yaml"
 
   logdb:
     full_history:
       selectors: ["house.*/*", "weather.*/*", "sun_zurich/*"]
-      csv_path: "logs/virtual_full_history.csv"
+      csv_path: "logs/emulated_full_history.csv"
       max_records: 100000
       full_vector_interval: 100
 
@@ -320,6 +356,31 @@ extensions:
               title: Lights
               collapsed: false
               selectors: ["house.light_corridor/*", "house.porch_light/*"]
+            - id: temperature_history
+              title: Temperature
+              collapsed: false
+              panels:
+                - kind: graph
+                  id: temperature_history
+                  logdb_instance: "logdb.full_history"
+                  title: "Indoor & Outdoor Temperature"
+                  selectors: ["house.cellar_air/temperature", "weather.outdoor/temperature"]
+                  window: 24h
+                  decimation:
+                    - { older_than: 25h, factor: 3 }
+                    - { older_than: 8D, factor: 8 }
+
+        - id: battery
+          title: Battery
+          sections:
+            - id: battery
+              title: Battery
+              collapsed: false
+              selectors: ["house.*/battery"]
+
+        - id: timers
+          title: Timers
+          sections:
             - id: timers
               title: Timers
               collapsed: false
@@ -327,10 +388,6 @@ extensions:
                 - kind: timers
                   id: house_timers
                   timer_instance: "timer.house"
-            - id: battery
-              title: Battery
-              collapsed: true
-              selectors: ["house.*/battery"]
 
         - id: environment
           title: Environment
@@ -343,6 +400,19 @@ extensions:
               title: Weather
               collapsed: false
               selectors: ["weather.*/*"]
+            - id: radon_history
+              title: Radon
+              collapsed: false
+              panels:
+                - kind: graph
+                  id: radon_history
+                  logdb_instance: "logdb.full_history"
+                  title: "Radon"
+                  selectors: ["house.cellar_air/radon_st"]
+                  window: 24h
+                  decimation:
+                    - { older_than: 25h, factor: 3 }
+                    - { older_than: 8D, factor: 8 }
             - id: sun
               title: Sun
               collapsed: true
@@ -363,17 +433,8 @@ extensions:
                     - "house.surveillance/*"
                     - "house.alarm/*"
                     - "house.light_corridor/sw1"
-                    - "house.porch_light/state"
+                    - "house.porch_light/sw"
                     - "house.siren/state"
-                  window: 24h
-                  decimation:
-                    - { older_than: 25h, factor: 3 }
-                    - { older_than: 8D, factor: 8 }
-                - kind: graph
-                  id: environment_history
-                  logdb_instance: "logdb.full_history"
-                  title: "Temperature & Radon"
-                  selectors: ["weather.*/temperature", "house.cellar_air/radon_st"]
                   window: 24h
                   decimation:
                     - { older_than: 25h, factor: 3 }
@@ -395,14 +456,19 @@ tasks:
     repeat: 1m
     action: { kind: log_db, instance: "logdb.full_history" }
 
+  # min_interval: caps how often these fire -- both endpoints drift by a
+  # small step on every poll (see their simulate: config above), so
+  # without it this would log on nearly every tick.
   - tag: report_low_battery
-    description: "Log the hallway motion sensor's battery level whenever it changes"
+    description: "Log the hallway motion sensor's battery level, at most once a minute"
     condition: { device: "house.sensor_garage.battery", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "house.sensor_garage", message: "hallway motion sensor battery changed to {text}" }
 
   - tag: report_outdoor_temperature
-    description: "Log whenever the outdoor temperature reading changes"
+    description: "Log the outdoor temperature reading, at most once a minute"
     condition: { device: "weather.outdoor.temperature", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "weather.outdoor.temperature", message: "outdoor temperature changed to {text}" }
 
   - tag: surveillance_tag_reader
@@ -414,22 +480,22 @@ tasks:
         event = state('house.tag_reader_front.state')
         log(f'tag reader event: {event}')
         if 'lock' in event:
-            set_state('house.surveillance.armed', 1)
+            set_state('house.surveillance.armed', True)
         elif 'unlock' in event:
-            set_state('house.surveillance.armed', 0)
+            set_state('house.surveillance.armed', False)
 
   - tag: surveillance_enable
     description: "Arming resets the alarm flag and forces lights off before random control takes over"
     # The {device, changed, value} shorthand -- equivalent to (and shorter
-    # than) an expr like "armed.changed and armed.state == 1" -- see
+    # than) an expr like "armed.changed and armed.state" -- see
     # docs/scripting.md's Conditions section for five equivalent ways to
     # write this same gate.
-    condition: { device: "house.surveillance.armed", changed: true, value: 1 }
+    condition: { device: "house.surveillance.armed", changed: true, value: true }
     actions:
       - kind: script
         code: |
           log('surveillance enabled')
-          set_state('house.alarm.state', 0)
+          set_state('house.alarm.state', False)
       - kind: random_light
         instance: "random_light.house"
         force: 0
@@ -437,14 +503,14 @@ tasks:
   - tag: surveillance_disable
     description: "Disarming clears the siren/lights and cancels pending follow-ups"
     condition:
-      expr: "changed('house.surveillance.armed') and state('house.surveillance.armed') == 0"
+      expr: "changed('house.surveillance.armed') and not state('house.surveillance.armed')"
     actions:
       - kind: script
         code: |
           log('surveillance disabled')
-          set_state('house.siren.state', 0)
-          set_state('house.light_corridor.sw1', 0)
-          set_state('house.alarm.state', 0)
+          set_state('house.siren.state', False)
+          set_state('house.light_corridor.sw1', False)
+          set_state('house.alarm.state', False)
           kill_task('surv_*')
       - kind: random_light
         instance: "random_light.house"
@@ -456,7 +522,7 @@ tasks:
     repeat: 1m
     condition:
       refs: { armed: "house.surveillance.armed", alarm: "house.alarm.state" }
-      expr: "armed.state == 1 and alarm.state == 0"
+      expr: "armed.state and not alarm.state"
     action: { kind: random_light, instance: "random_light.house" }
 
   - tag: surveillance_intrusion
@@ -470,9 +536,9 @@ tasks:
         motion_garage: "house.sensor_garage.state"
         motion_cellar: "house.sensor_cellar.state"
       expr: >-
-        armed.state == 1 and
-        ((motion_garage.changed and motion_garage.state == 1) or
-         (motion_cellar.changed and motion_cellar.state == 1))
+        armed.state and
+        ((motion_garage.changed and motion_garage.state) or
+         (motion_cellar.changed and motion_cellar.state))
     min_interval: 5m
     # Declarative actions throughout (including the two create_task
     # follow-ups below via kind: create_task/specs:) rather than a single
@@ -481,20 +547,20 @@ tasks:
     # same kind of follow-up work.
     actions:
       - { kind: log, device: "house.surveillance.armed", message: "intrusion detected" }
-      - { kind: set, device: "house.alarm.state", value: 1 }
-      - { kind: set, device: "house.siren.state", value: 255 }
+      - { kind: set, device: "house.alarm.state", value: true }
+      - { kind: set, device: "house.siren.state", value: true }
       - kind: create_task
         specs:
           tag: surv_siren_off
           time: "+3m"
-          action: { kind: set, device: "house.siren.state", value: 0 }
+          action: { kind: set, device: "house.siren.state", value: false }
       - kind: create_task
         specs:
           tag: surv_light_off
           time: "+45m"
           actions:
-            - { kind: set, device: "house.light_corridor.sw1", value: 0 }
-            - { kind: set, device: "house.alarm.state", value: 0 }
+            - { kind: set, device: "house.light_corridor.sw1", value: false }
+            - { kind: set, device: "house.alarm.state", value: false }
             - { kind: random_light, instance: "random_light.house", force: 0 }
       - kind: random_light
         instance: "random_light.house"

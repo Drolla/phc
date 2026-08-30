@@ -34,7 +34,7 @@ tasks:
     # armed and not alarmed") with the task's own condition: -- see
     # docs/configuration.md's Tasks section -- rather than a
     # random_light-specific parameter.
-    condition: { device: "surveillance.armed", value: 1 }
+    condition: { device: "surveillance.armed", value: true }
     action: { kind: random_light, instance: "random_light.house" }
 ```
 
@@ -43,5 +43,5 @@ probability, and any `condition:` entirely, forcing every configured light
 to that value immediately — for a surrounding system to drop into its own
 tasks' `actions:` list (e.g. force everything off when arming/disarming,
 force everything on as a deterrent during an alarm), as seen throughout
-[`examples/virtual_surveillance-task_defs_1-nested.yaml`](../examples/virtual_surveillance-task_defs_1-nested.yaml)
+[`examples/emulated_surveillance-task_defs_1-nested.yaml`](../examples/emulated_surveillance-task_defs_1-nested.yaml)
 (and its `-system_setup`/`-task_defs_2`/`-task_defs_3` companions).

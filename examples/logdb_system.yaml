@@ -6,14 +6,14 @@ log:
       default: INFO
 
 # lights.living_light/lights.desk_lamp/lights.kitchen_light/fan are the
-# shared filler devices from examples/devices/virtual_demo_devices.yaml --
+# shared filler devices from examples/devices/emulated_demo_devices.yaml --
 # this example is about logdb, not the virtual module, so it just needs a
 # few devices to log, not a device-module walkthrough of its own (see
-# examples/virtual_system.yaml for that). lights.desk_lamp/brightness's
+# examples/emulated_system.yaml for that). lights.desk_lamp/brightness's
 # log_aggregation: min (see that file) demonstrates a logdb-specific
 # feature.
 devices:
-  - !include devices/virtual_demo_devices.yaml
+  - !include devices/emulated_demo_devices.yaml
 
 # Two independently-scheduled logdb instances: a frequent one covering
 # every shared device, and a slower one demonstrating a second,
@@ -28,7 +28,7 @@ extensions:
       # log_aggregation defaults to "max" -- a brief "on" pulse between two
       # log samples is still captured. lights.desk_lamp/brightness
       # overrides this to "min" instead (see
-      # devices/virtual_demo_devices.yaml), since brightness dips are as
+      # devices/emulated_demo_devices.yaml), since brightness dips are as
       # interesting as spikes.
 
     living_room_log:

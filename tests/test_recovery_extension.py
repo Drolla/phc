@@ -260,7 +260,7 @@ def test_on_start_isolates_one_bad_entry_from_the_rest(tmp_path, monkeypatch, re
     def _boom(value, name=None):
         raise ValueError("boom")
 
-    monkeypatch.setattr(lamp, "set", _boom)
+    monkeypatch.setattr(lamp, "set_text", _boom)
 
     asyncio.run(instance.on_start(flat))
 

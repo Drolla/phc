@@ -166,16 +166,29 @@ class SetAction(Action):
 
 @register_task_kind("toggle")
 class ToggleAction(Action):
-    """Flip the target endpoint between its two declared `values`.
+    """Flip the target endpoint between its two states.
 
-    E.g. 0/1 for a {0: "off", 1: "on"} mapping. Falls back to the
-    literal strings "on"/"off" for an endpoint with no such two-entry
-    mapping (including a bare device reference with no single endpoint
-    to inspect)."""
+    A bool endpoint flips True/False -- checked first, and before the
+    `values` branch below, because a bool endpoint may ALSO carry a
+    {false: "off", true: "on"} label mapping (that pairing is what gives
+    it a toggle widget while keeping its wording -- see
+    phc/extensions/web_ui/widgets.py). It writes via set_text() so a
+    declared `write_transform` still runs: zway's switch_binary is a
+    bool whose hardware value is 0/255, and a raw set() would store the
+    bool untransformed. An unset (None) state counts as False, so the
+    first toggle of a never-yet-read endpoint turns it on.
+
+    Otherwise flips between the two keys of a two-entry `values`
+    mapping, e.g. 0/1 for {0: "off", 1: "on"}. Falls back to the literal
+    strings "on"/"off" for an endpoint with neither (including a bare
+    device reference with no single endpoint to inspect)."""
 
     def perform(self, devices: dict[str, Device]) -> None:
         device = devices[self.device_id]
         ep = device.endpoint(self.endpoint_key) if self.endpoint_key else None
+        if ep is not None and ep.value_type == "bool":
+            device.set_text(not ep.get(), name=self.endpoint_key)
+            return
         if ep is not None and ep.values is not None and len(ep.values) == 2:
             other = next(raw for raw in ep.values if raw != ep.get())
             device.set(other, name=self.endpoint_key)

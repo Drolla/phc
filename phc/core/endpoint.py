@@ -153,9 +153,23 @@ class Endpoint:
         from update_time alone, from one that stopped answering an hour
         ago. A None reading (a device that caught its own I/O error and
         reported no value, as the weather and zway modules do) leaves the
-        stamp alone, so age() keeps growing and reflects reality."""
+        stamp alone, so age() keeps growing and reflects reality.
+
+        A `type: bool` endpoint's reading is normalized to an actual
+        bool, since hardware and web APIs overwhelmingly report 0/1 (or,
+        for a dimmer-capable zWave switch, 0..99/255) rather than a
+        native boolean. Without this the declared type would be metadata
+        only: labels and `== 1` comparisons would still work, but get()
+        would hand a script an int, so `is True` would fail and the debug
+        portal (which shows repr()) would report 1 rather than True.
+        Applied AFTER read_transform, so an expression computing a number
+        -- `1 - value` for an inverted sensor -- lands as a bool too.
+        Only bool is coerced; an int/float/str endpoint keeps whatever
+        its module produced, as before."""
         if self._read_transform is not None and raw_value is not None:
             raw_value = scripting.evaluate_expression(self._read_transform, {"value": raw_value})
+        if self.value_type == "bool" and raw_value is not None:
+            raw_value = bool(raw_value)
         if raw_value is not None:
             self._last_read_time = time.monotonic()
         self.set(raw_value)
