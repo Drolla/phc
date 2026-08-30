@@ -41,12 +41,23 @@ function rebuildValueControl(form) {
   wrap.style.display = "";
 
   var input;
-  if (target.value_type === "bool" && !target.values) {
+  // Mirrors infer_widget_kind() in phc/extensions/web_ui/widgets.py, which
+  // checks bool BEFORE values -- a bool endpoint may also carry a
+  // {false: "off", true: "on"} label mapping, and the two must agree on
+  // what a given endpoint looks like or the same target renders as a
+  // toggle on the dashboard and a different control here. The option
+  // values are the labels when a mapping exists (matching the dropdown
+  // branch below, and what Endpoint.from_text() parses back), else the
+  // bare "true"/"false" that from_text()'s bool branch accepts.
+  if (target.value_type === "bool") {
     input = document.createElement("select");
-    ["true", "false"].forEach(function (v) {
+    [true, false].forEach(function (v) {
       var opt = document.createElement("option");
-      opt.value = v;
-      opt.textContent = v;
+      // describe_endpoint() stringifies the mapping's keys, so a bool
+      // key arrives as Python's "True"/"False", not JS's "true"/"false".
+      var label = target.values ? target.values[v ? "True" : "False"] : null;
+      opt.value = label != null ? label : String(v);
+      opt.textContent = opt.value;
       input.appendChild(opt);
     });
     if (current) input.value = current;
