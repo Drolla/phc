@@ -42,6 +42,23 @@ def _typed_light(default=0):
     return light
 
 
+def _bool_light(default=False, values=None, **endpoint_kwargs):
+    """A bool-typed light -- the shape two-state endpoints migrated to.
+
+    `values` is optional because a migrated endpoint usually keeps its
+    {false: "off", true: "on"} labels (that pairing is what gives it a
+    toggle widget while preserving its wording), but must still work
+    without them. `default=None` leaves the endpoint unset."""
+    light = VirtualDevice("living_light", endpoints=[
+        Endpoint("state", writable=True, value_type="bool", values=values, **endpoint_kwargs),
+    ])
+    if default is not None:
+        light.set(default)
+    fetch_sync(light)
+    light.update_state()
+    return light
+
+
 def _named_light(device_id, default="off"):
     """Like _light(), but with a caller-chosen device id -- for tests that
     need two distinct devices in the same `devices` dict (e.g. a set
@@ -212,6 +229,54 @@ def test_toggle_action_flips_via_values_mapping():
     fetch_sync(light)
     light.update_state()
     assert light.get() == 0
+
+
+@pytest.mark.parametrize("values", [None, {False: "off", True: "on"}],
+                         ids=["bare", "with-labels"])
+def test_toggle_action_flips_bool_endpoint_repeatedly(values):
+    """Both directions, twice -- a bool endpoint used to stick "on".
+
+    The pre-bool fallback wrote the literal string "on"/"off" via a raw
+    set(); since both strings are truthy, to_text() reported "true"
+    either way and the toggle froze. Labels are parametrized because a
+    migrated endpoint keeps them and is matched by value_type first.
+    """
+    light = _bool_light(False, values=values)
+    devices = {"living_light": light}
+    for expected in (True, False, True):
+        ToggleAction(device_id="living_light", endpoint_key="state").perform(devices)
+        fetch_sync(light)
+        light.update_state()
+        assert light.get() is expected
+
+
+def test_toggle_action_treats_unset_bool_as_off():
+    """A never-yet-read bool endpoint turns on, rather than staying None."""
+    light = _bool_light(None)
+    devices = {"living_light": light}
+    assert light.get() is None
+    ToggleAction(device_id="living_light", endpoint_key="state").perform(devices)
+    fetch_sync(light)
+    light.update_state()
+    assert light.get() is True
+
+
+def test_toggle_action_applies_write_transform_on_bool():
+    """zway's switch_binary shape: a logical bool that is 0/255 on the wire.
+
+    Guards the reason the bool branch uses set_text() rather than a raw
+    set() -- only the set_text() path runs to_raw()/write_transform."""
+    light = _bool_light(False, values={False: "off", True: "on"},
+                        read_transform="value != 0",
+                        write_transform="255 if value else 0")
+    devices = {"living_light": light}
+    ToggleAction(device_id="living_light", endpoint_key="state").perform(devices)
+    # The virtual device echoes back what was actually written to it, and
+    # read_transform maps that non-zero wire value back to a logical True.
+    fetch_sync(light)
+    light.update_state()
+    assert light.get() is True
+    assert light.get_text() == "on"
 
 
 def test_log_action_formats_state_placeholder(task_log):

@@ -18,6 +18,20 @@ def test_writable_bool_is_toggle():
     assert infer_widget_kind(ep) == "toggle"
 
 
+def test_writable_bool_with_values_mapping_is_still_a_toggle():
+    """The shape two-state endpoints migrate to: a toggle that keeps its wording.
+
+    value_type is checked before `values`, so the widget is a toggle;
+    Endpoint.to_text() resolves `values` first, so the displayed text
+    stays the domain word. Those two orders are deliberately opposite --
+    losing either one costs the migration half its point."""
+    ep = Endpoint("armed", writable=True, value_type="bool",
+                  values={False: "disarmed", True: "armed"})
+    assert infer_widget_kind(ep) == "toggle"
+    assert ep.to_text(True) == "armed"
+    assert ep.to_text(False) == "disarmed"
+
+
 def test_writable_with_values_mapping_is_dropdown_regardless_of_type():
     ep = Endpoint("speed", writable=True, value_type="int", values={0: "off", 1: "low", 2: "high"})
     assert infer_widget_kind(ep) == "dropdown"
