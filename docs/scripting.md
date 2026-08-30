@@ -13,15 +13,15 @@ tasks:
   - tag: intrusion
     condition:
       refs: { armed: "security.armed", motion: "hallway.motion" }
-      expr: "armed.state == 1 and motion.changed and motion.state == 1"
+      expr: "armed.state and motion.changed and motion.state"
     min_interval: 5m   # don't refire more than once every 5 minutes
     action:
       kind: script
       code: |
         log("intrusion detected")
-        set_state("siren.state", 1)
+        set_state("siren.state", True)
         create_task({ tag: "siren_off", time: "+3m",
-                       action: { kind: "set", device: "siren.state", value: 0 } })
+                       action: { kind: "set", device: "siren.state", value: false } })
 ```
 
 No imports, no method-call chains beyond what's explicitly allowed, no
@@ -104,9 +104,9 @@ all:
 
 ```yaml
 condition: { device: "relay_a.state", changed: true }                 # any change
-condition: { device: "surveillance.armed", changed: true, value: 1 }  # armed, just now
-condition: { device: "surveillance.armed", value: 1 }                 # armed, any tick
-condition: { device: "surveillance.armed", changed: false, value: 1 } # armed, steady (not the arriving tick)
+condition: { device: "surveillance.armed", changed: true, value: true }  # armed, just now
+condition: { device: "surveillance.armed", value: true }                 # armed, any tick
+condition: { device: "surveillance.armed", changed: false, value: true } # armed, steady (not the arriving tick)
 ```
 
 The level-check reading (`value:` with `changed` left out, or explicitly
@@ -116,8 +116,8 @@ need a `time:`-driven task plus a manual `expr:` check inside the action:
 ```yaml
 tasks:
   - tag: nag_while_armed
-    condition: { device: "surveillance.armed", value: 1 }
-    min_interval: 1h   # at most once an hour, for as long as armed stays 1
+    condition: { device: "surveillance.armed", value: true }
+    min_interval: 1h   # at most once an hour, for as long as armed stays true
     action:
       kind: mail_alert
       instance: "mail_alert.house"
@@ -134,41 +134,48 @@ sandbox](#the-shared-sandbox):
 ```yaml
 condition:
   refs: { armed: "security.armed", motion: "hallway.motion" }
-  expr: "armed.state == 1 and motion.changed and motion.state == 1"
+  expr: "armed.state and motion.changed and motion.state"
 ```
 
 ### Five Equivalent Ways to Say the Same Thing
 
 To compare the shorthand against `expr:`'s different styles directly, here
 are five conditions that all fire on the exact same tick — the one
-`surveillance.armed` transitions to `1`:
+`surveillance.armed` (a [bool
+endpoint](concepts.md#two-state-endpoints)) transitions to `true`:
 
 ```yaml
 # 1. The shorthand
-condition: { device: "surveillance.armed", changed: true, value: 1 }
+condition: { device: "surveillance.armed", changed: true, value: true }
 
 # 2. expr, refs-bound attribute style
 condition:
   refs: { armed: "surveillance.armed" }
-  expr: "armed.changed and armed.state == 1"
+  expr: "armed.changed and armed.state"
 
 # 3. Same, using .event instead of .changed + .state
 condition:
   refs: { armed: "surveillance.armed" }
-  expr: "armed.event == 1"
+  expr: "armed.event"
 
 # 4. expr, inline function-call style (no refs:)
-condition: { expr: "changed('surveillance.armed') and state('surveillance.armed') == 1" }
+condition: { expr: "changed('surveillance.armed') and state('surveillance.armed')" }
 
 # 5. Same, using event() instead of changed() + state()
-condition: { expr: "event('surveillance.armed') == 1" }
+condition: { expr: "event('surveillance.armed')" }
 ```
+
+Testing the opposite transition reads as `not armed.state`. Take care
+with the `.event` forms there: `event` is `None` on any tick without a
+change, and `not None` is true, so a "went false" gate needs the change
+kept explicit — `armed.changed and not armed.state` (form 2), not
+`not armed.event`.
 
 Forms 2/3 and 4/5 are equivalent pairs because `event(ref)` *is*
 `state(ref)` on the tick of a change (both come from the same
 `update_state()` commit — see [`phc/core/endpoint.py`](../phc/core/endpoint.py)) and `None` on every
-other tick, so `event(ref) == 1` already implies "changed, to 1" in one
-comparison. Reach for the shorthand (form 1) when a single endpoint's
+other tick, so a truthy `event(ref)` already implies "changed, to true"
+in one test. Reach for the shorthand (form 1) when a single endpoint's
 value is all the condition needs — it's the shortest, and doesn't require
 naming any of the sandbox's functions at all; reach for `expr:` when the
 condition spans more than one device or needs boolean logic the shorthand
@@ -183,7 +190,7 @@ registered across the codebase:
 | kind | what it does |
 |---|---|
 | `set` | Set the target endpoint to a literal `value:` or a dynamic `expr:` result. |
-| `toggle` | Flip the target endpoint between its two declared `values`, or `"on"`/`"off"`. |
+| `toggle` | Flip the target endpoint: `true`/`false` for a `bool`, else between its two declared `values`, else `"on"`/`"off"`. |
 | `log` | Log a `message` template (`{state}`/`{text}` available) against the target. |
 | `create_task` | Build and register a new task at runtime from a nested `specs:`, or from a named `template:` (see [Reusable task templates](#reusable-task-templates)). |
 | `kill_task` | Remove every task whose tag matches any of `tags` (fnmatch glob). |
@@ -202,9 +209,9 @@ three general-purpose kinds:
 
 ```yaml
 actions:
-  - { kind: set, device: "siren.state", value: 0 }        # a literal value
+  - { kind: set, device: "siren.state", value: false }        # a literal value
   - { kind: set, device: "siren.state", expr: "0" }        # expr producing a constant
-  - { kind: script, code: "set_state('siren.state', 0)" }  # a one-line script
+  - { kind: script, code: "set_state('siren.state', False)" }  # a one-line script
 ```
 
 All three write the same raw value the same way (`Endpoint.from_text()`/
@@ -275,13 +282,13 @@ the whole definition inline:
 task_specs:
   - tag: clear_alert
     time: "+1s"
-    action: { kind: set, device: "siren.state", value: 0 }
+    action: { kind: set, device: "siren.state", value: false }
 
 tasks:
   - tag: intrusion
-    condition: { device: "hallway.motion", changed: true, value: 1 }
+    condition: { device: "hallway.motion", changed: true, value: true }
     actions:
-      - { kind: set, device: "siren.state", value: 1 }
+      - { kind: set, device: "siren.state", value: true }
       - { kind: create_task, template: clear_alert }
 ```
 

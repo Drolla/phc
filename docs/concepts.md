@@ -57,10 +57,14 @@ failing or recovers.
 Unless otherwise specified, an endpoint's value is untyped and passes
 through unchanged. An endpoint definition may opt into:
 
-- `type` — `int`, `float`, `bool`, or `str`.
+- `type` — `int`, `float`, `bool`, or `str`. A `bool` endpoint's reading
+  is coerced to an actual `True`/`False`, since hardware and web APIs
+  usually report `0`/`1`; `None` (a failed or not-yet-taken reading)
+  stays `None`.
 - `unit` — a display unit, e.g. `"°C"`, appended when formatting a
   numeric value as text.
-- `values` — a raw value → text label mapping, e.g. `{ 0: "off", 1: "on" }`.
+- `values` — a raw value → text label mapping, e.g.
+  `{ false: "off", true: "on" }`.
 - `min`/`max` — a numeric range. Used by
   [`phc/extensions/web_ui/`](../phc/extensions/web_ui/) to decide whether a
   writable numeric endpoint gets a bounded slider, and — only if
@@ -110,3 +114,33 @@ value as display text and to parse text (or a raw value/label, e.g. `1` or
 `{text}` placeholder and the `set` action's `value:` parameter (or its
 `expr:` alternative — see [Conditions, scripted actions & sticky
 values](scripting.md)).
+
+### Two-state endpoints
+
+Anything genuinely two-state — on/off, open/closed, armed/disarmed,
+clear/triggered — should be `type: bool` with a `values` mapping:
+
+```yaml
+- key: armed
+  writable: true
+  type: bool
+  values: { false: "disarmed", true: "armed" }
+```
+
+Declaring both is deliberate, and the two are read in opposite orders:
+
+- The web UI picks its widget from the *type* first, so a bool endpoint
+  gets a **toggle** rather than a two-item dropdown.
+- `to_text()` resolves the *mapping* first, so the value still displays
+  as `"armed"` rather than `"true"` — in the UI, in logs, and in a
+  `{text}` placeholder.
+
+Conditions then read as plain truth tests (`armed.state`,
+`not alarm.state`) instead of comparisons against a magic `0`/`1`. Note
+that `== 1`/`== 0` keep working regardless, since `True == 1` in Python.
+
+Reserve an `int` with a `values` mapping for something with three or more
+states (a fan's off/low/high, say). If the hardware's own value isn't
+`0`/`1` — zWave's `switch_binary` uses `0`/`255` — keep that in a
+`read_transform`/`write_transform` rather than exposing it to every task
+that writes the endpoint.

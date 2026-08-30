@@ -90,9 +90,9 @@ modules:
         endpoints:
           - key: state
             writable: true
-            type: int
-            values: { 0: "off", 1: "on" }
-            default: 0
+            type: bool
+            values: { false: "off", true: "on" }
+            default: false
 
 devices:
   - id: siren_hallway

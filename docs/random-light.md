@@ -34,7 +34,7 @@ tasks:
     # armed and not alarmed") with the task's own condition: -- see
     # docs/configuration.md's Tasks section -- rather than a
     # random_light-specific parameter.
-    condition: { device: "surveillance.armed", value: 1 }
+    condition: { device: "surveillance.armed", value: true }
     action: { kind: random_light, instance: "random_light.house" }
 ```
 

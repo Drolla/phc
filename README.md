@@ -103,8 +103,8 @@ devices:
     endpoints:
       - key: state
         writable: true
-        type: int
-        values: { 0: "off", 1: "on" }
+        type: bool
+        values: { false: "off", true: "on" }
 
 tasks:
   - tag: evening_lights
@@ -113,7 +113,7 @@ tasks:
     action:
       kind: set
       device: "living_light.state"
-      expr: "0 if state('sun.is_daylight') else 1"
+      expr: "not state('sun.is_daylight')"
 ```
 
 Validate your configuration:

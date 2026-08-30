@@ -14,6 +14,11 @@ each endpoint's widget is inferred purely from its existing metadata:
 | `writable`, numeric, missing `min` or `max`   | number     |
 | `writable`, `str` or untyped                  | text       |
 
+The rows are checked in order, so `type: bool` wins over `values`: a
+two-state endpoint declaring both (the [recommended
+shape](concepts.md#two-state-endpoints)) gets a toggle, while its labels
+still supply the text shown beside it.
+
 Layout is either a single flat page (the `selectors` shorthand, default
 everything) or an explicit `pages:` list, each holding one or more
 collapsible `sections:` (folded by default) that pick their devices via
