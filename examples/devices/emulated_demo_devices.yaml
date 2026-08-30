@@ -1,12 +1,13 @@
-# Shared device list: a handful of generic virtual lights/switches/sensors
-# with no real hardware behind them, reused as filler devices across
+# Shared device list: a handful of generic emulated lights/switches/sensors
+# standing in for real actuators (a light switch, a thermostat, a siren, a
+# fan) with no real hardware behind them, reused as filler devices across
 # examples that demonstrate some other feature (logging, the web UI, the
 # debug portal, crash recovery, value history, a surveillance/alarm state
 # machine, ...) and just need a few devices to show it on -- not a device
 # module feature in their own right.
 #
 # A bare list, not a devices:-keyed mapping: a consuming config includes it
-# as one `devices:` list item (`- !include devices/virtual_demo_devices.yaml`)
+# as one `devices:` list item (`- !include devices/emulated_demo_devices.yaml`)
 # alongside its own extra devices, and the loader splices this file's
 # entries into the surrounding list rather than nesting them -- see
 # docs/configuration.md#splitting-configuration-across-files. No modules:/
@@ -23,7 +24,7 @@
   name: Lights
   children:
     - id: living_light
-      module: virtual
+      module: emulated_device
       name: Living Room Light
       endpoints:
         - key: state
@@ -33,7 +34,7 @@
           default: false
 
     - id: desk_lamp
-      module: virtual
+      module: emulated_device
       name: Desk Lamp
       endpoints:
         - key: power
@@ -51,7 +52,7 @@
           # log_aggregation: min tracks brightness dips for a logdb
           # consumer (see examples/logdb_system.yaml); history: 5
           # independently feeds fractile()/median() queries (see
-          # examples/virtual_system.yaml and docs/scripting.md's "Value
+          # examples/emulated_system.yaml and docs/scripting.md's "Value
           # history & fractiles").
           log_aggregation: min
           history: 5
@@ -62,7 +63,7 @@
     # dropdown widget is exercised by fan.speed below, which is genuinely
     # three-state.
     - id: kitchen_light
-      module: virtual
+      module: emulated_device
       name: Kitchen Light
       endpoints:
         - key: state
@@ -71,7 +72,7 @@
           default: false
 
 - id: thermostat
-  module: virtual
+  module: emulated_device
   name: Thermostat
   endpoints:
     - key: setpoint
@@ -81,7 +82,7 @@
       default: 18.0
 
 - id: siren
-  module: virtual
+  module: emulated_device
   name: Siren
   endpoints:
     - key: state
@@ -91,7 +92,7 @@
       default: false
 
 - id: fan
-  module: virtual
+  module: emulated_device
   name: Ceiling Fan
   endpoints:
     - key: speed

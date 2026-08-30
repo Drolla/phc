@@ -20,13 +20,13 @@ log:
       web_ui: DEBUG
 
 # lights.kitchen_light/lights.desk_lamp/fan are the shared filler devices
-# from examples/devices/virtual_demo_devices.yaml (kitchen_light is
+# from examples/devices/emulated_demo_devices.yaml (kitchen_light is
 # bool-typed, specifically to exercise the toggle widget below); sun_zurich
 # is examples/devices/sun_zurich.yaml. This example is about the web UI,
 # not any one device module, so it just needs a few devices to render
 # widgets for.
 devices:
-  - !include devices/virtual_demo_devices.yaml
+  - !include devices/emulated_demo_devices.yaml
   - !include devices/sun_zurich.yaml
 
 extensions:

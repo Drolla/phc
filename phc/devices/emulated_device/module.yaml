@@ -66,4 +66,13 @@ parameters:
     description: >
       Fractional variation around write_spike_latency (same as write_jitter).
 
+endpoint_parameters:
+  - name: simulate
+    description: >
+      Makes this endpoint generate its own reading each poll instead of
+      (or in addition to) echoing writes -- independent of `writable:`.
+      {kind: toggle, on_probability, auto_clear_after} for a bool
+      endpoint, or {kind: drift, step} for a numeric one -- see
+      device.py.
+
 endpoints: []

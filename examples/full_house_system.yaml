@@ -16,9 +16,9 @@
 #   - meteoswiss      -- an outdoor MeteoSwiss weather station
 #   - sun             -- sun position, feeding random_light's sunset/sunrise
 #                         windows below
-#   - virtual         -- the surveillance control/lights, with no real
-#                         hardware behind them (mirrors
-#                         examples/virtual_surveillance_system.yaml)
+#   - virtual         -- surveillance/alarm, pure software flags with no
+#                         physical device behind them (mirrors
+#                         examples/emulated_surveillance-system_setup.yaml)
 #   - logdb + web_ui  -- history logging and the pages/graphs that display it
 #   - mail_alert + random_light -- an intrusion alert and randomized lighting
 #     while armed
@@ -110,6 +110,14 @@ devices:
         device_profile: everspring-siren_300_series
         node: 16
 
+      - id: porch_light
+        module: zway
+        name: Porch Light
+        device_profile: duwi
+        node: 8
+        endpoints:
+          - { key: sw, name: "Porch Light" }
+
       - id: cellar_air
         module: waveplus_bridge
         name: Cellar Air Quality
@@ -119,10 +127,13 @@ devices:
         cache_time: 60s
         data_validity_time: 5m
 
-      # Virtual stand-ins for the surveillance job set -- see
-      # examples/virtual_surveillance_system.yaml for the full arm/disarm/alarm
-      # walkthrough this mirrors. No `default:` on surveillance/armed (like
-      # that example): a seeded default would commit a spurious change
+      # Virtual stand-ins for the surveillance job set -- pure software
+      # flags with no physical device behind them (unlike porch_light
+      # above, a real light on its own zway node) -- see
+      # examples/emulated_surveillance-system_setup.yaml for the full
+      # arm/disarm/alarm walkthrough this mirrors. No `default:` on
+      # surveillance/armed (like that example): a seeded default would
+      # commit a spurious change
       # event at config-load time that the `changed`-gated tasks below would
       # otherwise react to on the very first tick.
       - id: surveillance
@@ -134,17 +145,6 @@ devices:
             writable: true
             type: bool
             values: { false: "disarmed", true: "armed" }
-
-      - id: porch_light
-        module: virtual
-        name: Porch Light
-        update: 2s
-        endpoints:
-          - key: state
-            writable: true
-            type: bool
-            values: { false: "off", true: "on" }
-            default: false
 
       - id: alarm
         module: virtual
@@ -190,7 +190,7 @@ extensions:
         - device: "house.light_corridor.sw1"
           default: true
         # porch_light overrides all three per-light instead.
-        - device: "house.porch_light.state"
+        - device: "house.porch_light.sw"
           windows:
             - { start: "20:00", end: "23:00" }
           min_interval: 25m
@@ -212,7 +212,7 @@ extensions:
     house:
       selectors:
         - "house.light_corridor/sw1"
-        - "house.porch_light/state"
+        - "house.porch_light/sw"
         - "house.siren/state"
         - "house.alarm/state"
         - "house.surveillance/armed"
@@ -248,6 +248,18 @@ extensions:
               title: Lights
               collapsed: false
               selectors: ["house.light_corridor/*", "house.porch_light/*"]
+
+        - id: battery
+          title: Battery
+          sections:
+            - id: battery
+              title: Battery
+              collapsed: false
+              selectors: ["house.*/battery"]
+
+        - id: timers
+          title: Timers
+          sections:
             - id: timers
               title: Timers
               collapsed: false
@@ -255,10 +267,6 @@ extensions:
                 - kind: timers
                   id: house_timers
                   timer_instance: "timer.house"
-            - id: battery
-              title: Battery
-              collapsed: true
-              selectors: ["house.*/battery"]
 
         - id: environment
           title: Environment
@@ -291,7 +299,7 @@ extensions:
                     - "house.surveillance/*"
                     - "house.alarm/*"
                     - "house.light_corridor/sw1"
-                    - "house.porch_light/state"
+                    - "house.porch_light/sw"
                     - "house.siren/state"
                   window: 24h
                   decimation:
@@ -323,14 +331,18 @@ tasks:
     repeat: 1m
     action: { kind: log_db, instance: "logdb.full_history" }
 
+  # min_interval: caps how often these fire, in case the real sensor
+  # reports noisy small fluctuations more often than is worth logging.
   - tag: report_low_battery
-    description: "Log the hallway motion sensor's battery level whenever it changes"
+    description: "Log the hallway motion sensor's battery level, at most once a minute"
     condition: { device: "house.sensor_garage.battery", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "house.sensor_garage", message: "hallway motion sensor battery changed to {text}" }
 
   - tag: report_bern_temperature
-    description: "Log whenever the Bern temperature reading changes"
+    description: "Log the Bern temperature reading, at most once a minute"
     condition: { device: "weather.meteo-bern.temperature", changed: true }
+    min_interval: 1m
     action: { kind: log, device: "weather.meteo-bern", message: "Bern temperature changed to {state}" }
 
   - tag: surveillance_tag_reader

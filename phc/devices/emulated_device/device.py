@@ -89,7 +89,16 @@ class EmulatedDevice(Device):
         tag-reader event, not a switch someone leaves set. A `values:`
         mapping (e.g. {false: "clear", true: "motion"}), if declared, is
         display-only -- to_text() resolves it independently of the raw
-        True/False this returns."""
+        True/False this returns.
+
+        Stays None until first seeded (no `default:` and never written):
+        some configs deliberately start an endpoint unset to avoid a
+        spurious change event at config-load time for a task gated on
+        `changed:` -- see e.g. examples/emulated_surveillance-system_setup.yaml.
+        Committing an arbitrary False the moment simulation kicks in would
+        defeat that same care."""
+        if ep.get() is None:
+            return None
         turned_on_at = self._simulate_state.get(ep.key)
         if turned_on_at is not None:
             if time.monotonic() - turned_on_at < parse_duration(spec.get("auto_clear_after", 0)):

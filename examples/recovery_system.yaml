@@ -6,12 +6,12 @@ log:
       default: INFO
 
 # lights.desk_lamp/thermostat are the shared filler devices from
-# examples/devices/virtual_demo_devices.yaml -- this example is about crash
+# examples/devices/emulated_demo_devices.yaml -- this example is about crash
 # recovery, not the virtual module, so it just needs a couple of writable
 # devices to persist/restore, not a device-module walkthrough of its own
-# (see examples/virtual_system.yaml for that).
+# (see examples/emulated_system.yaml for that).
 devices:
-  - !include devices/virtual_demo_devices.yaml
+  - !include devices/emulated_demo_devices.yaml
 
 # Persists lights.desk_lamp/power and thermostat/setpoint to a small YAML
 # file, restoring them automatically the next time PHC starts (e.g. after a

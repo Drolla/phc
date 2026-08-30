@@ -11,9 +11,9 @@ from phc.core.scheduler import Scheduler
 from phc.core.task import Condition, LogAction, Task, ToggleAction
 from tests.conftest import fetch_sync
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "virtual_system.yaml"
+EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "emulated_system.yaml"
 SURVEILLANCE_EXAMPLE = (Path(__file__).resolve().parent.parent / "examples"
-                         / "virtual_surveillance-task_defs_1-nested.yaml")
+                         / "emulated_surveillance-task_defs_1-nested.yaml")
 
 
 
@@ -70,7 +70,7 @@ def test_scheduler_only_runs_due_devices():
     assert slow.get() == "on"
 
 
-def test_end_to_end_virtual_system_example():
+def test_end_to_end_emulated_system_example():
     system = load_system(EXAMPLE)
     scheduler = Scheduler(system.scheduled_devices(), heartbeat=system.heartbeat)
 
@@ -139,7 +139,7 @@ def test_scheduler_commits_change_event_for_nested_device_despite_ancestor_prese
 def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     """Round-trip the condition.expr/kind:script/min_interval/create_task/
     kind:kill_task example
-    (examples/virtual_surveillance-task_defs_1-nested.yaml) through the
+    (examples/emulated_surveillance-task_defs_1-nested.yaml) through the
     Scheduler: arming spawns surv_random_light/surv_intrusion (both nested
     create_task actions), motion raises the alarm and schedules further
     timed follow-ups (once, thanks to min_interval), and disarming tears
@@ -159,7 +159,11 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     spawned_on_arm = {"surv_random_light", "surv_intrusion"}
     assert spawned_on_arm <= {task.tag for task in system.tasks}
 
-    system.devices["hallway_motion"].set(1)
+    # hallway_motion.state is read-only (a real PIR only ever reports) --
+    # set_raw() on the endpoint directly is how a real device's own
+    # receive() would report a fresh reading, bypassing the writable
+    # check Device.set() enforces against an external command.
+    system.devices["hallway_motion"].endpoint("state").set_raw(True)
     for _ in range(3):
         t += 2.0
         scheduler.tick(now=t)
@@ -197,7 +201,7 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
     """all_lights is independent of armed/alarm state: toggling it forces
     every random_light-managed light and silences the siren, regardless of
     whether surveillance is armed (see
-    examples/virtual_surveillance-task_defs_1-nested.yaml's
+    examples/emulated_surveillance-task_defs_1-nested.yaml's
     surveillance_all_lights_on/_off tasks)."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)

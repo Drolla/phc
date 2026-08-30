@@ -21,11 +21,11 @@ log:
       timer: DEBUG
 
 # lights.desk_lamp/thermostat are the shared filler devices from
-# examples/devices/virtual_demo_devices.yaml -- this example is about the
+# examples/devices/emulated_demo_devices.yaml -- this example is about the
 # timer extension, not any one device module, so it just needs a few
 # writable endpoints to target.
 devices:
-  - !include devices/virtual_demo_devices.yaml
+  - !include devices/emulated_demo_devices.yaml
 
 extensions:
   timer:
