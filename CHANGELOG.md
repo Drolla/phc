@@ -10,8 +10,30 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 ### 2026-08-30
 
+**New features**
+
+- `virtual_latency` is renamed `emulated_device`, and its endpoints can now
+  declare `simulate: { kind: toggle | drift, ... }` to generate their own
+  readings each poll — `toggle` flips a bool on with some probability and
+  clears it again after a delay (a motion sensor, a momentary tag-reader
+  event); `drift` random-walks a numeric value within its own `min`/`max`
+  (a battery gauge, a temperature reading). This is independent of
+  `writable:`, and exists specifically so an endpoint standing in for
+  read-only real hardware can still be genuinely read-only (see the next
+  entry) while still moving on its own in a demo — a task/script has no way
+  to write to a non-writable endpoint (`set_state`/`set_text`/`set` all
+  reject it), so generation has to live in the device itself. See
+  [`docs/configuration.md`](docs/configuration.md)'s `endpoint_parameters:`
+  section.
+
 **Improvements**
 
+- Endpoints in the example configs that stand in for a real device's
+  read-only reading (motion/PIR sensors, battery levels, an outdoor
+  temperature/humidity/radon station) are now declared `writable: false`
+  and, where the demo benefits from the value changing, `simulate:`-driven
+  — they no longer render as a dropdown/toggle a person could click, which
+  misrepresented what the real hardware they emulate can do.
 - Endpoints that are genuinely two-state — on/off, open/closed,
   armed/disarmed, clear/motion — are now declared `type: bool` with a
   `{false: ..., true: ...}` label mapping instead of `type: int` with a
@@ -46,6 +68,10 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 **Breaking changes**
 
+- A config using `module: virtual_latency` fails to load — rename it to
+  `module: emulated_device` (its parameters and endpoint behavior are
+  otherwise unchanged; only the module name and its example file,
+  `examples/emulated_device_system.yaml`, moved).
 - A config that writes zway's raw switch values directly needs updating:
   `value: 255` now parses as `false` (255 is not recognized truthy text),
   which would silently turn a light or siren *off*. Write `true`/`false`
