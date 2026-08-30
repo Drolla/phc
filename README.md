@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="Pylon Home Control logo" width="220">
+  <img src="docs/screenshot.png" alt="Pylon Home Control web UI screenshot">
 </p>
 
 # Pylon Home Control (PHC)
@@ -179,7 +179,7 @@ Detailed documentation is located in [`docs/developer/`](docs/developer/):
 Run PHC against one of the example systems:
 
 ```bash
-phc --config examples/virtual_system.yaml
+phc --config examples/emulated_system.yaml
 ```
 
 (`pip install -e .` installs the `phc` console command; `python -m phc
