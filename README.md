@@ -74,20 +74,42 @@ See [`docs/concepts.md`](docs/concepts.md) for the full picture (including endpo
 
 ## Quick Start
 
-Clone the repository and enter it:
+**1. Clone the repository and enter it:**
 
 ```bash
 git clone https://github.com/Drolla/phc.git
 cd phc
 ```
 
-Install the required Python modules:
+**2. Create and activate a virtual environment.** On Debian-based systems
+(including Raspberry Pi OS), the system Python is "externally managed"
+(PEP 668) and refuses a direct `pip install`, so a venv is required rather
+than optional:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+**3. Install the required Python modules:**
 
 ```bash
 pip install -e .
 ```
 
-Write the configuration file of your system, using
+**4. Try it out with one of the bundled examples**, no config of your own
+needed yet:
+
+```bash
+python -m phc --config examples/emulated_full_system.yaml
+```
+
+Open `http://<HostID>:8080` in a browser for the web UI, and
+`http://<HostID>:8081` for the debug portal's live task queue (`<HostID>`
+is `localhost` if you're browsing from the same machine, or the host's
+network address/hostname otherwise).
+
+**5. Write the configuration file of your system**, using
 [`docs/configuration.md`](docs/configuration.md) as reference. A minimal PHC
 configuration looks like this:
 
@@ -116,13 +138,13 @@ tasks:
       expr: "not state('sun.is_daylight')"
 ```
 
-Validate your configuration:
+**6. Validate your configuration:**
 
 ```bash
 python -m phc validate --config myhome.yaml
 ```
 
-Run PHC:
+**7. Run PHC:**
 
 ```bash
 python -m phc --config myhome.yaml
