@@ -335,7 +335,7 @@ extensions:
 
   web_ui:
     home:
-      # host: 127.0.0.1   -- already the default (loopback only)
+      # host: 0.0.0.0   -- already the default (all interfaces)
       port: 8080
       refresh_interval: 2s
       pages:
@@ -446,7 +446,7 @@ extensions:
   debug_portal:
     debug:
       port: 8081
-      # host: 127.0.0.1   -- already the default (loopback only)
+      # host: 0.0.0.0   -- already the default (all interfaces)
       # selectors: ["*"]  -- already the default (every endpoint)
 
 tasks:

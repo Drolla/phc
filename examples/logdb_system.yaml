@@ -45,7 +45,7 @@ extensions:
   # parameter for the full kind: graph reference).
   web_ui:
     demo:
-      host: "127.0.0.1"
+      # host: "0.0.0.0"   -- already the default (all interfaces)
       port: 8080
       pages:
         - id: home
