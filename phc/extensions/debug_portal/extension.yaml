@@ -11,13 +11,14 @@ description: >
   `extensions.debug_portal.<instance>:` entry is present in the system
   YAML.
 
-  v1: no authentication -- host defaults to loopback-only; set it
-  explicitly to expose beyond localhost, and only on a trusted LAN.
+  v1: no authentication -- host defaults to all interfaces for LAN
+  reachability out of the box; set it to "127.0.0.1" to restrict to
+  localhost, and only expose this on a trusted LAN.
 
 parameters:
   - name: host
     override: allowed
-    default: "127.0.0.1"
+    default: "0.0.0.0"
     description: Interface to bind the HTTP server to.
 
   - name: port

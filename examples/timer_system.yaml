@@ -39,7 +39,7 @@ extensions:
 
   web_ui:
     demo:
-      host: 127.0.0.1
+      # host: 0.0.0.0   -- already the default (all interfaces)
       port: 8080
       refresh_interval: 2s
       pages:

@@ -189,18 +189,19 @@ sudo systemctl restart phc.service
 ## 7. Optional: Web UI Dashboard
 
 If your config includes [`phc/extensions/web_ui`](web-ui.md), it binds to
-`127.0.0.1` by default (loopback-only, no authentication) — safe to leave
-as-is if you'll only ever browse it from the Pi itself, or if you reach it
-through an SSH tunnel:
+`0.0.0.0` by default (all interfaces, no authentication) — reachable from
+any device on the Pi's LAN at `http://<raspberry-pi-address>:8080`, so
+only do this on a network you trust. If you'd rather keep it off the LAN
+entirely, set `host: 127.0.0.1` in the config to restrict it to the Pi
+itself, and reach it from elsewhere through an SSH tunnel:
 
 ```
 ssh -L 8080:localhost:8080 pi@<raspberry-pi-address>
 ```
 
-then open `http://localhost:8080` locally. If you want LAN access instead,
-change `host:` to the Pi's LAN address or `0.0.0.0` — but since there's no
-built-in authentication, only do this on a network you trust, or put a
-reverse proxy with auth (e.g. `nginx`) in front of it.
+then open `http://localhost:8080` locally. Either way, since there's no
+built-in authentication, consider putting a reverse proxy with auth (e.g.
+`nginx`) in front of it if you expose it beyond a fully trusted LAN.
 
 
 ## 8. Updating PHC

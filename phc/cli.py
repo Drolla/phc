@@ -46,7 +46,7 @@ def _resolve_debug_portal_instance(system: System, port: int | None,
     Bound to `system` -- or None if `port` wasn't given (the flag's
     absence is the common case: no debug portal for this run at all).
     Host is fixed to phc/extensions/debug_portal/extension.yaml's own
-    loopback default; only port/selectors are exposed on the command line.
+    default; only port/selectors are exposed on the command line.
 
     Raises ValueError if the system YAML already configures its own
     extensions.debug_portal.<instance> -- rather than silently running a
@@ -60,7 +60,7 @@ def _resolve_debug_portal_instance(system: System, port: int | None,
             f"--debug-portal-port was given, but the config file already configures "
             f"extensions.debug_portal ({', '.join(existing)}); remove one")
     params = {
-        "host": "127.0.0.1",  # matches phc/extensions/debug_portal/extension.yaml's own default
+        "host": "0.0.0.0",  # matches phc/extensions/debug_portal/extension.yaml's own default
         "port": port,
         "selectors": selectors or ["*"],
         "shutdown_timeout": 5,
@@ -182,8 +182,8 @@ def main(argv=None):
     parser.add_argument("--debug-portal-port", type=int, metavar="PORT",
                          help="start phc.extensions.debug_portal's live view on this port for "
                               "this run, even if --config has no extensions.debug_portal: "
-                              "entry of its own (loopback-only; conflicts with one that's "
-                              "already there)")
+                              "entry of its own (binds all interfaces; conflicts with one "
+                              "that's already there)")
     parser.add_argument("--debug-portal-selector", metavar="PATTERN", action="append",
                          default=[],
                          help="'<device-glob>/<endpoint-glob>' selector for "

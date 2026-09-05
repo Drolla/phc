@@ -14,7 +14,7 @@ widgets, and cannot write to any device.
 extensions:
   debug_portal:
     debug:
-      host: 127.0.0.1
+      host: 0.0.0.0
       port: 8081
       selectors: ["*"]
 ```
@@ -58,9 +58,10 @@ would otherwise keep changing under you.
 
 ## Parameters
 
-- `host` (default `127.0.0.1`) / `port` (default `8081`) — where to bind.
-  As with [web UI](web-ui.md), there is no authentication in v1, so only
-  bind beyond loopback on a trusted LAN.
+- `host` (default `0.0.0.0`, all interfaces) / `port` (default `8081`) —
+  where to bind. As with [web UI](web-ui.md), there is no authentication in
+  v1, so only run this on a trusted LAN; set `host` to `127.0.0.1` to
+  restrict it to the local machine.
 - `selectors` (default `["*"]`) — which endpoints appear in the endpoint
   table (same `"<device-glob>/<endpoint-glob>"` syntax as
   [`phc/extensions/logdb`](logdb.md)'s own `selectors`). The task queue and
