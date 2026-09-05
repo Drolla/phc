@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-09-05
+
+**Breaking changes**
+
+- `extensions.web_ui` and `extensions.debug_portal` now default `host` to
+  `0.0.0.0` (all interfaces) instead of `127.0.0.1` (loopback-only), so
+  both are reachable from other devices on the LAN out of the box — no
+  config change needed for the common case of running PHC on a Raspberry
+  Pi and browsing the dashboard from another machine. Neither server has
+  authentication, so only run PHC on a trusted LAN; set `host: 127.0.0.1`
+  explicitly to restrict either one back to the local machine. See
+  [`docs/web-ui.md`](docs/web-ui.md), [`docs/debug-portal.md`](docs/debug-portal.md)
+  and [`docs/raspberry-pi-install.md`](docs/raspberry-pi-install.md).
+
 ### 2026-08-30
 
 **New features**

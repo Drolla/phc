@@ -28,7 +28,7 @@ the same selector syntax [`phc/extensions/logdb`](logdb.md) uses:
 extensions:
   web_ui:
     home:
-      host: 127.0.0.1
+      host: 0.0.0.0
       port: 8080
       refresh_interval: 2s
       pages:
@@ -130,8 +130,9 @@ either before or after this `web_ui:` instance. `title` defaults to `id`.
 Only endpoints matched by that timer instance's own `selectors` can be
 picked as a timer's target.
 
-There is no authentication — bind `host` to a trusted interface only
-(defaults to `127.0.0.1`, loopback-only). See
+There is no authentication — `host` defaults to `0.0.0.0` (all interfaces)
+for LAN reachability out of the box; only run this on a trusted LAN, and
+set `host` to `127.0.0.1` to restrict it to the local machine. See
 [`examples/web_ui_system.yaml`](../examples/web_ui_system.yaml) for a
 complete runnable example,
 [`examples/logdb_system.yaml`](../examples/logdb_system.yaml) for `kind:
