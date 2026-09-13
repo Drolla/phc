@@ -1,69 +1,128 @@
 # zway Internals
 
-[`phc/devices/zway/device.py`](../../phc/devices/zway/device.py) batches every
-`zway` device behind the same controller (`base_url`) into shared caching/
-auth state, keyed by `base_url`:
+The module is split in two, along the line "does this need to know what PHC
+is?":
 
-- **Identifier registry** (`_identifiers`) — every device registers its
-  readable endpoints' `(command_group, address)` identifiers into a
-  shared, module-level dict during `setup()`, before the Scheduler starts
-  (so the registry is guaranteed complete by the first fetch). Each
-  identifier maps to an optional `poll_interval` (seconds), parsed from the
-  endpoint's `poll_interval` param. Whichever device is due first each poll
-  window issues one combined `Get()` request covering every
-  currently-registered identifier for that controller that's actually due
-  (see below).
-- **Response cache** (`_response_cache`, `_response_cache_lock`) — the
-  combined fetch is cached for `cache_time` and reused by every sibling
-  device polling within that window, using double-checked locking to avoid
-  a cache stampede when several devices become due at once. A failed fetch
-  is never cached, so callers retry on the next poll.
-- **Throttled-identifier cache** (`_throttled_values`) — identifiers with a
-  `poll_interval` override (e.g. `Battery` endpoints, which default to
-  `"1h"`) are excluded from a combined `Get()` request until that interval
-  has elapsed since they were last actually fetched (`_select_fetch_idents`);
-  in the meantime `_merge_throttled` fills them back in from this cache
-  instead. If every registered identifier behind a `base_url` is throttled
-  and none are due, `_get_values` skips the request entirely rather than
-  issuing an empty `Get()`. This only reduces how often PHC asks the zWay
-  controller for a value — it has no bearing on whether zWay itself polls
-  the physical node over the Z-Wave mesh to answer that `Get()`.
-- **Session/auth** (`_session_cookies`, `_session_lock`) — only the
-  extracted session cookie string is cached, not a long-lived
-  `aiohttp.ClientSession`; a fresh session is opened per request to avoid
-  lifecycle issues across `Scheduler` instances (e.g. in tests), while the
-  cached cookie still survives a session's own cookie-jar reset. A 401/403
-  response drops the cached cookie and retries once with a fresh login.
-- **`TagReader` one-time setup** (`_configured_tag_readers`) — a device
-  with a `TagReader` endpoint needs one `Configure_TagReader(node)` call
-  before its readings are meaningful; deferred out of `setup()` (which is
-  sync/no-I/O) into the first `receive_async()`, and tracked per
-  `(base_url, node)` pair so it only runs once. Only recorded on success,
-  so a transient failure retries on the next poll.
-- **`thc_zWay.js` one-time load** (`_helper_loaded`, `_helper_lock`,
-  `_ensure_helper_loaded`/`_probe_helper`) — every `receive_async()`/
-  `transmit_async()` first probes with the marker call
-  `Get_IndexArray(257.1)` (expected reply `[257, 1, 0]`), and if that
-  fails, loads the script with `executeFile("thc_zWay.js")` (which only
-  works if a copy already sits in the zWay server's automation folder —
-  PHC never uploads file content) and probes once more. Ported from THC's
-  `thc_zWay.tcl` `Init`, but without its blocking retry loop: only
-  recorded in `_helper_loaded` on success, so an offline controller is
-  simply retried on the next poll — the same idiom as
-  `_configured_tag_readers` above.
+- [`zway_ws.py`](../../phc/devices/zway/zway_ws.py) — a plain
+  ZAutomation WebSocket client with **no PHC imports at all**. It owns the
+  protocol: framing, the request/response correlation, push events, the
+  device cache, pattern matching, and the value/command translation tables.
+- [`device.py`](../../phc/devices/zway/device.py) — a thin `Device`
+  adapter over it. It reads params, binds endpoints to device ids, and
+  turns the cache into `{endpoint_key: value}`.
+
+[`demo.py`](../../phc/devices/zway/demo.py) enforces that line: it drives
+`zway_ws.py` alone from the command line, importing nothing else from
+PHC. If it ever needed a `Device`, a `Scheduler` or the config loader, the
+protocol layer would have stopped being the standalone client it is meant
+to be.
 
 
-## Profile Library Notes
+## The Transport
 
-A few `device_profiles` entries in
-[`module.yaml`](../../phc/devices/zway/module.yaml) encode wiring that isn't
-obvious from the endpoint list alone:
+The controller encapsulates its own REST API in WebSocket frames. A request
+carries a `responseEvent` id which the reply echoes back as its `type`, so
+several requests can be in flight on one socket at once — `_pending` maps
+that id to a future, and `_dispatch` routes each incoming frame to its
+waiting request or, failing that, to the push cache.
 
-- `everspring-siren_300_series`'s `battery` endpoint addresses `"{node}.0"`
-  (not the bare `"{node}"` most other profiles use).
-- `benext-tag_reader`'s `ack` endpoint is a separate `switch_binary`
-  endpoint for ack LED/lock feedback — kept apart from `state` because
-  `TagReader` and `SwitchBinary` are different command groups.
-- `everspring-pir_sensor` reports an inverted motion signal in hardware
-  (not yet modeled/corrected here).
-- `rm80-radiation_monitor` has no `brand`/`product` metadata available.
+Two measured controller behaviours shape the design, and both are the
+reason for code that otherwise looks over-careful:
+
+- **A bad (or empty) token still completes the handshake.** The controller
+  accepts the connection and then never answers anything. A request timeout
+  (`request_timeout`, default `5s`) is the only way to detect it — which is
+  why `_connect` ends with the bulk device read (`_prime`) and counts its
+  failure as a failed connect, rather than connecting optimistically and
+  discovering the problem on the first poll.
+- **The controller answers `200 OK` to nonsense.** `exact?level=50` on a
+  binary switch, `command/on` on a temperature sensor: accepted, and
+  nothing happens. Nothing is validated server-side, so `command_for()`
+  derives the legal commands from the device's own `deviceType` and raises
+  locally before anything reaches the wire.
+
+
+## State: Push, Prime, Resync
+
+`levels`/`titles`/`types` are the latest known state, keyed by device id.
+They are primed by one bulk `GET /ZAutomation/api/v1/devices` on connect,
+then kept current by unsolicited `me.z-wave.devices.level` events, each
+carrying a full device object. So `receive_async()` reads a cache and
+performs no I/O of its own in the common case — a short `update:` interval
+costs nothing on the wire, and a value is typically fresh within a tick of
+changing rather than within one poll interval.
+
+`resync_if_due()` re-primes every `resync_interval` (default `5m`) as the
+safety net: a dropped event, or a device type that reports through some
+other event, would otherwise leave `levels` quietly stale forever. An idle
+socket being silent is indistinguishable from a broken one at the
+application layer, so the periodic re-read is what makes staleness bounded
+instead of unbounded.
+
+A device the controller flags `metrics.isFailed` is stored as `None` rather
+than with its last level: an unreachable node has no trustworthy value.
+
+
+## Resolve Once, Address by Id
+
+`generation` is bumped on every prime. `ZWayDevice._bind()` re-resolves
+every endpoint's `device:` pattern only when it sees a generation it hasn't
+bound against, so globs are matched **once per connection** rather than
+once per access — config-time convenience, not a per-poll cost (there is a
+test that pins the call count at exactly one across several reads and
+writes). Everything after that addresses the controller by device id.
+
+That also defines when a rename on the controller takes effect: on the next
+reconnect or resync, not on the next read. One pattern that matches nothing
+(or several things) costs only its own endpoint — it is reported as a
+device failure and the sibling endpoints keep working, rather than failing
+the whole device or the shared connection.
+
+`match_devices()` is deliberately **case-insensitive** by default, which is
+the one place in PHC that differs from
+[`phc/core/selectors.py`](../../phc/core/selectors.py). Z-Way titles are
+hand-written on the controller and inconsistently capitalised, so a
+case-sensitive default would mostly produce "no such device" for a name the
+user can plainly see. `match_case: true` restores the strict behaviour per
+endpoint.
+
+
+## Translation Tables in `module.yaml`
+
+`zway_types:` in [`module.yaml`](../../phc/devices/zway/module.yaml) maps
+each `deviceType` the controller reports to its PHC value type, its
+wire-level → PHC-value `read:` mapping, and the `write:`/`write_numeric:`
+command templates that write it. `type_profiles()` reads that key straight
+out of the packaged YAML rather than through PHC's descriptor loader, which
+only keeps the keys it knows about — `zway_types` is the module's own.
+
+The point is that adding support for a new Z-Way device type is a change to
+that table and nothing else. `to_phc()` returns `None` for anything
+unreadable, empty or unrecognised rather than a stand-in value, and passes
+an entirely unknown `deviceType` through unchanged rather than guessing;
+`command_for()` refuses to write to one.
+
+
+## Connection Lifetime and the Backoff Ladder
+
+`_ZWayState` (in `self.context`, so per-`System` rather than per-process —
+see [Sharing state between a module's
+devices](writing-a-device-module.md#sharing-state-between-a-modules-devices))
+keys connections by `(url, token, id(loop))`. The loop is part of the key
+*and* compared by identity, because a connection's asyncio primitives
+belong to the loop they were built on and each `Scheduler` runs its own;
+`id()` alone can be reused once a loop is collected.
+
+`ensure_started()` returns `False` without attempting anything while
+`_retry_at` has not elapsed. That gate is what makes the ladder a ladder
+rather than a reconnect attempt on every single poll: `BACKOFF` is
+`1s, 10s, 60s, 300s`, with the last repeating forever. While down, every
+endpoint reads `None` and the device reports unhealthy.
+
+PHC has no device teardown hook — on shutdown the `Scheduler` simply closes
+its loop — so a connection is never explicitly closed in normal operation.
+`force_close=True` on the connector plus a `weakref.finalize` that drops
+the connector's transports (which needs no running loop) is what keeps
+aiohttp from complaining out of `__del__` about a session whose loop is
+already gone. `close()` exists for the things that *do* have a teardown
+point: `demo.py` and the tests.

@@ -24,8 +24,8 @@ Once you know the pattern, these modules are useful as real-world points on
 the spectrum: `virtual/` and `host/` for the minimal shape, `sun/` and
 `system_monitor/` for synchronous computation with no network,
 `meteoswiss/`, `open_meteo/` and `waveplus_bridge/` for cached async HTTP,
-and `zway/` for `endpoint_parameters:` plus a two-axis endpoint/device
-profile library.
+and `zway/` for `endpoint_parameters:`, an endpoint profile library, and a
+long-lived push-driven connection shared between a module's devices.
 
 A module does not have to live here at all — see
 [Shipping a Module Outside PHC](../../docs/developer/writing-a-device-module.md#shipping-a-module-outside-phc).

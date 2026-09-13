@@ -1,10 +1,5 @@
 heartbeat: 1s
 
-# log: is a list of independently-levelled destinations -- stdout gets
-# everything at INFO+, and zway_warn_err.log (resolved relative to this
-# YAML's own directory, appended to) collects only WARNING+ across every
-# device, so it stays a sparse "what went wrong" record even while stdout
-# is chatty.
 log:
   - dest: stdout
     levels:
@@ -16,48 +11,36 @@ log:
 intervals:
   zwave: 1s
 
-# All five devices below share one Razberry/zWay controller, so its
-# connection params and update interval are set once here -- rather than
-# repeated on each device -- under modules.zway; their status reads then
-# automatically coalesce into a single combined Get() request per poll
-# window (see devices/zway/device.py's per-base_url identifier registry and
-# response cache) -- the same "shared fetch" pattern as
-# examples/waveplus_bridge_system.yaml, just batched across many small
-# Z-Wave values instead of one bridge's full JSON payload. Install
-# thc_zWay.js (https://github.com/Drolla/thc/tree/master/modules/thc_zWay)
-# on the zWay server itself before running this example. Devices on a
-# different physical controller should NOT share these connection params:
-# they need their own base_url and would otherwise be silently,
-# incorrectly assumed to share one controller's batched fetch.
+# Devices sharing url/token share one WebSocket connection to the
+# controller. No helper script is needed on the controller -- just an API
+# token, issued in its user profile.
 modules:
   zway:
     update: zwave
-    base_url: !placeholder <URL>
-    user: !placeholder <UserName>
-    password: !placeholder <Password>
+    url: !placeholder <URL>          # e.g. ws://192.168.1.21:8083
+    token: !placeholder <Token>      # e.g. "12345.../abcdef-..."
 
-# The shared zway device set from examples/devices/zway_devices.yaml.
-# weather_station's own update: (see that file) overrides modules.zway's
-# zwave default below, since this sensor reports far less often than a
-# switch/motion sensor.
 devices:
   - !include devices/zway_devices.yaml
 
 tasks:
-  - tag: garage_motion_light
-    description: "Turn the corridor light on whenever the garage sensor detects motion"
-    condition: { device: "sensor_garage.state", changed: true }
+  - tag: motion_light
+    description: "Turn the corridor light on whenever motion is detected"
+    condition: { device: "sensors_indoor.motion", changed: true, value: true }
     action:
       kind: set
-      device: "light_corridor.sw1"
+      device: "lights.corridor"
       value: true
 
   # min_interval: 1m caps how often each reading is logged.
-  - tag: report_low_battery
-    description: "Log the garage sensor's battery level, at most once a minute"
-    condition: { device: "sensor_garage.battery", changed: true }
+  - tag: report_indoor_temperature
+    description: "Log the living room temperature, at most once a minute"
+    condition: { device: "sensors_indoor.living_temp", changed: true }
     min_interval: 1m
-    action: { kind: log, device: "sensor_garage", message: "garage sensor battery changed to {text}" }
+    action:
+      kind: log
+      device: "sensors_indoor.living_temp"
+      message: "living room temperature changed to {text}"
 
   - tag: report_outdoor_temperature
     description: "Log the weather station's temperature reading, at most once a minute"

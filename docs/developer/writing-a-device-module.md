@@ -10,7 +10,7 @@ A new bundled device type is a new `phc/devices/<name>/` package containing:
 
 - `device.py` — a `Device` subclass decorated with `@register_module("<name>")`.
 - `module.yaml` — its declared parameters, endpoints, and (if any endpoint
-  needs a protocol field like zway's `command_group`/`address`) declared
+  needs a protocol field like zway's `device`) declared
   `endpoint_parameters:`.
 
 **Start from the template.**
@@ -28,7 +28,8 @@ piece does, and why. For real modules at other points on the spectrum, see
 [`phc/devices/virtual/`](../../phc/devices/virtual/) for the minimal shape,
 [`phc/devices/meteoswiss/`](../../phc/devices/meteoswiss/) for a
 network-backed one, or [`phc/devices/zway/`](../../phc/devices/zway/) for
-`endpoint_parameters:` and a two-axis endpoint/device profile library.
+`endpoint_parameters:`, an endpoint profile library, and a long-lived
+connection shared between a module's devices.
 
 
 ## `device.py`
@@ -151,11 +152,11 @@ later one.
 
 Every bundled module that shares state does it this way:
 [`phc/devices/zway/`](../../phc/devices/zway/) shows the pattern at full
-size (`_ZWayState` — a batched-fetch identifier registry, a response cache,
-session cookies and several locks), while `meteoswiss`, `open_meteo` and
-`waveplus_bridge` each keep just a response cache and its lock there. All
-of them are shared between the devices of one system and isolated from any
-other.
+size (`_ZWayState` — the live WebSocket connections to each controller,
+with their device caches and reconnect state, keyed by URL/token *and* by
+event loop), while `meteoswiss`, `open_meteo` and `waveplus_bridge` each
+keep just a response cache and its lock there. All of them are shared
+between the devices of one system and isolated from any other.
 
 
 ## `module.yaml` Schema
@@ -171,7 +172,7 @@ values). A parameter name is checked against every reserved device/modules
 entry key (and the literal name `"params"`) so it can't collide.
 
 `endpoint_parameters:` declares the module's own per-endpoint protocol
-fields (e.g. zway's `command_group`/`address`) — a list of `{name,
+fields (e.g. zway's `device`/`match_case`) — a list of `{name,
 description}` entries, mirroring `parameters:`'s schema but with no
 `default`/`override`/`scope` (an endpoint has no equivalent of
 `modules.<name>` to resolve against). A declared name becomes a legal

@@ -1,4 +1,5 @@
-"""zway module: Z-Wave devices on a Razberry/zWay controller.
+"""Z-Way (Razberry) support over the ZAutomation WebSocket API.
 
-Read/written through the thc_zWay.js helper script installed on the
-zWay server."""
+connection.py is a standalone protocol client with no PHC dependencies
+(see demo.py, which drives it alone); device.py adapts it to a PHC
+device module."""

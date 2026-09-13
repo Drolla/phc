@@ -1147,7 +1147,7 @@ devices:
 
 
 def test_load_system_modules_section_device_scoped_default_used_when_device_omits_it(tmp_path):
-    # zway's base_url is override: required, scope: device -- supplying it
+    # zway's url is override: required, scope: device -- supplying it
     # once directly under modules.zway lets every device below omit it
     # entirely.
     system_yaml = tmp_path / "system.yaml"
@@ -1155,7 +1155,8 @@ def test_load_system_modules_section_device_scoped_default_used_when_device_omit
 heartbeat: 1s
 modules:
   zway:
-    base_url: http://192.168.1.1:8083
+    url: http://192.168.1.1:8083
+    token: tok
 devices:
   - id: light_one
     module: zway
@@ -1163,8 +1164,8 @@ devices:
     module: zway
 """)
     system = load_system(system_yaml)
-    assert system.devices["light_one"].params["base_url"] == "http://192.168.1.1:8083"
-    assert system.devices["light_two"].params["base_url"] == "http://192.168.1.1:8083"
+    assert system.devices["light_one"].params["url"] == "http://192.168.1.1:8083"
+    assert system.devices["light_two"].params["url"] == "http://192.168.1.1:8083"
 
 
 def test_load_system_modules_section_device_param_overrides_module_default(tmp_path):
@@ -1173,14 +1174,16 @@ def test_load_system_modules_section_device_param_overrides_module_default(tmp_p
 heartbeat: 1s
 modules:
   zway:
-    base_url: http://192.168.1.1:8083
+    url: http://192.168.1.1:8083
+    token: tok
 devices:
   - id: light
     module: zway
-    base_url: "http://other-controller:8083"
+    url: "http://other-controller:8083"
+    token: tok
 """)
     system = load_system(system_yaml)
-    assert system.devices["light"].params["base_url"] == "http://other-controller:8083"
+    assert system.devices["light"].params["url"] == "http://other-controller:8083"
 
 
 def test_load_system_modules_section_update_sits_between_device_and_module_yaml(tmp_path):
@@ -1191,7 +1194,8 @@ intervals: { zwave: 30s }
 modules:
   zway:
     update: zwave
-    base_url: "http://x:8083"
+    url: "http://x:8083"
+    token: tok
 devices:
   - id: light_default
     module: zway
@@ -1211,7 +1215,8 @@ heartbeat: 1s
 modules:
   zway:
     update: null
-    base_url: "http://x:8083"
+    url: "http://x:8083"
+    token: tok
 devices:
   - id: light
     module: zway
@@ -1243,7 +1248,8 @@ def test_load_system_rejects_typo_d_module_name_in_modules_section(tmp_path):
 heartbeat: 1s
 modules:
   zwya:
-    base_url: "http://x:8083"
+    url: "http://x:8083"
+    token: tok
 devices: []
 """)
     with pytest.raises(ConfigError):
@@ -1281,21 +1287,17 @@ devices:
     assert system.devices["siren_two"].get("state") == 0
 
 
-def test_load_system_rejects_system_device_profile_name_colliding_with_module_yaml_profile(tmp_path):
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-modules:
-  zway:
-    base_url: "http://x:8083"
-    device_profiles:
-      fibaro-fgs222:
-        endpoints:
-          - key: state
-devices: []
-""")
-    with pytest.raises(ConfigError):
-        load_system(system_yaml)
+def test_rejects_system_device_profile_name_colliding_with_module_yaml_profile():
+    # Built here rather than against a bundled module: no shipped module
+    # declares device_profiles (they describe one product's several
+    # endpoints, which the modules we ship have no need to name), so there
+    # would be nothing for a system-supplied profile to collide with.
+    module = _profile_module()
+    modules_config = {"zwaylike": {"device_profiles": {
+        "multisensor_t": {"endpoints": [{"key": "state"}]},
+    }}}
+    with pytest.raises(ConfigError, match="already declared"):
+        _build_effective_module(module, modules_config)
 
 
 def test_load_system_rejects_system_device_profiles_under_module_with_nonempty_endpoints(tmp_path):
@@ -2670,8 +2672,8 @@ devices:
 
 def test_load_system_merge_include_extends_a_mapping(tmp_path):
     (tmp_path / "conn.yaml").write_text("""
-base_url: http://192.168.1.21:8083
-user: admin
+url: http://192.168.1.21:8083
+token: admin-token
 """)
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2686,14 +2688,15 @@ devices:
     module: zway
 """)
     system = load_system(system_yaml)
-    assert system.devices["light"].params["base_url"] == "http://192.168.1.21:8083"
-    assert system.devices["light"].params["user"] == "admin"
+    assert system.devices["light"].params["url"] == "http://192.168.1.21:8083"
+    assert system.devices["light"].params["token"] == "admin-token"
     assert system.devices["light"].update_interval == 30.0
 
 
 def test_load_system_merge_include_own_keys_win_over_fragment(tmp_path):
     (tmp_path / "conn.yaml").write_text("""
-base_url: http://fragment:8083
+url: http://fragment:8083
+token: tok
 """)
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2701,20 +2704,21 @@ heartbeat: 1s
 modules:
   zway:
     <<: !include conn.yaml
-    base_url: http://own-key-wins:8083
+    url: http://own-key-wins:8083
+    token: tok
 devices:
   - id: light
     module: zway
 """)
     system = load_system(system_yaml)
-    assert system.devices["light"].params["base_url"] == "http://own-key-wins:8083"
+    assert system.devices["light"].params["url"] == "http://own-key-wins:8083"
 
 
 def test_load_system_merge_include_populates_device_params(tmp_path):
     (tmp_path / "conn.yaml").write_text("""
-base_url: http://192.168.1.21:8083
-user: admin
-password: secret
+url: http://192.168.1.21:8083
+token: admin-token
+request_timeout: 9s
 """)
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2726,9 +2730,9 @@ devices:
 """)
     system = load_system(system_yaml)
     params = system.devices["light"].params
-    assert params["base_url"] == "http://192.168.1.21:8083"
-    assert params["user"] == "admin"
-    assert params["password"] == "secret"
+    assert params["url"] == "http://192.168.1.21:8083"
+    assert params["token"] == "admin-token"
+    assert params["request_timeout"] == "9s"
 
 
 def test_load_system_merge_include_nested_include_resolves_relative_to_fragment(tmp_path):
@@ -2741,8 +2745,9 @@ def test_load_system_merge_include_nested_include_resolves_relative_to_fragment(
     sub_dir.mkdir()
     (sub_dir / "secret.yaml").write_text("supersecret\n")
     (sub_dir / "conn.yaml").write_text("""
-base_url: http://192.168.1.21:8083
-password: !include secret.yaml
+url: http://192.168.1.21:8083
+token: tok
+token: !include secret.yaml
 """)
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2753,7 +2758,7 @@ devices:
     <<: !include sub/conn.yaml
 """)
     system = load_system(system_yaml)
-    assert system.devices["light"].params["password"] == "supersecret"
+    assert system.devices["light"].params["token"] == "supersecret"
 
 
 def test_load_system_merge_include_rejects_non_mapping_target(tmp_path):
@@ -2808,27 +2813,27 @@ devices:
   - id: light
     module: zway
     <<: &conn
-      base_url: http://192.168.1.21:8083
-      user: admin
+      url: http://192.168.1.21:8083
+      token: admin-token
 """)
     system = load_system(system_yaml)
-    assert system.devices["light"].params["base_url"] == "http://192.168.1.21:8083"
-    assert system.devices["light"].params["user"] == "admin"
+    assert system.devices["light"].params["url"] == "http://192.168.1.21:8083"
+    assert system.devices["light"].params["token"] == "admin-token"
 
 
 # ---------- !placeholder ----------
 
 def test_find_placeholders_reports_dotted_path():
-    raw = {"modules": {"zway": {"base_url": "ok", "user": _Placeholder("<UserName>")}}}
-    assert _find_placeholders(raw) == ["modules.zway.user"]
+    raw = {"modules": {"zway": {"url": "ok", "token": _Placeholder("<Token>")}}}
+    assert _find_placeholders(raw) == ["modules.zway.token"]
 
 
 def test_find_placeholders_labels_list_entries_by_id():
     raw = {"devices": [{"id": "house", "children": [
         {"id": "sensor_cellar", "node": "13"},
-        {"id": "cellar_air", "base_url": _Placeholder("<URL>")},
+        {"id": "cellar_air", "url": _Placeholder("<URL>")},
     ]}]}
-    assert _find_placeholders(raw) == ["devices['house'].children['cellar_air'].base_url"]
+    assert _find_placeholders(raw) == ["devices['house'].children['cellar_air'].url"]
 
 
 def test_find_placeholders_labels_list_entries_by_tag_when_no_id():
@@ -2842,7 +2847,7 @@ def test_find_placeholders_falls_back_to_index_without_id_or_tag():
 
 
 def test_find_placeholders_none_when_absent():
-    assert _find_placeholders({"modules": {"zway": {"base_url": "http://real.example"}}}) == []
+    assert _find_placeholders({"modules": {"zway": {"url": "http://real.example"}}}) == []
 
 
 def test_load_system_placeholder_raises(tmp_path):
@@ -2851,7 +2856,8 @@ def test_load_system_placeholder_raises(tmp_path):
 heartbeat: 1s
 modules:
   zway:
-    base_url: !placeholder <URL>
+    url: !placeholder <URL>
+    token: tok
 devices: []
 """)
     with pytest.raises(ConfigError):
@@ -2862,7 +2868,7 @@ def test_load_system_placeholder_via_include_raises(tmp_path):
     # A !placeholder pulled in through !include must still block the load --
     # the check runs on the fully-resolved raw tree, after every include has
     # already been spliced in (see _include_constructor/load_system).
-    (tmp_path / "conn.yaml").write_text("base_url: !placeholder <URL>\n")
+    (tmp_path / "conn.yaml").write_text("url: !placeholder <URL>\n")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s

@@ -82,16 +82,15 @@ run -- a credential, another system's URL -- can be tagged
 ```yaml
 modules:
   zway:
-    base_url: !placeholder <URL>
-    user: !placeholder <UserName>
-    password: !placeholder <Password>
+    url: !placeholder <URL>
+    token: !placeholder <Token>
 ```
 
 `load_system` checks for `!placeholder` right after parsing, before
 building any device or extension, and refuses to start if it finds one
 anywhere in the config -- including one pulled in through `!include`/`<<:
 !include` -- listing every offending field by its path (e.g.
-`modules.zway.base_url`). This is how every example config that talks to
+`modules.zway.url`). This is how every example config that talks to
 real hardware or a real mail server ships: safe to read and copy, but not
 runnable until its placeholders are replaced with real values. Plain,
 un-tagged example text (e.g. `smtp_host: "smtp.example.com"`) is just
@@ -157,23 +156,23 @@ configuration instead of repeating it on every device:
 modules:
   zway:
     update: zwave                       # falls between a device's own update: and module.yaml's default
-    <<: !include common/zway_controller_params.yaml   # base_url/user/password/cache_time, shared by every zway device
+    <<: !include common/zway_controller_params.yaml   # url/token, shared by every zway device
 
 devices:
-  - id: light_corridor
+  - id: lights
     module: zway
     endpoints: [ ... ]   # no params of its own -- both come from modules.zway above
-  - id: sensor_garage
+  - id: sensors_garage
     module: zway
-    base_url: "http://a-different-controller:8083"   # overrides just this one param
+    url: "ws://a-different-controller:8083"   # overrides just this one param
     endpoints: [ ... ]
 ```
 
 Precedence for a `scope: device` param: the device's own field → the same
 field set directly under `modules.<name>` → the module's own `default:`. A
-param declared `override: required` (e.g. zway's `base_url`) can be satisfied
+param declared `override: required` (e.g. zway's `url`) can be satisfied
 by either the device or the module-level value — this is what lets every
-device behind one controller omit `base_url` entirely once it's set under
+device behind one controller omit `url` entirely once it's set under
 `modules.zway`. `override: none` rejects a value being set anywhere but the
 module's own `default:`. `modules.<name>.update` works the same way for a
 device's update interval: device `update:` → `modules.<name>.update` → the
@@ -196,7 +195,7 @@ that module type, settable *only* directly under `modules.<name>` — setting
 it on a device is a `ConfigError`.
 
 A module may similarly declare `endpoint_parameters:` — its own per-endpoint
-protocol fields (e.g. zway's `command_group`/`address`), a list of `{name,
+protocol fields (e.g. zway's `device`/`match_case`), a list of `{name,
 description}` entries mirroring `parameters:`'s device-level schema, but
 with no `default`/`override`/`scope` (an endpoint has no equivalent of
 `modules.<name>` to resolve against). A declared name becomes a legal

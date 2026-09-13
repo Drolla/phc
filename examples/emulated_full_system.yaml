@@ -70,13 +70,12 @@ devices:
     name: House
     children:
       # Stands in for full_house_system.yaml's zway-backed light_corridor
-      # (a fibaro-fgs222 relay). Bool here to match that switch_binary
-      # profile, which is a bool whose 0/255 wire values are hidden behind
-      # its read/write transforms -- so the task bodies below read the
-      # same either way. A real light switch genuinely accepts commands,
-      # so this stays writable: true on emulated_device -- only the
-      # module changes, which also gives it realistic I/O latency/jitter
-      # like a real zway HTTP round-trip has.
+      # (a switchBinary virtual device). Bool here to match how zway
+      # translates that device's on/off wire values -- so the task bodies
+      # below read the same either way. A real light switch genuinely
+      # accepts commands, so this stays writable: true on emulated_device
+      # -- only the module changes, which also gives it realistic I/O
+      # latency/jitter like a real zway WebSocket round-trip has.
       - id: light_corridor
         module: emulated_device
         name: Corridor Light
@@ -88,8 +87,8 @@ devices:
             values: { false: "off", true: "on" }
             default: false
 
-      # Stands in for zway's everspring-pir_sensor motion sensors -- a real
-      # PIR only ever reports, so state/battery are read-only here too;
+      # Stands in for a zway sensorBinary motion sensor -- a real PIR only
+      # ever reports, so state/battery are read-only here too;
       # simulate: is what makes them move on their own instead (a
       # non-writable endpoint has no path a task/web UI could otherwise
       # drive by hand -- see phc/devices/emulated_device).
@@ -136,12 +135,13 @@ devices:
             default: 100
             simulate: { kind: drift, step: 1 }
 
-      # Stands in for zway's benext-tag_reader -- a real reader reports its
-      # own lock/unlock events; here `state` is a plain writable string, so
-      # writing "lock"/"unlock" by hand (web UI, debug portal, or a script)
-      # simulates a badge scan for surveillance_tag_reader below. No
-      # simulate: -- its event value (a "none"/"lock"/"unlock"/"wrongcode"
-      # string, not a two-state signal) isn't toggle/drift-shaped.
+      # Stands in for a zway tag-reader virtual device -- a real reader
+      # reports its own lock/unlock events; here `state` is a plain
+      # writable string, so writing "lock"/"unlock" by hand (web UI, debug
+      # portal, or a script) simulates a badge scan for
+      # surveillance_tag_reader below. No simulate: -- its event value (a
+      # "none"/"lock"/"unlock"/"wrongcode" string, not a two-state signal)
+      # isn't toggle/drift-shaped.
       - id: tag_reader_front
         module: emulated_device
         name: Front Door Tag Reader
@@ -152,10 +152,10 @@ devices:
             type: str
             default: "none"
 
-      # Stands in for zway's everspring-siren_300_series -- bool, like
-      # light_corridor.sw1 above and the switch_binary profile both stand
-      # in for, so surveillance_intrusion's `value: true` below reads the
-      # same either way. Genuinely writable, like light_corridor above.
+      # Stands in for a zway switchBinary siren -- bool, like
+      # light_corridor.sw1 above, so surveillance_intrusion's
+      # `value: true` below reads the same either way. Genuinely
+      # writable, like light_corridor above.
       - id: siren
         module: emulated_device
         name: Siren
@@ -221,8 +221,9 @@ devices:
             values: { false: "disarmed", true: "armed" }
 
       # Stands in for full_house_system.yaml's zway-backed porch_light (a
-      # duwi single-relay switch) -- genuinely writable, like light_corridor
-      # above. Endpoint key is `sw`, matching duwi's own, not `state`.
+      # switchBinary virtual device) -- genuinely writable, like
+      # light_corridor above. Endpoint key is `sw`, matching that
+      # example's own, not `state`.
       - id: porch_light
         module: emulated_device
         name: Porch Light

@@ -467,7 +467,7 @@ devices:
   - id: living_room_sensor
     module: zway
     endpoints:
-      - { key: temp, history: 4 }
+      - { key: temp, endpoint_profile: temperature, device: "*living temp*", history: 4 }
   - id: cellar_sensor
     module: waveplus_bridge
     endpoints:

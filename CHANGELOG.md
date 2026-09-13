@@ -8,6 +8,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-09-13
+
+**Breaking changes**
+
+- The `zway` module is rewritten from scratch onto the Z-Way controller's
+  **ZAutomation WebSocket API**, and no longer needs anything installed on
+  the controller: the `thc_zWay.js` helper script and the `/JS/Run/` HTTP
+  path are gone, replaced by a URL and an API token. Every existing zway
+  config needs updating:
+  - `base_url` becomes `url` (a `ws://` URL, e.g. `ws://192.168.1.21:8083`),
+    and `user`/`password` become a single `token` (issued in the
+    controller's own user profile).
+  - `cache_time` is gone. The controller pushes live state events, so
+    values are typically fresh within a tick of changing; `resync_interval`
+    (default `5m`) only sets how often the full device list is re-read as a
+    safety net.
+  - Endpoints now name one of the controller's **virtual devices** with
+    `device:` — a glob matched against both the device id and its title,
+    e.g. `ZWayVDev_zway_20-1-37`, `"Rez: Light corridor"` or
+    `"*living temp*"` — instead of `command_group` + `address`. It must
+    match exactly one device; matching ignores case unless the endpoint
+    sets `match_case: true`.
+  - The per-product `device_profiles` (`fibaro-fgs222`,
+    `everspring-st814`, `popp-z-weather`, …) and the `node:` parameter are
+    gone with them: the WebSocket API exposes only virtual devices, which
+    already abstract the physical Z-Wave hardware, so there is no
+    per-product wiring left to describe. `endpoint_profiles` (`switch`,
+    `dimmer`, `motion`, `temperature`, `humidity`, `luminosity`,
+    `pressure`, `battery`) remain.
+
+  See [`docs/zway.md`](docs/zway.md) and
+  [`examples/zway_system.yaml`](examples/zway_system.yaml).
+
+**New features**
+
+- zway values are translated to PHC's own types rather than passed through
+  raw: a binary device reports the strings `"on"`/`"off"` on the wire and
+  appears in PHC as a real `bool`, and an unreadable, empty or unrecognised
+  level — or a device the controller flags as failed — reads as `None`
+  instead of a misleading value. The translation table lives in the
+  module's `module.yaml` under `zway_types:`, keyed by the device type the
+  controller reports, so supporting a new Z-Way device type is a config
+  change rather than a code change.
+- Which commands a zway endpoint accepts now follows the device type the
+  controller reports for it, and a write that device type does not accept
+  (any write to a sensor, a string to a thermostat) is rejected locally.
+  The controller itself answers `200 OK` to commands that make no sense for
+  the device, so without this a config mistake failed silently.
+- `python phc/devices/zway/demo.py --url ... --token ... list` lists a
+  controller's devices with their ids, titles, types and current values —
+  the quickest way to find what to put in an endpoint's `device:`. It also
+  takes `get`/`on`/`off`/`set` for trying a device out before wiring it
+  into a config.
+- A zway controller that is unreachable is retried after 1s, 10s, 60s and
+  then every 5 minutes, with every endpoint reading `None` and the device
+  marked unhealthy while it is down. Devices sharing a `url` and `token`
+  share one WebSocket connection, and one reconnect.
+
 ### 2026-09-05
 
 **Breaking changes**

@@ -7,11 +7,12 @@
 # This is a single-file, fictional-devices example standing in for a real
 # home automation config, which would typically be split across several
 # per-module files and gitignored for privacy. Ties together:
-#   - zway            -- physical Z-Wave devices behind a Razberry/zWay
-#                         controller (light_corridor/sensor_garage/
-#                         tag_reader_front/siren below share one controller,
-#                         so their status reads coalesce into a single
-#                         fetch -- see examples/zway_system.yaml)
+#   - zway            -- virtual devices on a Razberry/zWay controller,
+#                         reached over its ZAutomation WebSocket API
+#                         (light_corridor/sensor_garage/tag_reader_front/
+#                         siren/porch_light below share one controller, so
+#                         they share one WebSocket -- see
+#                         examples/zway_system.yaml)
 #   - waveplus_bridge -- an Airthings Wave Plus air-quality sensor
 #   - meteoswiss      -- an outdoor MeteoSwiss weather station
 #   - sun             -- sun position, feeding random_light's sunset/sunrise
@@ -55,39 +56,43 @@ modules:
   # params and update interval are set once here rather than repeated on
   # each device -- see examples/zway_system.yaml for the same pattern.
   # Devices on a different physical controller should NOT share these:
-  # they need their own base_url and would otherwise be silently,
-  # incorrectly assumed to share one controller's batched fetch.
+  # they need their own url and would otherwise be silently, incorrectly
+  # assumed to share one controller's WebSocket connection.
   zway:
     update: zwave
-    base_url: !placeholder <URL>
-    user: !placeholder <UserName>
-    password: !placeholder <Password>
+    url: !placeholder <URL>
+    token: !placeholder <Token>
 
 devices:
   - id: house
     module: host
     name: House
     children:
-      # id/device_profile/node below match examples/devices/zway_devices.yaml
-      # (light_corridor/sensor_garage/tag_reader_front) -- not a literal
-      # !include, since sensor_garage's name here ("Hallway Motion Sensor")
-      # differs from that shared file's own ("Garage Motion Sensor"), a
-      # per-example label that a plain list splice can't override. siren
-      # isn't part of that shared set (no real product behind it in this
-      # fictional house), so it's fully local.
+      # Each endpoint's device: names one of the controller's virtual
+      # devices, by id or by title (a glob is fine as long as it matches
+      # exactly one) -- run `python -m phc.devices.zway.demo --url ...
+      # --token ... list` against your own controller to find them. ids
+      # below are illustrative; a real config would use whatever the
+      # controller actually reports.
       - id: light_corridor
         module: zway
         name: Corridor Light
-        device_profile: fibaro-fgs222
-        node: 7
         endpoints:
-          - { key: sw1, name: "Corridor Light" }
+          - key: sw1
+            name: "Corridor Light"
+            device: "ZWayVDev_zway_7-1-37"
+            endpoint_profile: switch
 
       - id: sensor_garage
         module: zway
         name: Hallway Motion Sensor
-        device_profile: everspring-pir_sensor
-        node: 12
+        endpoints:
+          - key: state
+            device: "*hallway motion*"
+            endpoint_profile: motion
+          - key: battery
+            device: "*hallway motion*"
+            endpoint_profile: battery
 
       # A second motion sensor on its own node -- lets
       # surveillance_intrusion below combine two sources with refs:/expr
@@ -95,28 +100,35 @@ devices:
       - id: sensor_cellar
         module: zway
         name: Cellar Motion Sensor
-        device_profile: everspring-pir_sensor
-        node: 13
+        endpoints:
+          - key: state
+            device: "Cellar: Motion detector"
+            endpoint_profile: motion
 
       - id: tag_reader_front
         module: zway
         name: Front Door Tag Reader
-        device_profile: benext-tag_reader
-        node: 22
+        endpoints:
+          - key: state
+            device: "*tag reader*"
+            endpoint_profile: switch
 
       - id: siren
         module: zway
         name: Siren
-        device_profile: everspring-siren_300_series
-        node: 16
+        endpoints:
+          - key: state
+            device: "*sirene*"
+            endpoint_profile: switch
 
       - id: porch_light
         module: zway
         name: Porch Light
-        device_profile: duwi
-        node: 8
         endpoints:
-          - { key: sw, name: "Porch Light" }
+          - key: sw
+            name: "Porch Light"
+            device: "ZWayVDev_zway_20-1-37"
+            endpoint_profile: switch
 
       - id: cellar_air
         module: waveplus_bridge
