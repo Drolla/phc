@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-09-26
+
+**New features**
+
+- A zway device type's `write:` table can now be keyed by command name
+  instead of only `true`/`false` — `doorlock` takes `"open"`, `"close"`
+  and `"clear"` this way, each a string naming its own command. This is
+  what makes a tag reader's lock/unlock alarm usable from PHC: bound to a
+  Dummy Device on the controller (see [`docs/zway.md`](docs/zway.md)'s
+  "Tag Readers" section), it reports the raw command name verbatim as a
+  plain `type: str` endpoint, letting a task treat `"open"`/`"close"` as
+  a one-shot handshake and reset it with a plain string write.
+
+**Improvements**
+
+- [`examples/zway_system.yaml`](examples/zway_system.yaml) and
+  [`examples/devices/zway_devices.yaml`](examples/devices/zway_devices.yaml)
+  now demonstrate every zway config pattern in real use: grouping several
+  virtual devices as endpoints of one logical device, a bare
+  `type`/`unit` endpoint with no `endpoint_profile`, the `battery`
+  profile, a tag-reader handshake device with its reset task, a named
+  `update:` interval, and an endpoint `history:`.
+
 ### 2026-09-13
 
 **Breaking changes**
