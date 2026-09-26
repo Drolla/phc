@@ -219,6 +219,14 @@ def test_unknown_device_type_passes_the_level_through():
     assert to_phc("whatever", "somethingNew") == "whatever"
 
 
+def test_doorlock_reads_the_raw_command_string():
+    assert to_phc("close", "doorlock") == "close"
+    assert to_phc("open", "doorlock") == "open"
+    assert to_phc("clear", "doorlock") == "clear"
+    assert to_phc("", "doorlock") is None
+    assert to_phc(None, "doorlock") is None
+
+
 # ---------- commands ----------
 
 
@@ -251,6 +259,20 @@ def test_write_of_the_wrong_shape_is_rejected():
 def test_unknown_device_type_refuses_writes():
     with pytest.raises(ZWayError, match="unknown"):
         command_for(True, "somethingNew")
+
+
+def test_doorlock_write_uses_the_value_as_a_named_command():
+    assert command_for("open", "doorlock") == "command/open"
+    assert command_for("close", "doorlock") == "command/close"
+    assert command_for("clear", "doorlock") == "command/clear"
+    assert command_for("CLEAR", "doorlock") == "command/clear"
+
+
+def test_doorlock_rejects_a_bool_or_an_unrecognized_command_name():
+    with pytest.raises(ZWayError, match="cannot write"):
+        command_for(True, "doorlock")
+    with pytest.raises(ZWayError, match="cannot write"):
+        command_for("bogus", "doorlock")
 
 
 # ---------- pattern resolution ----------

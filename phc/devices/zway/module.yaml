@@ -75,7 +75,9 @@ endpoints: []
 #   type:          PHC value type; a level that will not convert reads as None
 #   writable:      false rejects writes locally, before they reach the wire
 #   read:          wire level -> PHC value; anything unlisted reads as None
-#   write:         PHC value -> command, for bool-ish writes
+#   write:         PHC value -> command; besides true/false, a string key
+#                  writes that exact command name (e.g. write: {clear:
+#                  "command/clear"} lets a task write "clear" directly)
 #   write_numeric: command template for a numeric write
 #   refresh:       command that asks the controller to re-read the device
 zway_types:
@@ -105,10 +107,10 @@ zway_types:
     writable: true
     write_numeric: "command/exact?level={value}"
   doorlock:
-    type: bool
+    # No bool coercion: reads/writes the raw command name (e.g. "clear").
+    type: str
     writable: true
-    read: { "open": true, "close": false, "on": true, "off": false }
-    write: { true: "command/open", false: "command/close" }
+    write: { open: "command/open", close: "command/close", clear: "command/clear" }
   toggleButton:
     type: bool
     writable: true

@@ -131,6 +131,43 @@ write to one is rejected with a failure naming the endpoint.
 > number rather than as the bool that was written. Write the level you want
 > directly if that matters.
 
+A device type's `write:` table can be keyed by name instead of `true`/
+`false` — `doorlock` takes `"open"`, `"close"` and `"clear"` this way (see
+[Tag Readers](#tag-readers)), each just a string naming its own command.
+Writing a value that matches none of a device's named commands,
+`on`/`off`, or a number falls back to a rejected write naming the value.
+
+
+## Tag Readers
+
+zWay has no dedicated tag-reader device type reachable over the
+ZAutomation API; a tag reader's lock/unlock alarm has to be bound to an
+ordinary virtual device first, using zWay's own means outside PHC:
+
+1. In zWay's **Dummy Device** app, create a virtual device of type **Door
+   Lock** (e.g. `DummyDevice_15`).
+2. In zWay's **"Load custom JavaScript code"** app, load the script from
+   [Setup script: binding a tag reader to a Dummy
+   Device](#setup-script-binding-a-tag-reader-to-a-dummy-device) below,
+   with its `Configure_TagReader(...)` call at the bottom naming the tag
+   reader's node number and the Dummy Device's id. It binds the tag
+   reader's lock/unlock alarms to the dummy device, setting its
+   `metrics:level` to `"close"` on lock and `"open"` on unlock.
+
+PHC reads that device as a plain string, not a bool — `doorlock` has no
+fixed value set, so it reports whatever command name the controller last
+saw, verbatim:
+```yaml
+- key: state
+  device: "<dummy device id>"
+  type: str
+  writable: true
+```
+
+To turn it into a one-shot handshake rather than a persistent status, have
+a task reset it to `"clear"` after acting on `"open"`/`"close"`, so the
+next real event is a fresh transition.
+
 
 ## Connection, Freshness and Failure
 
@@ -163,3 +200,44 @@ See [zway internals](developer/zway.md) for the architecture behind this,
 and [`examples/zway_system.yaml`](../examples/zway_system.yaml) with
 [`examples/devices/zway_devices.yaml`](../examples/devices/zway_devices.yaml)
 for a worked configuration.
+
+
+## Setup Script: Binding a Tag Reader to a Dummy Device
+
+The script referenced under [Tag Readers](#tag-readers). Load it via
+zWay's "Load custom JavaScript code" app, with the last line naming the
+tag reader's node number and the Dummy Device's id to bind it to:
+
+```js
+Configure_TagReader = function (Node, vDeviceNotifierId) {
+  if (typeof vDeviceNotifierId === "undefined") vDeviceNotifierId = null;
+
+  var vdev = null;
+  if (vDeviceNotifierId !== null) {
+    try {
+      vdev = this.controller.devices.get(vDeviceNotifierId);
+    } catch (err) {}
+  }
+
+  zway.devices[Node].Alarm.data[6][5].status.bind(function () {
+    debugPrint("TagReader " + Node + " event: Lock\n");
+    zway.devices[Node].SwitchBinary.Set(true);
+    if (vdev) vdev.set("metrics:level", "close");
+  });
+  zway.devices[Node].Alarm.data[6][6].status.bind(function () {
+    debugPrint("TagReader " + Node + " event: Unlock\n");
+    zway.devices[Node].SwitchBinary.Set(true);
+    if (vdev) vdev.set("metrics:level", "open");
+  });
+
+  return "OK, configured tag reader " + Node;
+};
+
+
+Configure_TagReader(<tag reader node>, "<dummy device id>");  // replace with the virtual device id
+```
+
+This also drives the tag reader's own audible feedback
+(`SwitchBinary.Set(true)`) on every lock/unlock, independently of the
+Dummy Device notification.
+

@@ -148,10 +148,17 @@ def command_for(value: Any, device_type: str) -> str:
     if not profile.get("writable"):
         raise ZWayError(f"z-way device type {device_type!r} is read-only")
 
+    writes = profile.get("write") or {}
+    numeric = profile.get("write_numeric")
+
     # Accept the wire spelling and 0/1 as well as a real bool, so config and
     # scripts can write whichever is natural.
     if isinstance(value, str):
         folded = value.strip().casefold()
+        # A string naming one of write:'s own keys directly (e.g. "clear").
+        for key, command in writes.items():
+            if isinstance(key, str) and key.casefold() == folded:
+                return command
         if folded in ("on", "true", "open"):
             value = True
         elif folded in ("off", "false", "close"):
@@ -161,9 +168,6 @@ def command_for(value: Any, device_type: str) -> str:
             if number is None:
                 raise ZWayError(f"cannot write {value!r} to a {device_type}")
             value = number
-
-    writes = profile.get("write") or {}
-    numeric = profile.get("write_numeric")
     if isinstance(value, bool):
         command = writes.get(value)
         if command is None:
