@@ -693,7 +693,14 @@ def _run_forever_in_thread(scheduler: Scheduler, *, timeout: float = 2.0):
     """Drive scheduler.run_forever() on a background daemon thread, wait
     (bounded) for it to actually start ticking, then stop it and join --
     the shared pattern for exercising start_hooks/stop_hooks, which only
-    fire around run_forever()'s own loop, never around tick()."""
+    fire around run_forever()'s own loop, never around tick().
+
+    _running flips true as soon as run_forever() is entered -- before
+    start_hooks have even been awaited, let alone finished -- so it is not
+    proof the hooks ran. There is no cheaper signal for that, so this adds
+    a short fixed grace period on top: enough on a loaded CI runner for an
+    async start_hook to complete, without turning every call into a
+    multi-second wait."""
     import threading
 
     thread = threading.Thread(target=scheduler.run_forever, daemon=True)
@@ -701,6 +708,7 @@ def _run_forever_in_thread(scheduler: Scheduler, *, timeout: float = 2.0):
     deadline = time.time() + timeout
     while not scheduler._running and time.time() < deadline:
         time.sleep(0.01)
+    time.sleep(0.1)
     return thread
 
 
