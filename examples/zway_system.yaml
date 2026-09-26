@@ -10,6 +10,7 @@ log:
 
 intervals:
   zwave: 1s
+  zwave_meteo: 5m
 
 # Devices sharing url/token share one WebSocket connection to the
 # controller. No helper script is needed on the controller -- just an API
@@ -47,3 +48,18 @@ tasks:
     condition: { device: "weather_station.temp", changed: true }
     min_interval: 1m
     action: { kind: log, device: "weather_station.temp", message: "outdoor temperature changed to {text}" }
+
+  # One-shot handshake: reset to "clear" so the next badge scan is a fresh
+  # transition. See docs/zway.md's "Tag Readers" section.
+  - tag: tag_reader_event
+    description: "Log each badge scan and reset the tag reader's handshake"
+    condition:
+      refs: { event: "tag_reader.state" }
+      expr: "event.changed and event.state in ('open', 'close')"
+    actions:
+      - kind: log
+        device: "tag_reader.state"
+        message: "tag reader event: {text}"
+      - kind: set
+        device: "tag_reader.state"
+        value: "clear"

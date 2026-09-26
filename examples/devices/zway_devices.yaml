@@ -23,14 +23,32 @@
       device: ZWayVDev_zway_7-1-37
       endpoint_profile: switch
 
+- id: light_landing
+  module: zway
+  name: Landing Light
+  endpoints:
+    - key: base
+      device: ZWayVDev_zway_9-0-37
+      endpoint_profile: switch
+    - key: sv1
+      name: "Landing Light (paddle 1)"
+      device: ZWayVDev_zway_9-1-37
+      endpoint_profile: switch
+    - key: sv2
+      name: "Landing Light (paddle 2)"
+      device: ZWayVDev_zway_9-2-37
+      endpoint_profile: switch
+
 - id: sensors_indoor
   module: zway
   name: Indoor Sensors
+  update: 1s
   endpoints:
     - key: living_temp
       name: Living Room Temperature
       device: "*living temp*"
       endpoint_profile: temperature
+      history: 4
     - key: living_humidity
       name: Living Room Humidity
       device: "*living humidity*"
@@ -63,3 +81,28 @@
       name: Barometric Pressure
       device: "Meteo station: Barometric*"
       endpoint_profile: pressure
+    - key: wind_speed
+      name: Wind Speed
+      device: "Meteo station: Velocity"
+      type: float
+      unit: "m/s"
+
+- id: battery_sensor
+  module: zway
+  name: Battery-Powered Sensor
+  update: 5m
+  endpoints:
+    - key: level
+      name: Sensor Battery
+      device: "Rez: Door sensor battery"
+      endpoint_profile: battery
+
+# See docs/zway.md's "Tag Readers" section for the controller-side setup.
+- id: tag_reader
+  module: zway
+  name: Front Door Tag Reader
+  endpoints:
+    - key: state
+      device: "DummyDevice_15"
+      type: str
+      writable: true
