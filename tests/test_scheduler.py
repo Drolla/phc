@@ -16,6 +16,21 @@ SURVEILLANCE_EXAMPLE = (Path(__file__).resolve().parent.parent / "examples"
                          / "emulated_surveillance-task_defs_1-nested.yaml")
 
 
+def _disable_motion_simulation(system) -> None:
+    """Strip `simulate:` from hallway_motion/cellar_motion's state endpoint.
+
+    Both are declared `simulate: {kind: toggle, on_probability: 0.05, ...}`
+    in the example (a real PIR only ever reports, so the demo needs to move
+    them on its own) -- but that means the device's own receive() can flip
+    the endpoint at random on any tick it's due, independently of and
+    racing with a test's own set_raw() below. A spurious flip to True
+    before set_raw(True) turns it into a same-value no-op write with no
+    `changed` transition, so the intrusion condition silently never fires
+    -- rare (~5% per due tick) but a real, observed CI flake, not a timing
+    issue fixable by waiting longer."""
+    for device_id in ("hallway_motion", "cellar_motion"):
+        system.devices[device_id].endpoint("state").params.pop("simulate", None)
+
 
 def _registry(flat, **kwargs):
     """A TaskRegistry wired exactly as load_system wires one, for tests that
@@ -146,6 +161,7 @@ def test_end_to_end_surveillance_example_arm_intrude_disarm(task_log):
     all of them back down."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
+    _disable_motion_simulation(system)
 
     t = 0.0
     scheduler.tick(now=t)  # settle initial (unset) state
@@ -205,6 +221,7 @@ def test_end_to_end_surveillance_example_all_lights_override(task_log):
     surveillance_all_lights_on/_off tasks)."""
     system = load_system(SURVEILLANCE_EXAMPLE)
     scheduler = Scheduler(system.devices, tasks=system.tasks, tick_hooks=system.tick_hooks)
+    _disable_motion_simulation(system)
 
     t = 0.0
     scheduler.tick(now=t)  # settle initial (unset) state
