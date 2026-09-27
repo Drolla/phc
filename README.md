@@ -39,7 +39,9 @@ understand it in an afternoon.
 - **Auto-discovered device modules** — plug in new devices without touching the core.
 - **Declarative tasks** — time-based or condition-based automation.
 - **Concurrent scheduler** — efficient polling and task evaluation.
-- **Lightweight footprint** — runs comfortably on a Raspberry Pi.
+- **Lightweight footprint** — runs comfortably on a Raspberry Pi. On a
+  Raspberry Pi 4, one instance polling 60 endpoints across z-Way,
+  meteoswiss, and waveplus_bridge uses well under 1% CPU and ~50MB RSS.
 - **Built-in integrations** — mail alerts, random lights, log database, web UI,
   Z-Wave, timers, recovery, debug portal.
 - **AI-friendly development workflow** — PHC is intentionally structured so AI

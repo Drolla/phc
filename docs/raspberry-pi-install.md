@@ -32,8 +32,14 @@ Running PHC as its own unprivileged user (rather than `pi`) limits what a
 bug or a compromised dependency could touch on the rest of the system:
 
 ```
-sudo useradd --system --create-home --home-dir /opt/phc --shell /usr/sbin/nologin phc
+sudo useradd --system --home-dir /opt/phc --shell /usr/sbin/nologin phc
 ```
+
+No `--create-home`: `/opt/phc` doesn't exist yet at this point, it's just
+recorded as `phc`'s home directory for later — step 3's `git clone` creates
+it. (`--create-home` would populate it with shell skeleton dotfiles a
+`nologin` account has no use for anyway, and `git clone` refuses to clone
+into a directory that already has anything in it.)
 
 Everything below assumes PHC lives at `/opt/phc` and runs as the `phc`
 user. If you'd rather run it under your own account (e.g. `pi`), skip this
@@ -69,9 +75,11 @@ This installs PHC's dependencies (`PyYAML`, `aiohttp`, `astral`, `Jinja2`,
 calls directly, so there's no need to activate the virtual environment or
 put it on `PATH`.
 
-Confirm it works:
+Confirm it works (the config path is relative, so `cd` into `/opt/phc`
+first):
 
 ```
+cd /opt/phc
 sudo -u phc /opt/phc/.venv/bin/phc --config examples/emulated_system.yaml
 ```
 
@@ -137,15 +145,23 @@ Create `/etc/systemd/system/phc.service`:
 Description=Pylon Home Control
 After=network-online.target
 Wants=network-online.target
+# If Z-Way runs on this same machine (/etc/init.d/z-way-server exists),
+# uncomment these plus the ExecStartPre below to start PHC after it.
+#After=z-way-server.service
+#Requires=z-way-server.service
 
 [Service]
 Type=simple
 User=phc
 Group=phc
 WorkingDirectory=/opt/phc
+# Pairs with z-way-server above: gives it 30s to actually come up.
+#ExecStartPre=/bin/sleep 30
 ExecStart=/opt/phc/.venv/bin/phc --config /opt/phc/system.yaml
+# Equivalent, if you'd rather call the venv's Python directly:
+#ExecStart=/opt/phc/.venv/bin/python -m phc --config /opt/phc/system.yaml
 Restart=on-failure
-RestartSec=5
+RestartSec=30
 
 [Install]
 WantedBy=multi-user.target
@@ -156,7 +172,7 @@ up — worth having if your config includes devices that fetch over the
 network (`meteoswiss`, `open_meteo`, `zway`). `Restart=on-failure` brings
 PHC back up if it crashes, without masking a config error as a boot loop
 (a bad config exits immediately and non-zero, `systemctl status` will show
-it, and `RestartSec=5` keeps retries from spinning tight).
+it, and `RestartSec=30` keeps retries from spinning tight).
 
 Enable and start it:
 
