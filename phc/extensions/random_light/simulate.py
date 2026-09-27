@@ -128,7 +128,7 @@ def simulate(lights: dict[str, Light], sunrise: float, sunset: float,
     current_states: dict[str, int | None] = {ref: 0 for ref in order}
     t = warm_start
     while t < start:
-        current_states = controller.decide_all(t.timestamp(), current_states, sunrise, sunset)
+        current_states = dict(controller.decide_all(t.timestamp(), current_states, sunrise, sunset))
         t += timedelta(minutes=1)
 
     rows: list[tuple[datetime, dict[str, int]]] = []
@@ -147,7 +147,7 @@ def simulate(lights: dict[str, Light], sunrise: float, sunset: float,
     t = start
     while t <= end:
         targets = controller.decide_all(t.timestamp(), current_states, sunrise, sunset)
-        current_states = targets
+        current_states = dict(targets)
 
         if any(v == 1 for v in targets.values()):
             longest_dark_run = max(longest_dark_run, current_dark_run)
