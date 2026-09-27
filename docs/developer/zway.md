@@ -126,3 +126,12 @@ the connector's transports (which needs no running loop) is what keeps
 aiohttp from complaining out of `__del__` about a session whose loop is
 already gone. `close()` exists for the things that *do* have a teardown
 point: `demo.py` and the tests.
+
+
+## References
+
+- [Z-Way manual](https://z-wave.me/manual/z-way)
+- [JavaScript Engine and API](https://z-wave.me/manual/z-way/JavaScript_Engine.html) —
+  background for [`phc_zWay.js`](../../phc/devices/zway/phc_zWay.js) and the
+  tag-reader setup script in [`docs/zway.md`](../zway.md#tag-readers).
+- [Topics for Developers](https://z-wave.me/manual/z-way/Special_topics_Developers.html)
