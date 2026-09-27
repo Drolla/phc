@@ -15,10 +15,10 @@
 # No device below sets its own update: either -- they all poll at the
 # system's default cadence (every heartbeat tick).
 #
-# The three lights (living_light/desk_lamp/kitchen_light) are grouped
-# under a `lights` host device, so every consumer addresses them as
-# lights.living_light/lights.desk_lamp/lights.kitchen_light. thermostat/
-# siren/fan aren't lights, so they stay top-level siblings of lights.
+# The four lights (living_light/desk_lamp/kitchen_light/porch_light) are
+# grouped under a `lights` host device, so every consumer addresses them as
+# lights.living_light/lights.desk_lamp/lights.kitchen_light/lights.porch_light.
+# thermostat/siren/fan aren't lights, so they stay top-level siblings of lights.
 - id: lights
   module: host
   name: Lights
@@ -69,6 +69,16 @@
         - key: state
           writable: true
           type: bool
+          default: false
+
+    - id: porch_light
+      module: emulated_device
+      name: Porch Light
+      endpoints:
+        - key: state
+          writable: true
+          type: bool
+          values: { false: "off", true: "on" }
           default: false
 
 - id: thermostat

@@ -1,16 +1,9 @@
-# Virtual surveillance/alarm system (no real hardware), composed of:
-#   0) emulated_surveillance-system_setup.yaml (this file) - system setup:
-#      devices, modules, extensions, log.
-#   1) emulated_surveillance-task_defs_1-nested.yaml - task definitions,
-#      inlined, no templates, no scripting. Includes 0).
-#   2) emulated_surveillance-task_defs_2-tempated.yaml - task definitions,
-#      dynamically created tasks factored into named task_specs: templates.
-#      Includes 0).
-#   3) emulated_surveillance-task_defs_3-coded.yaml - task definitions,
-#      every condition/action written as expr:/script code. Includes 0).
-#
-# This file (0): device/extension setup only, no tasks: -- pick one of
-# 1)/2)/3) to actually run the system.
+# Virtual surveillance/alarm system (no real hardware). This file (0) is
+# system setup only, no tasks: -- pick one task-def variant to run it:
+#   1) emulated_surveillance-task_defs_1-nested.yaml     -- inlined, no templates
+#   2) emulated_surveillance-task_defs_2-tempated.yaml   -- task_specs: templates
+#   3) emulated_surveillance-task_defs_3-coded.yaml      -- expr:/script code
+# Each includes this file.
 
 heartbeat: 1s
 
@@ -19,38 +12,18 @@ log:
     levels:
       default: INFO
 
-# surveillance/armed is the arm/disarm control and all_lights/state is an
-# independent manual on/off override -- both genuinely writable, so toggle
-# them directly to exercise the tasks that watch them. hallway_motion/state
-# and cellar_motion/state are the intrusion sensors: a real PIR only ever
-# reports, so these are read-only and move on their own via `simulate:`
-# instead. lights.living_light/lights.kitchen_light/siren are the shared
-# filler devices from examples/devices/emulated_demo_devices.yaml, standing
-# in for the hallway light/porch light/siren this walkthrough's tasks
-# actually act on.
 devices:
   - id: surveillance
     module: virtual
     name: Surveillance control
     endpoints:
-      # No `default:` here (unlike the other endpoints below): a seeded
-      # default commits an initial change event at config-load time, which
-      # would still be visible -- and spuriously fire this condition -- on
-      # the Scheduler's very first tick (task pass runs before that tick's
-      # own commit clears it). armed/motion are watched by a `changed`
-      # condition, so they start truly unset instead.
+      # No default: -- armed/motion are watched by `changed`, so they
+      # start truly unset instead of firing a spurious event on load.
       - key: armed
         writable: true
         type: bool
         values: { false: "disarmed", true: "armed" }
 
-  # A real PIR only ever reports -- state is read-only, and simulate:
-  # keeps it moving on its own instead of needing a hand-driven write.
-  # default: false is safe here even though the intrusion task below
-  # gates on `changed`: an initial None->false commit is a change to a
-  # FALSE state, which can't satisfy an "and hallway.state" check --
-  # unlike surveillance.armed above, where a seeded true would both
-  # change AND immediately read as armed.
   - id: hallway_motion
     module: emulated_device
     name: Hallway motion sensor
@@ -87,33 +60,21 @@ devices:
     module: virtual
     name: All lights override
     endpoints:
-      # No `default:` (see surveillance/hallway_motion above, same reason):
-      # watched by a `changed` condition below.
       - key: state
         writable: true
         type: bool
         values: { false: "off", true: "on" }
 
-  # lights.living_light stands in for the hallway light, lights.kitchen_light
-  # for the porch light, and siren for this house's siren -- see
-  # examples/devices/emulated_demo_devices.yaml.
+  # Shared filler devices -- see examples/devices/emulated_demo_devices.yaml.
   - !include devices/emulated_demo_devices.yaml
 
   # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
   - !include devices/sun_zurich.yaml
 
-# Randomizes the hallway/porch lights and ends an alert mail (with an
-# email-to-SMS gateway address alongside an ordinary mailbox) when an intrusion
-# is detected.
 extensions:
-  # smtp_host points at loopback with nothing listening -- like every
-  # other device in this file, there's no real service behind it, so the
-  # send fails fast (connection refused, not a 10s timeout) and is logged
-  # as a warning rather than surfaced back to the firing task (see
-  # extensions/mail_alert/extension.yaml) -- a harmless way to exercise
-  # surveillance_intrusion's mail_alert action without a real mail server.
-  # Point this at a real SMTP server (and drop the loopback comment above)
-  # to actually receive the alert.
+  # smtp_host points at loopback with nothing listening, so the send
+  # fails fast and is logged as a warning -- point it at a real SMTP
+  # server to actually receive the alert.
   mail_alert:
     house:
       smtp_host: "127.0.0.1"
@@ -128,25 +89,27 @@ extensions:
     house:
       sun_device: "sun_zurich"
       lights:
-        # lights.living_light (standing in for the hallway light) sets
-        # neither windows/min_interval/probability_on of its own -- it
-        # inherits extensions/random_light/extension.yaml's own default
-        # windows (a fixed evening cutoff, sunset-relative start; a fixed
-        # morning start, sunrise-relative end), demonstrating the
-        # extension-default -> instance -> per-light cascade.
         - device: "lights.living_light.state"
+          probability_on: 0.1
           default: true
-        # lights.kitchen_light (standing in for the porch light) overrides
-        # all three per-light instead.
-        - device: "lights.kitchen_light.state"
+        - device: "lights.porch_light.state"
           windows:
             - { start: "20:00", end: "23:00" }
           min_interval: 25m
           probability_on: 0.3
+        - device: "lights.kitchen_light.state"
+          windows:
+            - { start: "sunset-30m", end: "22:30" }
+          min_interval: 12m
+          probability_on: 0.5
+        - device: "lights.desk_lamp.power"
+          windows:
+            - { start: "19:30", end: "23:30" }
+          min_interval: 20m
+          probability_on: 0.3
 
   web_ui:
     home:
-      # host: 0.0.0.0   -- already the default (all interfaces)
       port: 8080
       refresh_interval: 2s
       pages:
@@ -160,13 +123,9 @@ extensions:
             - id: lights
               title: Lights
               collapsed: false
-              selectors: ["lights.living_light/*", "lights.kitchen_light/*", "all_lights/*"]
+              selectors: ["lights.living_light/*", "lights.porch_light/*", "lights.kitchen_light/*",
+                          "lights.desk_lamp/*", "all_lights/*"]
 
-  # A live view of this whole system's scheduler/task queue and endpoint
-  # state, alongside web_ui above -- see examples/debug_portal_system.yaml
-  # for a narrower walkthrough.
   debug_portal:
     debug:
       port: 8081
-      # host: 0.0.0.0   -- already the default (all interfaces)
-      # selectors: ["*"]  -- already the default (every endpoint)

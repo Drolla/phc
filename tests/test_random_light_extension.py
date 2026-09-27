@@ -342,6 +342,6 @@ tasks:
     system = load_system(system_yaml)
     instance = next(t for t in system.tasks if t.tag == "random_light_tick").actions[0]._instance
     light = instance._controller._lights["hallway_light.state"]
-    assert light.min_interval == 1800.0  # extension.yaml's own default, "30m"
-    assert light.probability_on == 0.5
+    assert light.min_interval == 900.0  # extension.yaml's own default, "15m"
+    assert light.probability_on == 0.3
     assert len(light.windows) == 2  # extension.yaml's own default: sunset-1h/23:00 and 06:30/sunrise+30m

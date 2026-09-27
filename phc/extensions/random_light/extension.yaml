@@ -40,7 +40,7 @@ parameters:
 
   - name: min_interval
     override: allowed
-    default: "30m"
+    default: "15m"
     description: >
       Default min_interval (duration string) for a light with none of its
       own: roughly how long a light stays in one state before randomly
@@ -48,7 +48,7 @@ parameters:
 
   - name: probability_on
     override: allowed
-    default: 0.5
+    default: 0.3
     description: >
       Default probability_on (0..1) for a light with none of its own;
       0.0/1.0 pin a light to always off/on whenever inside its window.
