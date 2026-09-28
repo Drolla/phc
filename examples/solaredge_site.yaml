@@ -1,0 +1,37 @@
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+intervals:
+  solar: 15m
+
+# api_key is a secret -- !placeholder makes this file refuse to start
+# until it's replaced with the real key from the SolarEdge monitoring
+# portal's admin/API access section (see docs/configuration.md#placeholder-values).
+devices:
+  - id: solaredge-site
+    module: solaredge
+    name: PV System
+    update: solar
+    api_key: !placeholder <SolarEdge API Key>
+    site_id: "1728242"
+
+# min_interval: 1m on each task caps how often it can fire -- a no-op in
+# practice at this module's own 15-minute poll cadence, but guards against
+# a shorter update: later without silently losing the cap (see
+# docs/configuration.md#min_interval--retrigger-cooldown).
+tasks:
+  - tag: report_current_power
+    description: "Log the current PV output whenever it changes, at most once a minute"
+    condition: { device: "solaredge-site.current_power", changed: true }
+    min_interval: 1m
+    action: { kind: log, device: "solaredge-site", message: "PV output changed to {state} W" }
+
+  - tag: report_feed_in
+    description: "Log grid feed-in whenever it changes, at most once a minute"
+    condition: { device: "solaredge-site.feed_in", changed: true }
+    min_interval: 1m
+    action: { kind: log, device: "solaredge-site", message: "Grid feed-in changed to {state} W" }
