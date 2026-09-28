@@ -14,7 +14,7 @@ import logging
 from aiohttp import web
 
 from phc.core.device import Device
-from phc.core.errors import ConfigError
+from phc.core.errors import ConfigError, PhcError
 from phc.core.intervals import parse_duration
 from phc.extensions.web_ui.panels import DevicesPanel, Panel, get_panel_kind_class
 from phc.extensions.web_ui.server import build_app
@@ -268,7 +268,12 @@ class WebUiInstance:
         self._runner = web.AppRunner(self._app, shutdown_timeout=self._shutdown_timeout)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
-        await site.start()
+        try:
+            await site.start()
+        except OSError as exc:
+            raise PhcError(
+                f"web_ui instance {self._instance_key!r}: port {self._port} "
+                f"already in use") from exc
         logger.info("%s listening on http://%s:%d", self._instance_key, self._host, self._port)
 
     async def on_stop(self, devices: dict[str, Device]) -> None:

@@ -2850,6 +2850,21 @@ def test_find_placeholders_none_when_absent():
     assert _find_placeholders({"modules": {"zway": {"url": "http://real.example"}}}) == []
 
 
+def test_load_system_rejects_non_mapping_top_level(tmp_path):
+    # A bare `- id: ...` list is a device-list fragment meant to be
+    # !include-d from a real system YAML (e.g. fusion18/zway.yaml), not
+    # something --config should be pointed at directly -- this must raise
+    # a clear ConfigError, not an AttributeError from raw.get() further in.
+    system_yaml = tmp_path / "fragment.yaml"
+    system_yaml.write_text("""
+- id: light
+  module: virtual
+  endpoints: [{ key: state, writable: true, type: int, default: 0 }]
+""")
+    with pytest.raises(ConfigError, match="not a system config"):
+        load_system(system_yaml)
+
+
 def test_load_system_placeholder_raises(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""

@@ -13,6 +13,7 @@ from aiohttp import web
 
 from phc.core.clock import Now
 from phc.core.device import Device
+from phc.core.errors import PhcError
 from phc.core.selectors import resolve_selectors
 from phc.extensions.debug_portal.server import HUB, LAST_SNAPSHOT, SHUTDOWN_EVENT, build_app
 from phc.extensions.debug_portal.snapshot import build_snapshot
@@ -89,7 +90,12 @@ class DebugPortalInstance:
         self._runner = web.AppRunner(self._app, shutdown_timeout=self._shutdown_timeout)
         await self._runner.setup()
         site = web.TCPSite(self._runner, self._host, self._port)
-        await site.start()
+        try:
+            await site.start()
+        except OSError as exc:
+            raise PhcError(
+                f"debug_portal instance {self._instance_key!r}: port {self._port} "
+                f"already in use") from exc
         logger.info("%s listening on http://%s:%d",
                     self._instance_key, self._host, self._port)
 

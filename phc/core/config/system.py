@@ -89,6 +89,11 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     with open(path, encoding="utf-8") as f:
         raw = yaml.load(f, Loader=_IncludeLoader) or {}
 
+    if not isinstance(raw, dict):
+        raise ConfigError(
+            f"{path}: not a system config (got a {type(raw).__name__} at the top level) -- "
+            f"looks like a fragment meant to be !include-d, not run with --config directly")
+
     placeholders = _find_placeholders(raw)
     if placeholders:
         listed = "\n".join(f"  - {p}" for p in placeholders)

@@ -30,6 +30,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 # example from silently reaching real hardware with "<URL>" as an address.
 PLACEHOLDER_EXAMPLES = {
     "full_house_system.yaml",
+    "solaredge_site.yaml",
     "waveplus_bridge_system.yaml",
     "zway_system.yaml",
 }
