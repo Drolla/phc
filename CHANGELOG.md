@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-09-28
+
+**New features**
+
+- A new `solaredge` device module polls a SolarEdge photovoltaic site's
+  cloud monitoring API for its current power output, lifetime/yearly/
+  monthly/daily energy totals, and its production/consumption/
+  self-consumption/feed-in/purchased power meters — one device per site,
+  ten endpoints. See [`examples/solaredge_site.yaml`](examples/solaredge_site.yaml).
+
 ### 2026-09-26
 
 **New features**
