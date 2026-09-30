@@ -35,42 +35,42 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
-    description: Air temperature, degrees Celsius
+    description: Air temperature
     field: temperature_2m
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
-    description: Relative humidity, percent
+    description: Relative humidity
     field: relative_humidity_2m
   - key: precipitation
     readable: true
     writable: false
     type: float
     unit: mm
-    description: Precipitation over the current hour, mm
+    description: Precipitation over the current hour
     field: precipitation
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
-    description: Mean sea-level pressure, hPa
+    description: Mean sea-level pressure
     field: pressure_msl
   - key: wind_speed
     readable: true
     writable: false
     type: float
     unit: m/s
-    description: Wind speed, m/s
+    description: Wind speed
     field: wind_speed_10m
   - key: wind_direction
     readable: true
     writable: false
     type: float
     unit: "°"
-    description: Wind direction, degrees
+    description: Wind direction
     field: wind_direction_10m
   - key: weather_code
     readable: true

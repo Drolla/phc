@@ -53,47 +53,47 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
-    description: Air temperature, degrees Celsius
+    description: Air temperature
     field: temperature
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
-    description: Relative humidity, percent
+    description: Relative humidity
     field: humidity
   - key: pressure
     readable: true
     writable: false
     type: float
     unit: hPa
-    description: Barometric pressure, hPa
+    description: Barometric pressure
     field: pressure
   - key: radon_st
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
-    description: Radon avg, short-term (24h), Bq/m3
+    description: Radon avg, short-term (24h)
     field: radon_st
   - key: radon_lt
     readable: true
     writable: false
     type: int
     unit: "Bq/m3"
-    description: Radon avg, long-term (1 year) , Bq/m3
+    description: Radon avg, long-term (1 year)
     field: radon_lt
   - key: co2
     readable: true
     writable: false
     type: float
     unit: ppm
-    description: CO2 concentration, ppm
+    description: CO2 concentration
     field: co2
   - key: voc
     readable: true
     writable: false
     type: float
     unit: ppb
-    description: Total volatile organic compounds (TVOC), ppb
+    description: Total volatile organic compounds (TVOC)
     field: voc
