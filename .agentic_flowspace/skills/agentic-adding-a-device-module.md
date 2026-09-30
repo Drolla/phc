@@ -103,7 +103,11 @@ counterparts), including the failure-to-`None` path. Follow
 the template's own test, for the shape — and
 [`tests/test_meteoswiss.py`](../../tests/test_meteoswiss.py) for the same
 thing against a throwaway local HTTP server. Both drive the device through
-a real `Scheduler` rather than mocking internals.
+a real `Scheduler` rather than mocking internals. See
+[`writing-a-device-module.md`'s Testing section](../../docs/developer/writing-a-device-module.md#testing)
+for the `load_system` import and a directly-constructed `Endpoint`'s
+shape — both needed to write either style of test without reading
+`phc/core/`'s own source.
 
 If the module shares state between its devices, note how those tests pass
 one `context` dict to several devices to exercise it — a directly
