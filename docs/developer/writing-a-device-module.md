@@ -208,6 +208,76 @@ touching the module's own `module.yaml` — see [Endpoint and device
 profiles](../profiles.md).
 
 
+## Testing
+
+Two patterns cover every bundled module's tests, and copying one means
+never needing to read `phc/core/`'s own source to write them:
+
+- **Through the real config loader** — build a system from a YAML string
+  or file and drive it with a `Scheduler`, the way a reader's own config
+  will load the module. This is the only way to actually confirm
+  `module.yaml` parses, and the one to use when exercising `plugin_paths:`,
+  `modules:`-scoped params, or multiple devices wired together. Import
+  `load_system` from `phc.core.config` (not `phc.core.config.system`,
+  though that also works — `phc.core.config` re-exports it as the stable
+  public entry point):
+
+  ```python
+  from phc.core.config import load_system
+  from phc.core.scheduler import Scheduler
+
+  system = load_system(path_to_yaml)   # a Path, or a str path
+  scheduler = Scheduler(system.devices)
+  scheduler.tick(now=0.0)
+  scheduler.close()
+  assert system.devices["hall"].get("temperature") == 21.5
+  ```
+
+  See [`tests/test_device_template.py`](../../tests/test_device_template.py)
+  for the full pattern, including a `tmp_path`-written system YAML for
+  cases that need one-off device lists per test.
+
+- **Constructing a `Device` directly** — skips config parsing and is
+  quicker to write when a test only needs to drive `receive_async()`/
+  `transmit_async()` against a fixed set of endpoints (e.g. testing a
+  caching/failure path in isolation). Build `Endpoint` instances by hand
+  and pass them to the module's `Device` subclass along with `params` and
+  (if the module shares state — see above) a `context` dict:
+
+  ```python
+  from phc.core.endpoint import Endpoint
+  from phc.devices.mymodule.device import MyModuleDevice
+
+  device = MyModuleDevice(
+      "hall",                                    # device id
+      params={"host": "10.0.0.42"},
+      endpoints=[
+          Endpoint("temperature", params={"channel": "temp"}),
+          Endpoint("humidity", params={"channel": "hum"}),
+      ],
+      update_interval=0.0,
+      context=None,                               # or a shared dict
+  )
+  ```
+
+  `Endpoint(key, ...)` mirrors its endpoint-level `module.yaml` fields:
+  `params` carries whatever `endpoint_parameters:` your module declared
+  (read back in `device.py` via `ep.params.get("name")`), and
+  `readable`/`writable`/`value_type`/`unit` mirror the corresponding
+  `module.yaml` keys when a test needs to assert on them directly — a
+  directly-constructed `Endpoint` otherwise defaults to readable,
+  untyped. See
+  [`tests/test_meteoswiss.py`](../../tests/test_meteoswiss.py) for the
+  full pattern, including a throwaway local `http.server` standing in for
+  the real API and a shared `context` dict to test cache coalescing
+  across sibling devices.
+
+Both drive the device through a real `Scheduler` rather than mocking
+`device.py` internals — see
+[`.agentic_flowspace/skills/agentic-adding-a-device-module.md`](../../.agentic_flowspace/skills/agentic-adding-a-device-module.md)
+for which existing test to copy for a new module.
+
+
 ## Shipping a Module Outside PHC
 
 A device module is discovered by the same mechanism wherever it lives, and

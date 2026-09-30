@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-09-30
+
+**Bug fixes**
+
+- Several device modules' environment/power endpoints (`meteoswiss`,
+  `open_meteo`, `waveplus_bridge`, `solaredge`, `system_monitor`, `sun`,
+  and the `device-template` example) no longer spell out the unit in
+  their `description:` text — the web UI already appends the endpoint's
+  `unit:` to the displayed value, so the unit was shown twice per
+  widget (e.g. label "Air temperature, degrees Celsius" next to value
+  "21.5 °C").
+
 ### 2026-09-28
 
 **New features**

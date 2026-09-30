@@ -58,13 +58,13 @@ endpoints:
     writable: false
     type: float
     unit: "°"
-    description: Current solar elevation angle, degrees above the horizon (negative at night)
+    description: Current solar elevation angle above the horizon (negative at night)
   - key: azimuth
     readable: true
     writable: false
     type: float
     unit: "°"
-    description: Current solar azimuth angle, degrees clockwise from north
+    description: Current solar azimuth angle clockwise from north
   - key: is_daylight
     readable: true
     writable: false

@@ -87,14 +87,14 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
-    description: Air temperature measured by this unit, degrees Celsius
+    description: Air temperature measured by this unit
     channel: temp
   - key: humidity
     readable: true
     writable: false
     type: float
     unit: "%"
-    description: Relative humidity measured by this unit, percent
+    description: Relative humidity measured by this unit
     channel: hum
   - key: relay
     readable: true
