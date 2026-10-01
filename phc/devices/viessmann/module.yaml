@@ -106,35 +106,37 @@ endpoint_parameters:
       Needed when a command sets several values at once but the endpoint
       writes only one of them.
 
-# A starting set for a heat pump, verified against a Vitocal 250-A. An
-# installation that does not report one of these features simply reads
-# unavailable, so a wrong guess here is harmless -- but run discover.py to
-# find what your own hardware offers, including its heating circuits,
-# which are numbered per installation and so are not listed here.
-endpoints:
-  - key: outside_temperature
-    readable: true
-    writable: false
+
+# Reusable endpoint shapes for the features a Viessmann installation
+# commonly reports, so a config says `endpoint_profile: outside_temperature`
+# instead of repeating a type, a unit and a feature name. Each one still
+# carries its own feature, so opting in is all a config needs to do -- and
+# any feature not covered here is written out in full instead, which is
+# what discover.py's `yaml` command generates.
+#
+# Deliberately NOT module-level `endpoints:`: those would be given to every
+# device of this module unconditionally, so a gateway or room control would
+# carry a heat pump's temperature endpoints and report them all as
+# unavailable. Which features a device has depends on what it is.
+endpoint_profiles:
+  outside_temperature:
     type: float
     unit: "°C"
     description: Outdoor air temperature measured by the heating system
     feature: heating.sensors.temperature.outside
     property: value
 
-  - key: dhw_temperature
-    readable: true
-    writable: false
+  dhw_temperature:
     type: float
     unit: "°C"
     description: Current hot water temperature in the cylinder
     feature: heating.dhw.sensors.temperature.dhwCylinder
     property: value
 
-  - key: dhw_target_temperature
-    readable: true
-    writable: true
+  dhw_target_temperature:
     type: int
     unit: "°C"
+    writable: true
     min: 10
     max: 60
     on_invalid: reject
@@ -144,62 +146,61 @@ endpoints:
     command: setTargetTemperature
     param: temperature
 
-  - key: supply_temperature
-    readable: true
-    writable: false
+  supply_temperature:
     type: float
     unit: "°C"
     description: Water temperature leaving the heating system
     feature: heating.secondaryCircuit.sensors.temperature.supply
     property: value
 
-  - key: return_temperature
-    readable: true
-    writable: false
+  return_temperature:
     type: float
     unit: "°C"
     description: Water temperature returning to the heating system
     feature: heating.sensors.temperature.return
     property: value
 
-  - key: compressor_active
-    readable: true
-    writable: false
+  compressor_active:
     type: bool
     values: { false: "off", true: "on" }
     description: Whether the compressor is currently running
     feature: heating.compressors.0
     property: active
 
-  - key: compressor_phase
-    readable: true
-    writable: false
+  compressor_phase:
+    # A string rather than a bool: the API reports words like "heating" or
+    # "defrost", and anything non-empty would read as true.
     type: str
-    description: What the compressor is currently doing, e.g. heating or defrost
+    description: What the compressor is doing, e.g. heating or defrost
     feature: heating.compressors.0
     property: phase
 
-  - key: compressor_hours
-    readable: true
-    writable: false
+  compressor_hours:
     type: float
     unit: "h"
     description: Hours the compressor has run since installation
     feature: heating.compressors.0.statistics
     property: hours
 
-  - key: compressor_starts
-    readable: true
-    writable: false
+  compressor_starts:
     type: int
-    description: Number of times the compressor has started since installation
+    description: Times the compressor has started since installation
     feature: heating.compressors.0.statistics
     property: starts
 
-  - key: cop
-    readable: true
-    writable: false
+  cop:
     type: float
-    description: Coefficient of performance -- heat delivered per unit of electricity
+    description: >
+      Coefficient of performance -- heat delivered per unit of electricity
     feature: heating.cop.total
     property: value
+
+  wifi_strength:
+    type: int
+    unit: dBm
+    description: WiFi signal strength at the heating system's gateway
+    feature: tcu.wifi
+    property: strength
+
+# No module-level endpoints: see the note above endpoint_profiles.
+endpoints: []
