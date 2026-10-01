@@ -364,19 +364,39 @@ COMMANDS = {
 def credentials_from_config(path):
     """Read `modules.viessmann:` out of a PHC system config.
 
-    Parsed with plain yaml.safe_load rather than PHC's own loader, so this
-    stays usable against a config fragment and does not choke on PHC's
-    custom tags -- a !placeholder credential simply comes back unusable,
-    which the login then reports.
+    Parsed with PHC's own loader rather than yaml.safe_load, because a real
+    system config puts its credentials behind `<<: !include` and splits
+    itself across !include-d files -- safe_load cannot read those tags at
+    all, so it failed on exactly the configs this option exists for.
+
+    A credential still left as `!placeholder` parses to its example text,
+    which is not a usable password; the login then fails with the API's own
+    message. That is the same outcome as a wrong password and needs no
+    special handling here.
     """
     import yaml
 
-    with open(path, encoding="utf-8") as handle:
-        try:
-            raw = yaml.safe_load(handle) or {}
-        except yaml.YAMLError as exc:
-            print(f"cannot read {path}: {exc}", file=sys.stderr)
-            return {}
+    try:
+        from phc.core.config.yamlio import _include_stack, _IncludeLoader
+        from phc.core.errors import ConfigError
+    except ImportError:
+        # Run as a plain script from a directory where phc is not
+        # importable: fall back to safe_load, which cannot resolve
+        # !include, and say so rather than failing obscurely.
+        print(f"cannot read {path}: PHC is not importable here, so !include "
+              f"cannot be resolved -- run this as "
+              f"`python -m phc.devices.viessmann.discover` from the repo "
+              f"root, or pass --email/--password/--client-id.",
+              file=sys.stderr)
+        return {}
+
+    try:
+        _include_stack.clear()
+        with open(path, encoding="utf-8") as handle:
+            raw = yaml.load(handle, Loader=_IncludeLoader) or {}
+    except (yaml.YAMLError, OSError, ConfigError) as exc:
+        print(f"cannot read {path}: {exc}", file=sys.stderr)
+        return {}
     section = ((raw.get("modules") or {}).get("viessmann") or {})
     return {key: section.get(key) for key in
             ("email", "password", "client_id", "token_file")}

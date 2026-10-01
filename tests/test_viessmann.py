@@ -879,6 +879,62 @@ modules:
     assert found["client_id"] == "0123456789abcdef"
 
 
+def test_discover_reads_credentials_behind_an_include(tmp_path):
+    """--config must cope with the shape a real system config has.
+
+    Credentials belong in their own file, pulled in with `<<: !include`,
+    and a system config of any size splits itself across !include-d
+    fragments. Parsing with yaml.safe_load cannot read either tag, so it
+    failed on exactly the configs this option exists for -- it has to use
+    PHC's own loader.
+    """
+    from phc.devices.viessmann import discover
+
+    (tmp_path / "account.yaml").write_text("""
+email: someone@example.com
+password: secret
+client_id: 0123456789abcdef
+""", encoding="utf-8")
+    (tmp_path / "devices.yaml").write_text("""
+- id: heatpump
+  module: viessmann
+  device_id: "0"
+  endpoints:
+    - key: cop
+      endpoint_profile: cop
+""", encoding="utf-8")
+    config = tmp_path / "house.yaml"
+    config.write_text("""
+modules:
+  viessmann:
+    <<: !include account.yaml
+    cache_time: 5m
+
+devices:
+  - id: viessmann
+    module: host
+    name: Viessmann
+    children: !include devices.yaml
+""", encoding="utf-8")
+
+    found = discover.credentials_from_config(config)
+    assert found["email"] == "someone@example.com"
+    assert found["password"] == "secret"
+    assert found["client_id"] == "0123456789abcdef"
+
+
+def test_discover_reports_an_unreadable_config(tmp_path, capsys):
+    """A broken config says so instead of failing obscurely later."""
+    from phc.devices.viessmann import discover
+
+    config = tmp_path / "house.yaml"
+    config.write_text("modules:\n  viessmann:\n    <<: !include nope.yaml\n",
+                      encoding="utf-8")
+
+    assert discover.credentials_from_config(config) == {}
+    assert "cannot read" in capsys.readouterr().err
+
+
 def test_discover_requires_credentials(capsys):
     """Running with nothing to log in with says what is missing."""
     from phc.devices.viessmann import discover
