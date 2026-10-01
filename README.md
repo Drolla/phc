@@ -171,6 +171,7 @@ Located in [`docs/`](docs/):
   - [`docs/web-ui.md`](docs/web-ui.md)
   - [`docs/debug-portal.md`](docs/debug-portal.md)
   - [`docs/zway.md`](docs/zway.md)
+  - [`docs/viessmann.md`](docs/viessmann.md)
 - Raspberry Pi installation — [`docs/raspberry-pi-install.md`](docs/raspberry-pi-install.md)
 
 ### Developer Guide

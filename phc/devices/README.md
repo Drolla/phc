@@ -24,8 +24,11 @@ Once you know the pattern, these modules are useful as real-world points on
 the spectrum: `virtual/` and `host/` for the minimal shape, `sun/` and
 `system_monitor/` for synchronous computation with no network,
 `meteoswiss/`, `open_meteo/` and `waveplus_bridge/` for cached async HTTP,
-and `zway/` for `endpoint_parameters:`, an endpoint profile library, and a
-long-lived push-driven connection shared between a module's devices.
+`zway/` for `endpoint_parameters:`, an endpoint profile library, and a
+long-lived push-driven connection shared between a module's devices, and
+`viessmann/` for a module built on a third-party vendor library -- the one
+here whose I/O is synchronous, bridged onto a worker thread, with a
+companion CLI for discovering what a given installation can report.
 
 A module does not have to live here at all — see
 [Shipping a Module Outside PHC](../../docs/developer/writing-a-device-module.md#shipping-a-module-outside-phc).
