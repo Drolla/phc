@@ -1,0 +1,95 @@
+# A Viessmann heat pump, read and controlled through the ViCare cloud API.
+#
+# Run it with:  phc --config examples/viessmann_heatpump.yaml
+#
+# Before it will start, replace the three !placeholder credentials below.
+# Then find out what your own installation reports -- which features exist
+# depends entirely on the hardware -- with:
+#
+#   python -m phc.devices.viessmann.discover \
+#       --config examples/viessmann_heatpump.yaml topology
+#   python -m phc.devices.viessmann.discover \
+#       --config examples/viessmann_heatpump.yaml features --device 0
+#
+# and adjust devices/viessmann_heatpump.yaml accordingly. See
+# docs/viessmann.md for the whole walkthrough.
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+intervals:
+  # The free API tier allows 120 calls per 10 minutes and 1450 per day, and
+  # exceeding either blocks the account for 24 hours. One poll reads the
+  # whole gateway in a single call, so 5 minutes costs under 300 calls a
+  # day and leaves room for writes. A heat pump is a slow system; polling
+  # it harder buys nothing.
+  heatpump: 5m
+
+modules:
+  viessmann:
+    update: heatpump
+    # These are secrets, and the password is for the whole Viessmann
+    # account rather than just this API -- keep this file readable only by
+    # the user running PHC, or move the credentials into their own
+    # !include-d file with tighter permissions. !placeholder makes the
+    # config refuse to start until they are replaced; see
+    # docs/configuration.md#placeholder-values.
+    email: !placeholder <Viessmann account e-mail>
+    password: !placeholder <Viessmann account password>
+    # From https://app.developer.viessmann-climatesolutions.com
+    client_id: !placeholder <Viessmann developer-portal client id>
+    # Devices on one gateway share a response for this long, so the heat
+    # pump and its gateway below cost one call per poll between them.
+    cache_time: 5m
+
+devices:
+  - !include devices/viessmann_heatpump.yaml
+
+tasks:
+  - tag: log_outside_temperature
+    description: Record the outdoor temperature whenever it changes
+    condition:
+      device: heatpump.outside_temperature
+      changed: true
+    action:
+      kind: log
+      device: heatpump.outside_temperature
+      message: "outside temperature is now {text}"
+
+  - tag: log_compressor_runtime
+    description: Note when the compressor starts or stops
+    condition:
+      device: heatpump.compressor_active
+      changed: true
+    action:
+      kind: log
+      device: heatpump.compressor_phase
+      message: "compressor changed state, now {text}"
+
+  # Every write costs an API call, so prefer a task that fires on a clock
+  # (twice a day here) over one that fires on a condition that could
+  # flicker -- a few hundred unintended writes is enough to get the
+  # account blocked for 24 hours. These two show the shape of a write:
+  # they raise the hot water target overnight, when electricity is
+  # usually cheaper, and put it back in the morning.
+  - tag: cheap_rate_hot_water
+    description: Raise the hot water target during the night tariff
+    time: "01:00"
+    repeat: 24h
+    action:
+      kind: set
+      device: heatpump.dhw_target_temperature
+      value: 55
+
+  - tag: day_rate_hot_water
+    description: Return the hot water target to its daytime value
+    time: "06:00"
+    repeat: 24h
+    action:
+      kind: set
+      device: heatpump.dhw_target_temperature
+      value: 50
