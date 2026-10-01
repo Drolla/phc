@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-01
+
+**New features**
+
+- A new `viessmann` device module reads and controls a Viessmann heating
+  installation -- heat pump, boiler, gateway or room control -- through
+  Viessmann's ViCare cloud API, using the PyViCare library for
+  authentication and transport (a new dependency). Endpoints name a
+  feature and one of its properties, and optionally a command to write, so
+  a config can reach any feature the hardware reports without code
+  changes; `module.yaml` ships endpoint profiles for the readings most
+  installations share. Devices on one gateway share a single API response
+  per poll. See [`docs/viessmann.md`](docs/viessmann.md) and
+  [`examples/viessmann_heatpump.yaml`](examples/viessmann_heatpump.yaml).
+- `python -m phc.devices.viessmann.discover` lists an account's
+  installations, gateways, devices and every feature of each with its
+  current value and the commands that write it, and generates endpoint
+  definitions to paste into a config -- which features exist depends
+  entirely on the hardware, so this is how to find out what to configure.
+
 ### 2026-09-30
 
 **Bug fixes**

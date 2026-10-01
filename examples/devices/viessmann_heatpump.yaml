@@ -1,0 +1,169 @@
+# Shared device list: a Viessmann air/water heat pump and its gateway.
+#
+# A bare list, not a devices:-keyed mapping: a consuming config includes it
+# as one `devices:` list item (`- !include devices/viessmann_heatpump.yaml`)
+# alongside its own extra devices, and the loader splices this file's
+# entries into the surrounding list rather than nesting them -- see
+# docs/configuration.md#splitting-configuration-across-files. No modules:/
+# tasks:/intervals: here, and deliberately no update: on either device: an
+# including config is expected to set modules.viessmann.update itself (a
+# device's own update: would otherwise take precedence and silently defeat
+# that shared setting -- see
+# docs/configuration.md#modules-and-shared-configuration).
+#
+# WHICH FEATURES EXIST DEPENDS ON YOUR HARDWARE, so treat this as a
+# starting point rather than something to copy unchanged. It describes a
+# Vitocal 250-A with two heating circuits, and the circuit numbers
+# especially are installation-specific: circuit 2 here is the one that
+# heats rooms, while circuit 1 is hot water only. List your own with
+#
+#   python -m phc.devices.viessmann.discover --config <your-config>.yaml \
+#       topology
+#   python -m phc.devices.viessmann.discover --config <your-config>.yaml \
+#       features --device 0
+#
+# and have its `yaml` command generate endpoint definitions to paste in.
+# An endpoint naming a feature your installation does not report simply
+# reads unavailable, so a wrong guess costs a blank value, nothing more.
+#
+# The endpoints named only by `endpoint_profile:` come from
+# phc/devices/viessmann/module.yaml, which carries the type, unit and
+# feature name for the readings most installations have; the ones written
+# out in full are specific to this installation.
+#
+# Both devices sit on one gateway, so they cost a single API response per
+# poll between them rather than one each -- see modules.viessmann.cache_time
+# in the including config.
+
+- id: heatpump
+  module: viessmann
+  name: Heat Pump
+  # From `discover.py topology`. The heating system itself is usually "0".
+  device_id: "0"
+  endpoints:
+    - key: outside_temperature
+      endpoint_profile: outside_temperature
+    - key: dhw_temperature
+      endpoint_profile: dhw_temperature
+    - key: dhw_target_temperature
+      endpoint_profile: dhw_target_temperature
+    - key: supply_temperature
+      endpoint_profile: supply_temperature
+    - key: return_temperature
+      endpoint_profile: return_temperature
+    - key: compressor_active
+      endpoint_profile: compressor_active
+    - key: compressor_phase
+      endpoint_profile: compressor_phase
+    - key: compressor_hours
+      endpoint_profile: compressor_hours
+    - key: cop
+      endpoint_profile: cop
+
+    # The room-heating circuit. Its number is specific to this
+    # installation, so these are written out rather than profiled.
+    - key: room_target_temperature
+      readable: true
+      writable: true
+      type: int
+      unit: "°C"
+      min: 10
+      max: 30
+      on_invalid: reject
+      description: Room temperature the heating circuit aims for
+      feature: heating.circuits.2.operating.programs.normal
+      property: temperature
+      command: setTemperature
+      param: targetTemperature
+
+    - key: reduced_target_temperature
+      readable: true
+      writable: true
+      type: int
+      unit: "°C"
+      min: 10
+      max: 30
+      on_invalid: reject
+      description: Room temperature during the circuit's reduced periods
+      feature: heating.circuits.2.operating.programs.reduced
+      property: temperature
+      command: setTemperature
+      param: targetTemperature
+
+    - key: operating_mode
+      readable: true
+      writable: true
+      type: str
+      description: >
+        Whether the circuit heats rooms and water, only water, or nothing
+      feature: heating.circuits.2.operating.modes.active
+      property: value
+      command: setMode
+
+    - key: circuit_supply_temperature
+      readable: true
+      writable: false
+      type: float
+      unit: "°C"
+      description: Water temperature flowing into the heating circuit
+      feature: heating.circuits.2.sensors.temperature.supply
+      property: value
+
+    - key: circulation_pump
+      readable: true
+      writable: false
+      # A string, not a bool: the API reports "on"/"off" as text, and
+      # bool("off") would be true.
+      type: str
+      description: Whether the circuit's circulation pump is running
+      feature: heating.circuits.2.circulation.pump
+      property: status
+
+    - key: heating_curve_slope
+      readable: true
+      writable: true
+      type: float
+      min: 0
+      max: 3.5
+      on_invalid: reject
+      description: >
+        Steepness of the heating curve -- how much hotter the water gets as
+        it grows colder outside
+      feature: heating.circuits.2.heating.curve
+      property: slope
+      command: setCurve
+      param: slope
+      # setCurve writes slope and shift together, so writing one has to
+      # supply the other. Keep this in step with heating_curve_shift below;
+      # a stale value here would quietly undo a shift set elsewhere.
+      command_extras: { shift: 0 }
+
+    - key: heating_curve_shift
+      readable: true
+      writable: false
+      type: float
+      description: Parallel offset of the heating curve
+      feature: heating.circuits.2.heating.curve
+      property: shift
+
+    - key: one_time_charge
+      readable: true
+      writable: true
+      type: bool
+      values: { false: "off", true: "on" }
+      description: Heat the hot water cylinder once, outside its schedule
+      feature: heating.dhw.oneTimeCharge
+      property: active
+      command: setActive
+      param: active
+
+# The gateway reports little, but it costs no extra API call: it is on the
+# same gateway as the heat pump, so it shares that one response.
+- id: heatpump_gateway
+  module: viessmann
+  name: Heat Pump Gateway
+  # From `discover.py topology` -- the gateway names itself.
+  device_id: gateway
+  endpoints:
+    - key: wifi_strength
+      endpoint_profile: wifi_strength

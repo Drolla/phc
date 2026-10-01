@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "YAML-configured home automation framework"
 requires-python = ">=3.11"
 dependencies = [
+    "PyViCare>=2.63.0",
     "PyYAML>=6.0",
     "aiohttp>=3.9",
     "astral>=3.2",

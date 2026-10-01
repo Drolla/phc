@@ -1,0 +1,206 @@
+description: >
+  Readings and settings from a Viessmann heating installation -- heat pump,
+  boiler, gateway or room control -- through Viessmann's ViCare cloud API.
+  Requires a Viessmann account and a client id from the Viessmann developer
+  portal; the account password is stored in the config file, so guard any
+  file that holds a real one.
+
+  Which features your own installation reports depends on the hardware, so
+  the endpoints below are only a starting point for a heat pump. Run the
+  module's discover.py to list every feature your installation offers and
+  to generate endpoint definitions to paste into your config.
+
+  The free API tier allows 120 calls per 10 minutes and 1450 per day, and
+  exceeding either blocks the account for 24 hours. One poll reads every
+  feature of a gateway in a single call, so the default 5 minute interval
+  uses under 300 calls a day; each write costs one more. Lower it with
+  care.
+
+update: "5m"
+
+parameters:
+  - name: email
+    override: required
+    scope: module
+    description: >
+      E-mail address of the Viessmann account the installation is
+      registered to.
+  - name: password
+    override: required
+    scope: module
+    description: >
+      Password of that Viessmann account. Stored in plain text, so keep
+      this config file readable only by the user running PHC.
+  - name: client_id
+    override: required
+    scope: module
+    description: >
+      Client id issued for your own application in the Viessmann developer
+      portal (https://app.developer.viessmann-climatesolutions.com).
+  - name: token_file
+    override: allowed
+    scope: module
+    default: null
+    description: >
+      Optional file to cache the access token in, so a restart does not
+      need a fresh login. Give an absolute path -- a relative one is
+      resolved against the directory PHC was started from, which differs
+      between a hand-started and a service-started run. Leave unset to log
+      in on every start. The file is as sensitive as the password.
+  - name: installation_id
+    override: allowed
+    default: null
+    description: >
+      Which installation this device belongs to, as reported by
+      discover.py. Only needed when the account has more than one; a
+      single installation is found automatically.
+  - name: gateway_serial
+    override: allowed
+    default: null
+    description: >
+      Serial of the gateway this device is connected to, as reported by
+      discover.py. Only needed when the installation has more than one
+      gateway.
+  - name: device_id
+    override: allowed
+    default: "0"
+    description: >
+      Which device of that gateway this PHC device reads, as reported by
+      discover.py. The heating system itself is usually "0"; a gateway or
+      room control reports its own name.
+  - name: cache_time
+    override: allowed
+    scope: module
+    default: "5m"
+    description: >
+      How long one gateway response may be reused before it is fetched
+      again. Devices on the same gateway share a response, so several of
+      them cost one call per poll rather than one each. Set to "0s" to
+      always re-fetch.
+
+# Per-endpoint fields this module understands. `feature` and `property`
+# name what to read; `command`, `param` and `command_extras` name what a
+# write invokes. Declaring them here is what lets a config add an endpoint
+# for any feature without touching code.
+endpoint_parameters:
+  - name: feature
+    description: >
+      Which feature of the device this endpoint reads, e.g.
+      "heating.sensors.temperature.outside". Run discover.py to list the
+      features your own installation reports.
+  - name: property
+    description: >
+      Which of that feature's properties holds the value, e.g. "value",
+      "status", "active" or "hours". Defaults to "value".
+  - name: command
+    description: >
+      Which of the feature's commands a write invokes, e.g.
+      "setTargetTemperature". Required to make an endpoint writable.
+  - name: param
+    description: >
+      Which parameter of that command carries the written value, e.g.
+      "temperature". Only needed when the command takes more than one.
+  - name: command_extras
+    description: >
+      Fixed values for the command's remaining parameters, as a mapping.
+      Needed when a command sets several values at once but the endpoint
+      writes only one of them.
+
+
+# Reusable endpoint shapes for the features a Viessmann installation
+# commonly reports, so a config says `endpoint_profile: outside_temperature`
+# instead of repeating a type, a unit and a feature name. Each one still
+# carries its own feature, so opting in is all a config needs to do -- and
+# any feature not covered here is written out in full instead, which is
+# what discover.py's `yaml` command generates.
+#
+# Deliberately NOT module-level `endpoints:`: those would be given to every
+# device of this module unconditionally, so a gateway or room control would
+# carry a heat pump's temperature endpoints and report them all as
+# unavailable. Which features a device has depends on what it is.
+endpoint_profiles:
+  outside_temperature:
+    type: float
+    unit: "°C"
+    description: Outdoor air temperature measured by the heating system
+    feature: heating.sensors.temperature.outside
+    property: value
+
+  dhw_temperature:
+    type: float
+    unit: "°C"
+    description: Current hot water temperature in the cylinder
+    feature: heating.dhw.sensors.temperature.dhwCylinder
+    property: value
+
+  dhw_target_temperature:
+    type: int
+    unit: "°C"
+    writable: true
+    min: 10
+    max: 60
+    on_invalid: reject
+    description: Hot water temperature the system heats the cylinder to
+    feature: heating.dhw.temperature.main
+    property: value
+    command: setTargetTemperature
+    param: temperature
+
+  supply_temperature:
+    type: float
+    unit: "°C"
+    description: Water temperature leaving the heating system
+    feature: heating.secondaryCircuit.sensors.temperature.supply
+    property: value
+
+  return_temperature:
+    type: float
+    unit: "°C"
+    description: Water temperature returning to the heating system
+    feature: heating.sensors.temperature.return
+    property: value
+
+  compressor_active:
+    type: bool
+    values: { false: "off", true: "on" }
+    description: Whether the compressor is currently running
+    feature: heating.compressors.0
+    property: active
+
+  compressor_phase:
+    # A string rather than a bool: the API reports words like "heating" or
+    # "defrost", and anything non-empty would read as true.
+    type: str
+    description: What the compressor is doing, e.g. heating or defrost
+    feature: heating.compressors.0
+    property: phase
+
+  compressor_hours:
+    type: float
+    unit: "h"
+    description: Hours the compressor has run since installation
+    feature: heating.compressors.0.statistics
+    property: hours
+
+  compressor_starts:
+    type: int
+    description: Times the compressor has started since installation
+    feature: heating.compressors.0.statistics
+    property: starts
+
+  cop:
+    type: float
+    description: >
+      Coefficient of performance -- heat delivered per unit of electricity
+    feature: heating.cop.total
+    property: value
+
+  wifi_strength:
+    type: int
+    unit: dBm
+    description: WiFi signal strength at the heating system's gateway
+    feature: tcu.wifi
+    property: strength
+
+# No module-level endpoints: see the note above endpoint_profiles.
+endpoints: []

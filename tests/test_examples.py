@@ -31,6 +31,7 @@ EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 PLACEHOLDER_EXAMPLES = {
     "full_house_system.yaml",
     "solaredge_site.yaml",
+    "viessmann_heatpump.yaml",
     "waveplus_bridge_system.yaml",
     "zway_system.yaml",
 }
