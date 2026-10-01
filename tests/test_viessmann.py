@@ -1,28 +1,37 @@
 """Viessmann device: reads features and writes commands over the ViCare API.
 
-The module delegates authentication and transport to PyViCare, so these
-tests stand a fake ViCareService in its place -- an object with the same
-fetch_all_features()/setProperty() surface -- rather than a local HTTP
-server as tests/test_meteoswiss.py and tests/test_solaredge.py do for
-modules that own their own transport. What is faked here is a third-party
-boundary, not any of PHC's own code: extraction, caching, backoff and the
-read/write mapping all still run end to end through a real Scheduler.
+PyViCare owns authentication and transport, so these tests stand a fake
+ViCareService in its place rather than a local HTTP server as
+tests/test_solaredge.py does for a module that owns its own transport.
+What is faked is a third-party boundary, not PHC's own code: extraction,
+caching, backoff and the read/write mapping all still run through a real
+Scheduler.
 
-The feature payloads below are trimmed copies of what a real Vitocal 250-A
-installation returns, including its quirks -- properties named `status`,
-`active`, `phase`, `hours`, `slope`/`shift`; a command that takes two
-parameters; and commands reported as not executable.
+The payloads below are trimmed copies of what a real Vitocal 250-A
+returns, quirks included -- properties named `status`, `active`, `phase`,
+`hours`, `slope`/`shift`; a two-parameter command; commands reported as
+not executable.
 
 No test here may reach api.viessmann-climatesolutions.com or read
-credentials from the environment: the free API tier allows 120 calls per
-10 minutes, and exceeding it blocks the account for 24 hours.
+credentials from the environment: the quota allows 120 calls per 10
+minutes, and exceeding it blocks the account for 24 hours.
 """
 
+import contextlib
+import io
+import types
+
 import pytest
+import yaml
+from PyViCare.PyViCareUtils import (
+    PyViCareInvalidCredentialsError,
+    PyViCareRateLimitError,
+)
 
 from phc.core.config import load_system
 from phc.core.endpoint import Endpoint
 from phc.core.scheduler import Scheduler
+from phc.devices.viessmann import discover
 from phc.devices.viessmann.device import ViessmannDevice
 
 INSTALLATION = 2800335
@@ -116,7 +125,6 @@ class _FakeService:
         self.error = error
         self.fetches = 0
         self.writes = []
-        self.write_error = None
 
     def fetch_all_features(self, accessor):
         self.fetches += 1
@@ -125,8 +133,6 @@ class _FakeService:
         return self.payload
 
     def setProperty(self, accessor, feature, command, data):  # noqa: N802
-        if self.write_error is not None:
-            raise self.write_error
         self.writes.append((accessor.device_id, feature, command, data))
         return {"data": {"success": True}}
 
@@ -140,31 +146,29 @@ class _FakeDeviceConfig:
 
 
 def _device(endpoints, *, service=None, context=None, device_id="0",
-            cache_time="5m", params=None, installation=INSTALLATION,
-            serial=GATEWAY, device_key=None):
+            cache_time="5m", serial=GATEWAY, device_key=None):
     """Build a ViessmannDevice with PyViCare's client already stood in for.
 
-    Assigning _config is what keeps the login out of these tests: it is
-    the only thing _features()/transmit() need from PyViCare, and building
-    it here is equivalent to a successful initWithCredentials().
+    Assigning _config is what keeps the login out of these tests: it is the
+    only thing _features()/transmit() need from PyViCare, so setting it is
+    equivalent to a successful initWithCredentials().
     """
-    service = service if service is not None else _FakeService()
-    merged = {
-        "email": "someone@example.com",
-        "password": "secret",
-        "client_id": "0123456789abcdef",
-        "device_id": device_id,
-        "cache_time": cache_time,
-    }
-    merged.update(params or {})
     device = ViessmannDevice(
         device_key or f"heatpump-{device_id}",
-        params=merged,
+        params={
+            "email": "someone@example.com",
+            "password": "secret",
+            "client_id": "0123456789abcdef",
+            "device_id": device_id,
+            "cache_time": cache_time,
+        },
         endpoints=endpoints,
         update_interval=0.0,
         context=context,
     )
-    device._config = _FakeDeviceConfig(device_id, service, installation, serial)
+    device._config = _FakeDeviceConfig(
+        device_id, service if service is not None else _FakeService(),
+        INSTALLATION, serial)
     return device
 
 
@@ -303,26 +307,74 @@ def test_devices_on_one_gateway_share_a_fetch():
     """Two devices of one gateway cost one call, not two.
 
     One shared context, as load_system() gives every device of a system --
-    that is what puts both on the same cache. PyViCare's via-gateway fetch
-    returns every device's features in one response, so the heat pump and
-    the gateway itself are one call between them.
+    that is what puts both on the same cache. Here both read the same
+    Viessmann device (one for heating, one for hot water, say); for two
+    reading DIFFERENT devices of that gateway, see
+    test_each_device_sees_only_its_own_features.
     """
     service = _FakeService()
     context = {}
     pump = _device([
         Endpoint("cop", value_type="float",
                  params={"feature": "heating.cop.total"}),
-    ], service=service, context=context, device_id="0")
+    ], service=service, context=context, device_id="0", device_key="heating")
     other = _device([
         Endpoint("outside", value_type="float",
                  params={"feature": "heating.sensors.temperature.outside"}),
-    ], service=service, context=context, device_id="gateway")
+    ], service=service, context=context, device_id="0", device_key="water")
 
     _tick(pump, other)
 
     assert service.fetches == 1
     assert pump.get("cop") == 3
     assert other.get("outside") == 14.4
+
+
+def test_each_device_sees_only_its_own_features():
+    """The gateway's bulk response has to be filtered per device.
+
+    One call returns EVERY device of the gateway, which is what makes
+    siblings cost one call between them -- but unfiltered, a gateway would
+    appear to report the heat pump's features and read values that are not
+    its own. Each entry names its device in its `uri`.
+    """
+    payload = {"data": [
+        _feature("heating.cop.total", {"value": _num(3)}),
+        _feature("heating.sensors.temperature.outside",
+                 {"value": _num(14.4, "celsius")}),
+        # Same gateway, different device: note the uri segment.
+        {"feature": "tcu.wifi", "isEnabled": True, "isReady": True,
+         "properties": {"strength": _num(-62)}, "commands": {},
+         "uri": (f"https://api.viessmann-climatesolutions.com/iot/v2/features"
+                 f"/installations/{INSTALLATION}/gateways/{GATEWAY}"
+                 f"/devices/gateway/features/tcu.wifi")},
+    ]}
+    service = _FakeService(payload)
+    context = {}
+
+    pump = _device([
+        Endpoint("cop", value_type="float",
+                 params={"feature": "heating.cop.total"}),
+        Endpoint("wifi", value_type="int",
+                 params={"feature": "tcu.wifi", "property": "strength"}),
+    ], service=service, context=context, device_id="0", device_key="pump")
+    gateway = _device([
+        Endpoint("cop", value_type="float",
+                 params={"feature": "heating.cop.total"}),
+        Endpoint("wifi", value_type="int",
+                 params={"feature": "tcu.wifi", "property": "strength"}),
+    ], service=service, context=context, device_id="gateway",
+        device_key="gw")
+
+    _tick(pump, gateway)
+
+    # Still one call between them.
+    assert service.fetches == 1
+    # Each sees its own feature and NOT the other's.
+    assert pump.get("cop") == 3
+    assert pump.get("wifi") is None
+    assert gateway.get("wifi") == -62
+    assert gateway.get("cop") is None
 
 
 def test_separate_gateways_do_not_share_a_fetch():
@@ -373,8 +425,6 @@ def test_rate_limit_backs_off_without_further_calls():
     Exceeding the quota blocks the account for 24 hours, so every poll
     while blocked must still report unhealthy but must not call the API.
     """
-    from PyViCare.PyViCareUtils import PyViCareRateLimitError
-
     error = PyViCareRateLimitError({"extendedPayload": {
         "name": "RATE_LIMIT_EXCEEDED",
         "requestCountLimit": 1450,
@@ -399,13 +449,11 @@ def test_rate_limit_backs_off_without_further_calls():
 def test_backoff_holds_after_a_successful_first_poll():
     """Backoff must guard reads, not only the login.
 
-    The login happens once and is then cached, so a device that polled
-    successfully before being rate-limited is exactly the case that would
-    keep spending a call per poll if the check lived only in the login
-    path -- turning a window that recovers on its own into a 24-hour block.
+    The login happens once and is then cached, so a device rate-limited
+    after a successful poll is the case that would keep spending a call per
+    poll if the check lived only in the login path -- turning a window that
+    recovers on its own into a 24-hour block.
     """
-    from PyViCare.PyViCareUtils import PyViCareRateLimitError
-
     service = _FakeService()
     device = _device([
         Endpoint("cop", value_type="float",
@@ -434,8 +482,6 @@ def test_backoff_holds_after_a_successful_first_poll():
 
 def test_bad_credentials_name_the_fix():
     """A permanent auth failure tells the reader how to repair it."""
-    from PyViCare.PyViCareUtils import PyViCareInvalidCredentialsError
-
     service = _FakeService(error=PyViCareInvalidCredentialsError())
     device = _device([
         Endpoint("cop", value_type="float",
@@ -743,7 +789,6 @@ devices:
 
 def _discover_client(service=None, device_id="0"):
     """A stand-in for a logged-in PyViCare client, for the discovery CLI."""
-    import types
     config = _FakeDeviceConfig(device_id, service or _FakeService())
     config.device_model = "CU401B_S"
     config.device_type = "heating"
@@ -752,7 +797,6 @@ def _discover_client(service=None, device_id="0"):
 
 
 def _discover_args(**overrides):
-    import types
     args = types.SimpleNamespace(
         device=None, filter=None, raw=False, writable_only=False,
         include_disabled=False, token_file=None)
@@ -763,10 +807,7 @@ def _discover_args(**overrides):
 
 def test_discover_features_lists_properties_and_commands(capsys):
     """The table names each property and how to write it."""
-    from phc.devices.viessmann import discover
-
-    discover.cmd_features(_discover_client(), _discover_args(),
-                          discover._Counter())
+    discover.cmd_features(_discover_client(), _discover_args())
     out = capsys.readouterr().out
 
     assert "heating.dhw.temperature.main" in out
@@ -785,17 +826,9 @@ def test_discover_features_lists_properties_and_commands(capsys):
 
 def test_discover_yaml_is_valid_and_pasteable():
     """The generated block parses as part of a device entry."""
-    import contextlib
-    import io
-
-    import yaml
-
-    from phc.devices.viessmann import discover
-
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
-        discover.cmd_yaml(_discover_client(), _discover_args(),
-                          discover._Counter())
+        discover.cmd_yaml(_discover_client(), _discover_args())
 
     preamble = "devices:\n  - id: heatpump\n    module: viessmann\n"
     document = yaml.safe_load(preamble + buffer.getvalue())
@@ -819,11 +852,6 @@ def test_discover_yaml_is_valid_and_pasteable():
 
 def test_discover_yaml_skips_structured_properties():
     """A schedule cannot be one endpoint, so it is not offered as one."""
-    import contextlib
-    import io
-
-    from phc.devices.viessmann import discover
-
     service = _FakeService({"data": [
         _feature("heating.dhw.schedule",
                  {"entries": {"type": "Schedule",
@@ -832,8 +860,7 @@ def test_discover_yaml_skips_structured_properties():
     ]})
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
-        discover.cmd_yaml(_discover_client(service), _discover_args(),
-                          discover._Counter())
+        discover.cmd_yaml(_discover_client(service), _discover_args())
     out = buffer.getvalue()
 
     assert "property: entries" not in out
@@ -843,17 +870,11 @@ def test_discover_yaml_skips_structured_properties():
 
 def test_discover_filter_and_writable_only():
     """--filter and --writable-only narrow what is listed."""
-    import contextlib
-    import io
-
-    from phc.devices.viessmann import discover
-
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         discover.cmd_features(
             _discover_client(),
-            _discover_args(filter="heating.dhw.*", writable_only=True),
-            discover._Counter())
+            _discover_args(filter="heating.dhw.*", writable_only=True))
     out = buffer.getvalue()
 
     assert "heating.dhw.temperature.main" in out
@@ -863,8 +884,6 @@ def test_discover_filter_and_writable_only():
 
 def test_discover_reads_credentials_from_a_config(tmp_path):
     """--config picks up modules.viessmann rather than retyping them."""
-    from phc.devices.viessmann import discover
-
     config = tmp_path / "house.yaml"
     config.write_text("""
 modules:
@@ -882,14 +901,10 @@ modules:
 def test_discover_reads_credentials_behind_an_include(tmp_path):
     """--config must cope with the shape a real system config has.
 
-    Credentials belong in their own file, pulled in with `<<: !include`,
-    and a system config of any size splits itself across !include-d
-    fragments. Parsing with yaml.safe_load cannot read either tag, so it
-    failed on exactly the configs this option exists for -- it has to use
-    PHC's own loader.
+    Credentials behind `<<: !include`, devices behind `children: !include`.
+    yaml.safe_load reads neither tag, so it failed on exactly the configs
+    this option exists for.
     """
-    from phc.devices.viessmann import discover
-
     (tmp_path / "account.yaml").write_text("""
 email: someone@example.com
 password: secret
@@ -925,8 +940,6 @@ devices:
 
 def test_discover_reports_an_unreadable_config(tmp_path, capsys):
     """A broken config says so instead of failing obscurely later."""
-    from phc.devices.viessmann import discover
-
     config = tmp_path / "house.yaml"
     config.write_text("modules:\n  viessmann:\n    <<: !include nope.yaml\n",
                       encoding="utf-8")
@@ -935,10 +948,35 @@ def test_discover_reports_an_unreadable_config(tmp_path, capsys):
     assert "cannot read" in capsys.readouterr().err
 
 
+def test_discover_forces_utf8_output(monkeypatch):
+    """Output must survive a redirect on a cp1252 console.
+
+    The table and the generated YAML contain "°C". On Windows a redirected
+    stdout defaults to cp1252, which cannot encode it, so piping `yaml`
+    into a config file wrote a corrupted unit instead of failing -- main()
+    reconfigures both streams to UTF-8 to prevent that.
+    """
+    reconfigured = []
+
+    class _Stream:
+        encoding = "cp1252"
+
+        def reconfigure(self, **kwargs):
+            reconfigured.append(kwargs)
+
+    monkeypatch.setattr(discover.sys, "stdout", _Stream())
+    monkeypatch.setattr(discover.sys, "stderr", _Stream())
+    # No credentials, so it exits before any network use -- the stream
+    # reconfiguration happens first, which is what this checks.
+    with pytest.raises(SystemExit):
+        discover.main(["features"])
+
+    assert reconfigured, "stdout/stderr were never reconfigured"
+    assert all(k["encoding"] == "utf-8" for k in reconfigured)
+
+
 def test_discover_requires_credentials(capsys):
     """Running with nothing to log in with says what is missing."""
-    from phc.devices.viessmann import discover
-
     with pytest.raises(SystemExit):
         discover.main(["features"])
     assert "missing credential" in capsys.readouterr().err

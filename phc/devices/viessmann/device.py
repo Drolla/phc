@@ -1,18 +1,15 @@
 """ViessmannDevice: one device of a Viessmann heating installation.
 
-Read and written through Viessmann's ViCare cloud API, using the PyViCare
-library (https://github.com/openviess/PyViCare) for authentication and
-transport. One PHC device maps to one device of one gateway -- the heating
-system itself, the gateway, a room control -- with each endpoint naming a
-feature of it.
+Read and written over the ViCare cloud API via the PyViCare library
+(https://github.com/openviess/PyViCare). One PHC device maps to one device
+of one gateway -- the heating system itself, the gateway, a room control.
 
 PyViCare is synchronous, so this module implements the blocking
 receive()/transmit() pair rather than the async one every other
-network-backed module here uses, and PHC bridges it onto a worker thread
-(see phc.core.device.Device.fetch). The cost is that a call in flight is
-not cancellable the way a coroutine would be; with a five-minute poll and
-PyViCare's own request timeouts that is acceptable, and it buys not having
-to reimplement Viessmann's undocumented login flow -- which PyViCare
+network-backed module here uses, and PHC bridges it onto a worker thread.
+The cost is that a call in flight is not cancellable the way a coroutine
+would be; with a five-minute poll that is acceptable, and it buys not
+reimplementing Viessmann's undocumented login flow -- which PyViCare
 tracks, and Home Assistant's ViCare integration relies on.
 """
 
@@ -35,13 +32,10 @@ from phc.core.registry import register_module
 
 logger = logging.getLogger("phc.devices.viessmann")
 
-# Credentials are wrong, revoked, or the client id is not accepted: retrying
-# on the next poll cannot help, and each attempt costs an API call against a
-# quota whose penalty is a 24-hour block. So back off, doubling up to this
-# ceiling, while still reporting the device unhealthy on every poll.
 _BACKOFF_MAX = 3600.0
 
-# Errors that mean "stop trying until something changes".
+# Retrying these cannot help until something changes, and every attempt
+# spends an API call against a quota whose penalty is a 24-hour block.
 _PERMANENT_ERRORS = (
     PyViCareInvalidCredentialsError,
     PyViCareInvalidConfigurationError,
@@ -66,23 +60,22 @@ class _ViessmannState:
 
     The locks here are threading.Locks, NOT the asyncio.Locks every other
     shared-state module in this repo uses -- PyViCare is synchronous, so
-    this module's I/O runs on PHC's worker threads rather than on the event
-    loop, where an asyncio.Lock would be both wrong and silently
-    ineffective.
+    this module's I/O runs on PHC's worker threads, where an asyncio.Lock
+    would be both wrong and silently ineffective.
     """
 
     def __init__(self):
-        # (client_id, email) -> PyViCare, so devices of one account share
-        # one login rather than each holding their own token.
+        # Keyed by (client_id, email), so devices of one account share one
+        # login rather than each holding their own token.
         self.clients: dict[tuple[str, str], PyViCare] = {}
         self.client_lock = threading.Lock()
-        # (installation_id, gateway_serial) -> (fetched_at, {feature: entry}).
-        # Keyed by gateway, not device: one call returns every device's
-        # features, so devices on one gateway coalesce into a single fetch.
+        # (installation_id, gateway_serial) -> (fetched_at, payload). Keyed
+        # by gateway, not device: one call returns every device's features,
+        # so devices on one gateway coalesce into a single fetch.
         self.features_cache: dict[tuple[int, str], tuple[float, dict]] = {}
         self.features_locks: dict[tuple[int, str], threading.Lock] = {}
         self.cache_lock = threading.Lock()
-        # Set per account while it is in backoff after a permanent failure.
+        # Per account, while it is in backoff.
         self.failed_at: dict[tuple[str, str], float] = {}
         self.backoff: dict[tuple[str, str], float] = {}
         self.last_error: dict[tuple[str, str], str] = {}
@@ -101,10 +94,10 @@ class ViessmannDevice(Device):
     """One device of a Viessmann installation, polled over the ViCare API.
 
     Each endpoint names a feature and one of its properties to read, and
-    optionally a command to write. Both are resolved against whatever the
+    optionally a command to write. Both resolve against whatever the
     installation actually reports, so this module carries no per-product
-    knowledge -- and an endpoint naming a feature the installation does not
-    have simply reads unavailable.
+    knowledge, and an endpoint naming a feature it does not have simply
+    reads unavailable.
     """
 
     def setup(self):
@@ -138,9 +131,9 @@ class ViessmannDevice(Device):
 
         self._installation_id = self.params.get("installation_id")
         self._gateway_serial = self.params.get("gateway_serial")
+        # The .get() defaults mirror module.yaml, for a device built
+        # directly rather than through load_system() (tests, scripts).
         self._device_id = str(self.params.get("device_id", "0"))
-        # .get(..., default) mirrors module.yaml's declared default, for a
-        # device constructed directly rather than through load_system().
         self._cache_time = parse_duration(self.params.get("cache_time", "5m"))
 
         # Resolved once rather than per poll.
@@ -172,12 +165,16 @@ class ViessmannDevice(Device):
         }
 
     def _features(self) -> dict:
-        """Return {feature_name: entry} for this gateway, reusing it while fresh.
+        """Return {feature_name: entry} for THIS device, reusing it while fresh.
+
+        The cache holds the gateway's whole payload and each device filters
+        its own features out of it, so several devices of one gateway cost
+        a single call between them.
 
         Double-checked locking: the fast path outside the lock keeps
         uncontended polls cheap, and the re-check inside it means that when
-        several devices of one gateway come due in the same tick, exactly
-        one of them performs the fetch and the rest reuse its result.
+        several devices come due in the same tick, exactly one of them
+        performs the fetch and the rest reuse its result.
         """
         config = self._device_config()
         key = (config.accessor.id, config.accessor.serial)
@@ -185,22 +182,19 @@ class ViessmannDevice(Device):
         mono = time.monotonic()
         cached = self._state.features_cache.get(key)
         if cached is not None and (mono - cached[0]) < self._cache_time:
-            return cached[1]
+            return _by_feature(cached[1], self._device_id)
 
         with self._state.lock_for(key):
-            # Re-check: another device may have refreshed the cache while
-            # this one waited for the lock.
             mono = time.monotonic()
             cached = self._state.features_cache.get(key)
             if cached is not None and (mono - cached[0]) < self._cache_time:
-                return cached[1]
+                return _by_feature(cached[1], self._device_id)
             payload = config.service.fetch_all_features(config.accessor)
-            features = _by_feature(payload)
             # Only a successful fetch reaches here, so a failure never
             # populates the cache and the next poll retries instead of
             # serving an error for a whole cache_time.
-            self._state.features_cache[key] = (mono, features)
-            return features
+            self._state.features_cache[key] = (mono, payload)
+            return _by_feature(payload, self._device_id)
 
     # ---------------------------------------------------------------- writes
 
@@ -231,8 +225,7 @@ class ViessmannDevice(Device):
             wrote = True
 
         if wrote:
-            # Drop the cached features so the next poll reads back what the
-            # installation actually accepted -- a value it clamped or
+            # Re-read on the next poll: a value the installation clamped or
             # ignored would otherwise look applied until cache_time expired.
             self._state.features_cache.pop(
                 (config.accessor.id, config.accessor.serial), None)
@@ -273,9 +266,9 @@ class ViessmannDevice(Device):
     def _client(self) -> PyViCare:
         """Return the shared PyViCare client for this account, logging in once.
 
-        Held per account rather than per device so several devices of one
-        installation share a login -- PyViCare renews its token by logging
-        in again, so a client per device would multiply that.
+        Held per account rather than per device because PyViCare renews its
+        token by logging in again, so a client per device would multiply
+        that.
         """
         state = self._state
         with state.client_lock:
@@ -286,9 +279,8 @@ class ViessmannDevice(Device):
             # One bulk call per gateway serves every device on it, instead
             # of one call per device per poll.
             client.loadViaGateway(True)
-            # PyViCare's own response cache would sit on top of this
-            # module's, two lifetimes to reason about against one quota.
-            # This module owns caching, via cache_time.
+            # 0 disables PyViCare's own cache: stacking it on this module's
+            # would mean two lifetimes to reason about against one quota.
             client.setCacheDuration(0)
             client.initWithCredentials(
                 self._email, self._password, self._client_id, self._token_file)
@@ -311,8 +303,6 @@ class ViessmannDevice(Device):
         if failed_at is None:
             return
         if (time.monotonic() - failed_at) < state.backoff.get(self._account, 0.0):
-            # Still report unhealthy on every poll, but without spending a
-            # call on an attempt that cannot succeed yet.
             raise ViessmannBackoffError(state.last_error[self._account])
 
     def _report(self, exc: Exception, prefix: str = "") -> None:
@@ -333,8 +323,7 @@ class ViessmannDevice(Device):
                 f"`python -m phc.devices.viessmann.discover login`")
             self._arm_backoff(message)
         else:
-            # Transient (server error, transport) or a config mistake: just
-            # report it, and let the next poll try again.
+            # Transient, or a config mistake: the next poll tries again.
             message = f"{type(exc).__name__}: {exc}"
         self.report_failure(f"{prefix}{message}")
 
@@ -350,14 +339,21 @@ class ViessmannDevice(Device):
         state.clients.pop(self._account, None)
 
 
-def _by_feature(payload) -> dict:
-    """Index a features response by feature name.
+def _by_feature(payload, device_id=None) -> dict:
+    """Index one device's features from a response, by feature name.
 
-    PyViCare's via-gateway fetch returns every device of the gateway in one
-    payload, so this is the gateway's whole set -- which is what the cache
-    holds and what sibling devices share.
+    PyViCare's via-gateway fetch returns EVERY device of the gateway in one
+    payload -- that is what makes sibling devices cheap, but it means the
+    entries must be filtered per device, or a gateway would appear to
+    report the heat pump's features. Each entry names its device in its own
+    `uri`, as PyViCare's own filter_features_for_device matches on.
+
+    device_id None returns the whole payload.
     """
     entries = (payload or {}).get("data") or []
+    if device_id is not None:
+        segment = f"/devices/{device_id}/"
+        entries = [e for e in entries if segment in e.get("uri", "")]
     return {entry["feature"]: entry for entry in entries if "feature" in entry}
 
 
@@ -366,14 +362,12 @@ def _extract(features: dict | None, feature_name, property_name):
 
     None whenever the value is unavailable: a failed fetch, a feature this
     installation does not report, a feature reported but switched off, or a
-    property that is not one of that feature's. PHC renders None as
-    unavailable rather than as a value, so a mistyped feature or property
-    reads blank instead of silently wrong.
+    property that is not one of that feature's -- so a mistyped feature or
+    property reads blank rather than silently wrong.
 
     isEnabled is honoured because a disabled feature may still carry a
-    value that means nothing (of one room control's 458 features, 445 are
-    disabled). isReady is deliberately not: it describes the device's
-    commissioning state, not whether this reading is good.
+    value that means nothing. isReady is deliberately not: it describes the
+    device's commissioning state, not whether this reading is good.
     """
     if features is None or not feature_name:
         return None
@@ -390,10 +384,10 @@ def _command_data(features, feature_name, command, param, extras, value) -> dict
     """Build one command's request body, resolving its parameter name.
 
     The command's declared parameters come from the installation's own
-    response rather than from a table in this module, so a command this
-    module has never seen still works: an endpoint naming a single-parameter
-    command needs no `param:`, while one naming a command that sets several
-    values at once must say which of them it writes.
+    response rather than from a table here, so a command this module has
+    never seen still works: an endpoint naming a single-parameter command
+    needs no `param:`, while one naming a command that sets several values
+    at once must say which of them it writes.
     """
     feature = (features or {}).get(feature_name)
     if feature is None:

@@ -8,19 +8,17 @@ entirely on the hardware, so this is how to find out what to put in
 
     python -m phc.devices.viessmann.discover --config house.yaml login
     python -m phc.devices.viessmann.discover --config house.yaml topology
-    python -m phc.devices.viessmann.discover --config house.yaml features
     python -m phc.devices.viessmann.discover --config house.yaml features \
         --device 0 --filter "heating.dhw.*"
     python -m phc.devices.viessmann.discover --config house.yaml yaml \
         --device 0 --filter "heating.dhw.*"
 
-Credentials come either from a PHC config file's `modules.viessmann:`
-section (--config) or from --email/--password/--client-id.
+Credentials come from a PHC config's `modules.viessmann:` section
+(--config) or from --email/--password/--client-id.
 
-Mind the quota: the free API tier allows 120 calls per 10 minutes and 1450
-per day, and exceeding either blocks the account for 24 hours. Every run
-prints how many calls it made. `login` makes none -- it only authenticates
--- so it is the safe one to repeat while sorting out credentials.
+Mind the quota: 120 calls per 10 minutes and 1450 per day, and exceeding
+either blocks the account for 24 hours. Every run prints what it cost;
+`login` costs nothing, so it is the safe one to repeat.
 """
 
 import argparse
@@ -61,13 +59,13 @@ UNITS = {
 
 
 class _Counter:
-    """Counts the API calls one run makes, so a run's cost is visible."""
+    """Counts the API calls one run makes, so its cost against the quota
+    is visible."""
 
     def __init__(self):
         self.calls = 0
 
     def wrap(self, oauth_manager):
-        """Count every GET the PyViCare client performs."""
         original = oauth_manager.get
 
         def counting_get(url):
@@ -79,21 +77,21 @@ class _Counter:
 
 
 def connect(args, counter):
-    """Log in and return a PyViCare client with its devices loaded."""
+    """Log in and return a PyViCare client with its devices loaded.
+
+    PyViCare's cache is left on here, unlike in the module, so listing
+    every device of a gateway costs one call rather than one per device.
+    A run is short-lived, so there is no staleness to manage.
+    """
     client = PyViCare()
     client.loadViaGateway(True)
-    client.setCacheDuration(0)
-    manager_holder = {}
+    client.setCacheDuration(600)
 
-    # Count calls by wrapping the oauth manager the moment it is built,
-    # before __loadInstallations spends its first call.
+    # Wrap the oauth manager as it is built, before loading installations
+    # spends the first call.
     original_init = client.initWithExternalOAuth
-
-    def init(manager):
-        manager_holder["manager"] = counter.wrap(manager)
-        return original_init(manager)
-
-    client.initWithExternalOAuth = init
+    client.initWithExternalOAuth = lambda manager: original_init(
+        counter.wrap(manager))
     client.initWithCredentials(
         args.email, args.password, args.client_id, args.token_file)
     return client
@@ -105,7 +103,7 @@ def devices_of(client, only=None):
             if only is None or str(d.device_id) == str(only)]
 
 
-def cmd_login(client, args, counter) -> int:
+def cmd_login(client, args) -> int:
     """Confirm the credentials work. Makes no feature calls."""
     print("Login succeeded.")
     print(f"{len(client.all_devices)} device(s) visible on this account.")
@@ -114,7 +112,7 @@ def cmd_login(client, args, counter) -> int:
     return 0
 
 
-def cmd_topology(client, args, counter) -> int:
+def cmd_topology(client, args) -> int:
     """Print the installation/gateway/device ids a config needs."""
     if args.raw:
         print(json.dumps([{
@@ -144,10 +142,9 @@ def cmd_topology(client, args, counter) -> int:
 def _properties_of(entry):
     """Yield one (name, property) pair per scalar property of a feature.
 
-    Properties holding a structure -- a heating schedule's week of time
-    slots, say -- are skipped: a PHC endpoint holds one scalar, so these
-    cannot be expressed as one and would render as unreadable text. The
-    feature still appears if it has scalar properties alongside them.
+    Structured values -- a heating schedule's week of time slots, say --
+    are skipped, since a PHC endpoint holds one scalar. The feature still
+    appears if it has scalar properties alongside them.
     """
     for name, prop in (entry.get("properties") or {}).items():
         if not isinstance(prop, dict) or "value" not in prop:
@@ -182,13 +179,13 @@ def _constraint_text(spec):
 
 
 def _writer_for(entry, property_name):
-    """Return the command that plausibly writes this property, or None.
+    """Return (command, spec, param) that plausibly writes this property.
 
-    A property is writable when an executable command takes a parameter of
-    the same name, or when the feature has exactly one executable command
-    taking exactly one parameter. Anything less obvious is reported
-    read-only with its commands still listed, so the reader can see what
-    exists without this guessing on their behalf.
+    A property counts as writable when an executable command takes a
+    parameter of the same name, or when the feature has exactly one
+    executable command taking one parameter. Anything less clear-cut is
+    reported read-only with its commands still listed, so the reader can
+    wire it by hand rather than trust a guess.
     """
     executable = [(name, spec) for name, spec in _commands_of(entry)
                   if spec.get("isExecutable")]
@@ -220,11 +217,12 @@ def _rows(features, pattern, writable_only, include_disabled):
     return rows
 
 
-def cmd_features(client, args, counter) -> int:
+def cmd_features(client, args) -> int:
     """Print every feature and property, with how to write it."""
     for device in devices_of(client, args.device):
         features = _by_feature(
-            device.service.fetch_all_features(device.accessor))
+            device.service.fetch_all_features(device.accessor),
+            device.device_id)
         if args.raw:
             print(json.dumps(list(features.values()), indent=2))
             continue
@@ -255,14 +253,13 @@ def cmd_features(client, args, counter) -> int:
             shown = name if len(name) <= width else name[:width - 1] + "…"
             print(f"{shown:<{width}} {prop_name:<14} {value:<14} "
                   f"{unit:<6} {flag:<3} {commands}{disabled}")
-        print(f"\n{len(rows)} row(s) shown.")
     return 0
 
 
 def _key_for(feature_name, prop_name):
     """Derive a readable endpoint key from a feature and property name."""
     parts = [p for p in feature_name.split(".") if p != "heating"]
-    if prop_name not in ("value",):
+    if prop_name != "value":
         parts.append(prop_name)
     key = "_".join(parts)
     # Camel case to snake, and nothing but lowercase/digits/underscore.
@@ -300,22 +297,22 @@ def _yaml_type(prop, writer):
     return "str", unit, {}
 
 
-def cmd_yaml(client, args, counter) -> int:
+def cmd_yaml(client, args) -> int:
     """Emit endpoint definitions to paste into a PHC config."""
     for device in devices_of(client, args.device):
         features = _by_feature(
-            device.service.fetch_all_features(device.accessor))
+            device.service.fetch_all_features(device.accessor),
+            device.device_id)
         rows = _rows(features, args.filter, args.writable_only,
                      args.include_disabled)
 
         print(f"# Generated for installation {device.accessor.id}, gateway "
               f"{device.accessor.serial}, device {device.device_id} "
               f"({device.device_model}).")
-        print("# Paste under a device entry's `endpoints:`. Delete what you "
-              "do not want,")
-        print("# shorten the keys, and replace the descriptions with your "
-              "own wording --")
-        print("# they are what the web UI shows.")
+        print("# Paste under a device entry's `endpoints:`. Delete what you do"
+              " not want, shorten")
+        print("# the keys, and reword the descriptions -- they are what the "
+              "web UI shows.")
         if not rows:
             print("# (nothing matched)")
             continue
@@ -364,15 +361,13 @@ COMMANDS = {
 def credentials_from_config(path):
     """Read `modules.viessmann:` out of a PHC system config.
 
-    Parsed with PHC's own loader rather than yaml.safe_load, because a real
-    system config puts its credentials behind `<<: !include` and splits
-    itself across !include-d files -- safe_load cannot read those tags at
-    all, so it failed on exactly the configs this option exists for.
+    Parsed with PHC's own loader, not yaml.safe_load: a real system config
+    puts its credentials behind `<<: !include` and splits itself across
+    !include-d files, and safe_load cannot read those tags at all.
 
-    A credential still left as `!placeholder` parses to its example text,
-    which is not a usable password; the login then fails with the API's own
-    message. That is the same outcome as a wrong password and needs no
-    special handling here.
+    A credential left as `!placeholder` parses to its example text, which
+    is not a usable password -- the login then fails the same way a wrong
+    one would, so it needs no handling here.
     """
     import yaml
 
@@ -380,9 +375,6 @@ def credentials_from_config(path):
         from phc.core.config.yamlio import _include_stack, _IncludeLoader
         from phc.core.errors import ConfigError
     except ImportError:
-        # Run as a plain script from a directory where phc is not
-        # importable: fall back to safe_load, which cannot resolve
-        # !include, and say so rather than failing obscurely.
         print(f"cannot read {path}: PHC is not importable here, so !include "
               f"cannot be resolved -- run this as "
               f"`python -m phc.devices.viessmann.discover` from the repo "
@@ -428,6 +420,13 @@ def main(argv=None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
+    # Units and the emitted YAML contain non-ASCII ("°C"), and a redirected
+    # stdout defaults to cp1252 on Windows: piping `yaml` into a config
+    # file wrote a corrupted unit rather than failing.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.WARNING,
         format="%(levelname)s %(name)s %(message)s")
@@ -447,7 +446,7 @@ def main(argv=None) -> int:
     counter = _Counter()
     try:
         client = connect(args, counter)
-        result = COMMANDS[args.command](client, args, counter)
+        result = COMMANDS[args.command](client, args)
     except (PyViCareInvalidCredentialsError,
             PyViCareInvalidConfigurationError) as exc:
         print(f"login failed: {type(exc).__name__}: {exc}", file=sys.stderr)
