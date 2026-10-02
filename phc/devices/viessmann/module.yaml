@@ -122,6 +122,7 @@ endpoint_profiles:
   outside_temperature:
     type: float
     unit: "°C"
+    name: Outside Temperature
     description: Outdoor air temperature measured by the heating system
     feature: heating.sensors.temperature.outside
     property: value
@@ -129,6 +130,7 @@ endpoint_profiles:
   dhw_temperature:
     type: float
     unit: "°C"
+    name: Hot Water Temperature
     description: Current hot water temperature in the cylinder
     feature: heating.dhw.sensors.temperature.dhwCylinder
     property: value
@@ -140,6 +142,7 @@ endpoint_profiles:
     min: 10
     max: 60
     on_invalid: reject
+    name: Hot Water Target Temperature
     description: Hot water temperature the system heats the cylinder to
     feature: heating.dhw.temperature.main
     property: value
@@ -149,6 +152,7 @@ endpoint_profiles:
   supply_temperature:
     type: float
     unit: "°C"
+    name: Supply Temperature
     description: Water temperature leaving the heating system
     feature: heating.secondaryCircuit.sensors.temperature.supply
     property: value
@@ -156,6 +160,7 @@ endpoint_profiles:
   return_temperature:
     type: float
     unit: "°C"
+    name: Return Temperature
     description: Water temperature returning to the heating system
     feature: heating.sensors.temperature.return
     property: value
@@ -163,6 +168,7 @@ endpoint_profiles:
   compressor_active:
     type: bool
     values: { false: "off", true: "on" }
+    name: Compressor Active
     description: Whether the compressor is currently running
     feature: heating.compressors.0
     property: active
@@ -171,6 +177,7 @@ endpoint_profiles:
     # A string rather than a bool: the API reports words like "heating" or
     # "defrost", and anything non-empty would read as true.
     type: str
+    name: Compressor Phase
     description: What the compressor is doing, e.g. heating or defrost
     feature: heating.compressors.0
     property: phase
@@ -178,18 +185,21 @@ endpoint_profiles:
   compressor_hours:
     type: float
     unit: "h"
+    name: Compressor Hours
     description: Hours the compressor has run since installation
     feature: heating.compressors.0.statistics
     property: hours
 
   compressor_starts:
     type: int
+    name: Compressor Starts
     description: Times the compressor has started since installation
     feature: heating.compressors.0.statistics
     property: starts
 
   cop:
     type: float
+    name: COP
     description: >
       Coefficient of performance -- heat delivered per unit of electricity
     feature: heating.cop.total
@@ -198,6 +208,7 @@ endpoint_profiles:
   wifi_strength:
     type: int
     unit: dBm
+    name: WiFi Strength
     description: WiFi signal strength at the heating system's gateway
     feature: tcu.wifi
     property: strength

@@ -70,6 +70,7 @@
       min: 10
       max: 30
       on_invalid: reject
+      name: Room Target Temperature
       description: Room temperature the heating circuit aims for
       feature: heating.circuits.2.operating.programs.normal
       property: temperature
@@ -84,6 +85,7 @@
       min: 10
       max: 30
       on_invalid: reject
+      name: Reduced Target Temperature
       description: Room temperature during the circuit's reduced periods
       feature: heating.circuits.2.operating.programs.reduced
       property: temperature
@@ -94,6 +96,7 @@
       readable: true
       writable: true
       type: str
+      name: Operating Mode
       description: >
         Whether the circuit heats rooms and water, only water, or nothing
       feature: heating.circuits.2.operating.modes.active
@@ -105,6 +108,7 @@
       writable: false
       type: float
       unit: "°C"
+      name: Circuit Supply Temperature
       description: Water temperature flowing into the heating circuit
       feature: heating.circuits.2.sensors.temperature.supply
       property: value
@@ -115,6 +119,7 @@
       # A string, not a bool: the API reports "on"/"off" as text, and
       # bool("off") would be true.
       type: str
+      name: Circulation Pump
       description: Whether the circuit's circulation pump is running
       feature: heating.circuits.2.circulation.pump
       property: status
@@ -126,6 +131,7 @@
       min: 0
       max: 3.5
       on_invalid: reject
+      name: Heating Curve Slope
       description: >
         Steepness of the heating curve -- how much hotter the water gets as
         it grows colder outside
@@ -142,6 +148,7 @@
       readable: true
       writable: false
       type: float
+      name: Heating Curve Shift
       description: Parallel offset of the heating curve
       feature: heating.circuits.2.heating.curve
       property: shift
@@ -151,6 +158,7 @@
       writable: true
       type: bool
       values: { false: "off", true: "on" }
+      name: One-Time Charge
       description: Heat the hot water cylinder once, outside its schedule
       feature: heating.dhw.oneTimeCharge
       property: active
