@@ -123,6 +123,11 @@ safe one to repeat while sorting out credentials.
 Credentials come from `--config <your config>.yaml` (read out of its
 `modules.viessmann:` section) or from `--email`/`--password`/`--client-id`.
 
+For the raw API `discover.py` and this module sit on top of — the same
+`installationId`/`gatewaySerial`/`deviceId` lookup, feature/command JSON
+shape, and terms used throughout this doc — see Viessmann's own
+[IoT API overview](https://api.viessmann-climatesolutions.com/documentation/static/iot-overview).
+
 
 ## Naming a Feature
 
