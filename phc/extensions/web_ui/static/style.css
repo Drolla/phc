@@ -102,11 +102,72 @@ header .nav-link:hover:not(.active) {
   border-radius: var(--bs-border-radius);
   background: var(--widget-bg);
   min-width: 0;
+  /* Containing block for .widget-info's balloon: anchored to the row, not
+     the marker, it can never be wider than the card it sits in. */
+  position: relative;
 }
 
 .widget-label {
   font-weight: 600;
   font-size: 0.875rem;
+}
+
+/* The "i" marker revealing an endpoint's description (see render_widget). */
+.widget-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1px solid var(--bs-primary-border-subtle);
+  border-radius: 50%;
+  color: var(--bs-primary-text-emphasis);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+}
+
+/* The same ring the form controls use, see .form-control:focus below. */
+.widget-info:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.2rem rgba(13, 148, 136, 0.25);
+}
+
+/* pointer-events:none: the open balloon overlays the row below it and must
+   not swallow a click meant for that row's control. */
+.widget-info::after {
+  content: attr(data-description);
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.2rem;
+  z-index: 10;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.15);
+  font-size: 0.8rem;
+  font-weight: 400;
+  font-style: normal;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease-in-out;
+}
+
+.widget-info:hover::after,
+.widget-info:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Bootstrap's form-control/form-select/form-range classes set width:100%,

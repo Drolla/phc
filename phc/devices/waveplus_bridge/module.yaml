@@ -74,6 +74,7 @@ endpoints:
     writable: false
     type: int
     unit: "Bq/m3"
+    name: Radon (24h avg)
     description: Radon avg, short-term (24h)
     field: radon_st
   - key: radon_lt
@@ -81,6 +82,7 @@ endpoints:
     writable: false
     type: int
     unit: "Bq/m3"
+    name: Radon (1y avg)
     description: Radon avg, long-term (1 year)
     field: radon_lt
   - key: co2
@@ -95,5 +97,6 @@ endpoints:
     writable: false
     type: float
     unit: ppb
+    name: TVOC
     description: Total volatile organic compounds (TVOC)
     field: voc

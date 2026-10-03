@@ -40,10 +40,13 @@ def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | No
     caller holding a bare Endpoint can still describe it; such a widget
     reports healthy, since it has nothing to say otherwise."""
     healthy = device.health.healthy if device is not None else True
+    label = endpoint.name or endpoint.description or endpoint.key
     return {
         "device": qualified_id,
         "endpoint": endpoint.key,
-        "label": endpoint.name or endpoint.description or endpoint.key,
+        "label": label,
+        # Blank unless it adds something beyond `label`
+        "description": endpoint.description if endpoint.description != label else "",
         "widget": infer_widget_kind(endpoint),
         "value": endpoint.get(),
         "text": endpoint.to_text(),
