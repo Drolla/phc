@@ -74,6 +74,8 @@ def test_describe_endpoint_shape():
         "device": "house.lamp",
         "endpoint": "brightness",
         "label": "Brightness",
+        # No `name`, so the description is already the label -- blanked.
+        "description": "",
         "widget": "slider",
         "value": 42,
         "text": "42 %",
@@ -108,6 +110,36 @@ def test_describe_endpoint_label_prefers_name_over_description():
     ep = Endpoint("sw1", name="Corridor Light", description="Relay 1 of a double switch")
     described = describe_endpoint("d", ep)
     assert described["label"] == "Corridor Light"
+
+
+# `description` non-empty is what makes the UI render an "i" marker.
+
+def test_describe_endpoint_exposes_description_alongside_a_differing_name():
+    ep = Endpoint("sw1", name="Corridor Light", description="Relay 1 of a double switch")
+    described = describe_endpoint("d", ep)
+    assert described["description"] == "Relay 1 of a double switch"
+
+
+def test_describe_endpoint_suppresses_description_that_is_the_label():
+    """No `name`, so the description is already displayed as the label."""
+    ep = Endpoint("brightness", description="Brightness")
+    described = describe_endpoint("d", ep)
+    assert described["label"] == "Brightness"
+    assert described["description"] == ""
+
+
+def test_describe_endpoint_suppresses_description_identical_to_name():
+    ep = Endpoint("sw1", name="Corridor Light", description="Corridor Light")
+    described = describe_endpoint("d", ep)
+    assert described["label"] == "Corridor Light"
+    assert described["description"] == ""
+
+
+def test_describe_endpoint_suppresses_description_when_unset():
+    ep = Endpoint("state")
+    described = describe_endpoint("d", ep)
+    assert described["label"] == "state"
+    assert described["description"] == ""
 
 
 # ---------- describe_device pruning ----------

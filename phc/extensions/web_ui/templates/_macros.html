@@ -29,6 +29,13 @@
      hx-trigger="every {{ refresh_interval }}s [document.activeElement.closest('.widget')!==this && (!this.closest('details') || this.closest('details').open)]"
      hx-swap="outerHTML">
   <span class="widget-label">{{ ep.label }}</span>
+  {%- if ep.description %}
+  {# tabindex is what gives touch devices a reveal: a tap focuses the span,
+     so :focus-visible opens the balloon that :hover opens on a pointer. #}
+  <span class="widget-info" tabindex="0" role="note"
+        aria-label="{{ ep.description }}"
+        data-description="{{ ep.description }}">i</span>
+  {%- endif %}
   {%- if not ep.healthy %}
   {# The device stopped answering: the value below is the last one it
      reported, not a current reading. #}
