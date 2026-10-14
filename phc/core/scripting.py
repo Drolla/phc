@@ -214,7 +214,7 @@ class EndpointRef:
     since `devices` is rebuilt fresh every tick.
 
     `subscriber_id` (typically the owning task's tag) backs `.sticky`, which
-    forwards to Endpoint.get_log_value() -- see phc.core.endpoint's sticky log
+    forwards to Endpoint.get_sticky_value() -- see phc.core.endpoint's sticky
     value methods and phc.core.task's sticky-subscription wiring."""
 
     def __init__(self, device_id: str, endpoint_key: str, devices: dict, subscriber_id: str | None = None):
@@ -244,7 +244,7 @@ class EndpointRef:
 
     @property
     def sticky(self):
-        return self._endpoint().get_log_value(self._subscriber_id)
+        return self._endpoint().get_sticky_value(self._subscriber_id)
 
     @property
     def available(self) -> bool:

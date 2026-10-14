@@ -98,7 +98,7 @@ def _load_extensions(raw: dict, flat: dict[str, Device],
     params are merged against its extension.yaml, then handed to that
     package's configure(params, flat, instance_key, extensions_registry)
     entry point, where instance_key = "<extension_name>.<instance_name>"
-    (also the sticky-log subscriber id, see Endpoint.subscribe_log).
+    (also the sticky-value subscriber id, see Endpoint.subscribe_sticky).
 
     `extensions_registry` is this same `registry` dict, passed by
     reference and still growing as later instances are configured -- an

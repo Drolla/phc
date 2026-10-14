@@ -760,8 +760,8 @@ def test_expr_condition_reads_sticky_value():
     light.update_state()
     devices = {"living_light": light}
     endpoint = light.endpoint("state")
-    endpoint.subscribe_log("report")
-    endpoint.update_log_value()
+    endpoint.subscribe_sticky("report")
+    endpoint.update_sticky_value()
     compiled = compile_expression("s.sticky == 'off'")
     condition = ExprCondition(compiled=compiled, refs={"s": "living_light.state"},
                                task_tag="report", flat=devices)
@@ -809,13 +809,13 @@ def test_script_action_reset_sticky():
     light = _light("off")
     devices = {"living_light": light}
     endpoint = light.endpoint("state")
-    endpoint.subscribe_log("t")
-    endpoint.update_log_value()
-    assert endpoint.get_log_value("t") == "off"
+    endpoint.subscribe_sticky("t")
+    endpoint.update_sticky_value()
+    assert endpoint.get_sticky_value("t") == "off"
 
     action = ScriptAction(code="reset_sticky('living_light.state')", task_tag="t", flat=devices, tasks=[])
     action.perform(devices)
-    assert endpoint.get_log_value("t") is None
+    assert endpoint.get_sticky_value("t") is None
 
 
 def test_script_action_if_and_for_over_devices_selector(task_log):

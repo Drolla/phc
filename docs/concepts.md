@@ -106,6 +106,12 @@ through unchanged. An endpoint definition may opt into:
   `expr:` — see [Value history & fractiles](scripting.md#value-history--fractiles).
   Not the same thing as [`phc/extensions/logdb`](logdb.md)'s long-term,
   disk-backed history used for graphing.
+- `aggregation` — `max` (the default) or `min`: how to collapse several
+  observations into one when sampling is slower than the value changes.
+  `max` keeps brief pulses from being lost. Used by
+  [`phc/extensions/logdb`](logdb.md), `sticky()` (see
+  [Sticky values](scripting.md#sticky-values)), and
+  [web UI](web-ui.md#binary-series) graphs.
 
 Given these, `Endpoint.to_text()`/`from_text()` (and the matching
 `Device.get_text()`/`set_text()`) are the standard way to format a raw

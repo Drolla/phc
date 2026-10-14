@@ -435,7 +435,7 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
     state("house.motion1.state") form.
 
     `sticky`/`reset_sticky` are keyed by `task_tag` as the
-    Endpoint.subscribe_log() subscriber id."""
+    Endpoint.subscribe_sticky() subscriber id."""
 
     def _ref(ref: str) -> scripting.EndpointRef:
         device_id, endpoint_key = resolve_endpoint_ref(ref)
@@ -466,7 +466,7 @@ def _build_rule_namespace(*, devices: dict[str, Device], flat: dict[str, Device]
 
     def _reset_sticky(ref: str) -> None:
         device_id, endpoint_key = resolve_endpoint_ref(ref)
-        devices[device_id].endpoint(endpoint_key).invalidate_log_value(task_tag)
+        devices[device_id].endpoint(endpoint_key).invalidate_sticky_value(task_tag)
 
     namespace.update({
         "set_state": _set_state,

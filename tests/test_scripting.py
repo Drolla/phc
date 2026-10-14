@@ -180,12 +180,12 @@ def test_endpoint_ref_text_and_event():
     assert ref.event == 1
 
 
-def test_endpoint_ref_sticky_reads_log_value_for_subscriber():
+def test_endpoint_ref_sticky_reads_sticky_value_for_subscriber():
     light = _light("off")
     devices = {"living_light": light}
     endpoint = light.endpoint("state")
-    endpoint.subscribe_log("task:report")
-    endpoint.update_log_value()
+    endpoint.subscribe_sticky("task:report")
+    endpoint.update_sticky_value()
     ref = EndpointRef("living_light", "state", devices, subscriber_id="task:report")
     assert ref.sticky == "off"
 

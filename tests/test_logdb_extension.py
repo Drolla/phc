@@ -49,16 +49,16 @@ def test_configure_subscribes_resolved_endpoints_and_builds_store(tmp_path):
 
     assert instance.pairs == [("house.desk_lamp", "brightness"), ("house.desk_lamp", "power")]
     lamp = flat["house.desk_lamp"]
-    assert lamp.endpoint("power").get_log_value("logdb.house_log") is None
+    assert lamp.endpoint("power").get_sticky_value("logdb.house_log") is None
     _commit(lamp, "power", 1)
     instance.on_tick({"house.desk_lamp": lamp})
-    assert lamp.endpoint("power").get_log_value("logdb.house_log") == 1
+    assert lamp.endpoint("power").get_sticky_value("logdb.house_log") == 1
     instance.store.close()
 
 
 # ---------- LogDbInstance.on_tick / sample ----------
 
-def test_on_tick_advances_sticky_value_per_log_aggregation(tmp_path):
+def test_on_tick_advances_sticky_value_per_aggregation(tmp_path):
     flat = _house()
     params = {
         "selectors": ["house.desk_lamp/power"],
@@ -78,7 +78,7 @@ def test_on_tick_advances_sticky_value_per_log_aggregation(tmp_path):
     _commit(lamp, "power", 2)
     instance.on_tick(flat)
 
-    assert lamp.endpoint("power").get_log_value("logdb.house_log") == 7
+    assert lamp.endpoint("power").get_sticky_value("logdb.house_log") == 7
     instance.store.close()
 
 
@@ -104,7 +104,7 @@ def test_sample_reads_sticky_value_and_invalidates(tmp_path):
     assert len(instance.store) == 1
     row = instance.store.get_range(0, float("inf"))[0]
     assert row["house.desk_lamp/power"] == 9.0
-    assert lamp.endpoint("power").get_log_value("logdb.house_log") is None
+    assert lamp.endpoint("power").get_sticky_value("logdb.house_log") is None
     instance.store.close()
 
 

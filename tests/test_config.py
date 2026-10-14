@@ -223,28 +223,36 @@ def test_resolve_module_config_ignores_unrelated_modules_config_when_no_module_s
     assert config.device_param_defaults == {}
 
 
-def test_merge_endpoints_defaults_log_aggregation_to_max():
+def test_merge_endpoints_defaults_aggregation_to_max():
     module = ModuleDescriptor("m", {
         "endpoints": [{"key": "state"}],
     })
     endpoints, _ = _merge_endpoints(module, [], "dev", {})
-    assert endpoints[0].log_aggregation == "max"
+    assert endpoints[0].aggregation == "max"
 
 
-def test_merge_endpoints_accepts_explicit_log_aggregation():
+def test_merge_endpoints_accepts_explicit_aggregation():
     module = ModuleDescriptor("m", {
-        "endpoints": [{"key": "state", "log_aggregation": "min"}],
+        "endpoints": [{"key": "state", "aggregation": "min"}],
     })
     endpoints, _ = _merge_endpoints(module, [], "dev", {})
-    assert endpoints[0].log_aggregation == "min"
+    assert endpoints[0].aggregation == "min"
 
 
-def test_merge_endpoints_rejects_invalid_log_aggregation():
+def test_merge_endpoints_rejects_invalid_aggregation():
     module = ModuleDescriptor("m", {
-        "endpoints": [{"key": "state", "log_aggregation": "bogus"}],
+        "endpoints": [{"key": "state", "aggregation": "bogus"}],
     })
     with pytest.raises(ConfigError):
         _merge_endpoints(module, [], "dev", {})
+
+
+def test_merge_endpoints_rejects_old_log_aggregation_key_spelling():
+    # Renamed from log_aggregation: to aggregation:; old spelling must error,
+    # not be silently ignored.
+    module = ModuleDescriptor("m", {"endpoints": []})
+    with pytest.raises(ConfigError):
+        _merge_endpoints(module, [{"key": "state", "log_aggregation": "min"}], "dev", {})
 
 
 def test_merge_endpoints_static_module_with_instance_default_override():
@@ -451,9 +459,9 @@ def test_substitute_endpoint_spec_substitutes_fields_outside_params():
 
 
 def test_substitute_endpoint_spec_leaves_excluded_fields_untouched():
-    # key/kind/type/log_aggregation/device_profile/endpoint_profile are
+    # key/kind/type/aggregation/device_profile/endpoint_profile are
     # structural metadata, never templated, even if string-valued.
-    spec = {"key": "{node}", "kind": "generic", "type": "float", "log_aggregation": "max"}
+    spec = {"key": "{node}", "kind": "generic", "type": "float", "aggregation": "max"}
     substituted = _substitute_endpoint_spec(spec, {}, "dev")
     assert substituted["key"] == "{node}"
     assert substituted["kind"] == "generic"
