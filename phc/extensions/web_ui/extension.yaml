@@ -63,7 +63,8 @@ parameters:
       A `kind: graph` panel renders a time-series chart (Dygraphs) over one
       or more endpoints' logged history, backed by a named
       extensions.logdb instance: {kind: graph, id, logdb_instance,
-      selectors, title, unit, window, decimation}. `id` (required) must be
+      selectors, title, unit, window, decimation, binary_lanes}.
+      `id` (required) must be
       unique across every graph panel in this web_ui instance -- it
       addresses the panel's own GET /api/graph/{id} data route. `selectors`
       (required, same "<device-glob>/<endpoint-glob>" syntax as
@@ -80,6 +81,11 @@ parameters:
       samples older than a tier's `older_than` duration are averaged in
       groups of `factor`, bounding how much history data is shipped to the
       browser; omitted or empty means no decimation.
+
+      `type: bool` endpoints are drawn as their own stacked on/off lane,
+      with numeric series moved to a right-hand axis, so switches and
+      sensors neither overlap each other nor vanish under an unrelated
+      magnitude. `binary_lanes` (true/false) overrides this per panel.
 
       A `kind: timers` panel renders a create/edit/delete UI for user
       timers, backed by a named extensions.timer instance: {kind: timers,

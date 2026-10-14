@@ -22,6 +22,7 @@ from phc.core.device import Device
 from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.selectors import resolve_selectors
+from phc.extensions.web_ui.widgets import infer_series_kind
 
 logger = logging.getLogger("phc.web_ui")
 
@@ -96,6 +97,15 @@ def _parse_decimation(decimation_spec: list[dict]) -> list[tuple[float, int]]:
     return tiers
 
 
+def _resolve_series_kind(endpoint, binary_lanes: bool | None) -> str:
+    """One series' rendering kind, honouring a panel's `binary_lanes` override.
+
+    None (the default) infers per endpoint; see GraphPanel."""
+    if binary_lanes is None:
+        return infer_series_kind(endpoint)
+    return "binary" if binary_lanes else "numeric"
+
+
 @register_panel_kind("graph")
 class GraphPanel(Panel):
     """A time-series chart over one or more endpoints.
@@ -107,15 +117,24 @@ class GraphPanel(Panel):
     phc.core.config._load_extensions), so resolution is deferred to request
     time, in phc/extensions/web_ui/server.py's handle_graph_data -- an
     unresolvable logdb_instance therefore surfaces as a 404 there, not a
-    ConfigError at load time."""
+    ConfigError at load time.
+
+    Each series also carries a rendering kind ("binary" or "numeric", see
+    widgets.infer_series_kind), which graph.js uses to draw bool
+    endpoints as separate on/off lanes. `binary_lanes` overrides that
+    inference for the whole panel."""
 
     kind = "graph"
 
     def __init__(self, flat: dict[str, Device], id: str, logdb_instance: str, selectors: list[str],
                  title: str | None = None, unit: str | None = None, window: str = "24h",
-                 decimation: list[dict] | None = None):
+                 decimation: list[dict] | None = None, binary_lanes: bool | None = None):
         if not id:
             raise ConfigError("web_ui graph panel: 'id' must not be empty")
+        if binary_lanes is not None and not isinstance(binary_lanes, bool):
+            raise ConfigError(
+                f"web_ui graph panel: 'binary_lanes' must be true, false, or unset, "
+                f"got {binary_lanes!r}")
         self.id = id
         self.logdb_instance = logdb_instance
         self.pairs = resolve_selectors(selectors, flat)
@@ -123,9 +142,21 @@ class GraphPanel(Panel):
         # exactly ("<qualified_id>/<endpoint_key>"), since these labels are
         # looked up directly against the referenced LogDb instance's columns.
         self.labels = [f"{qid}/{key}" for qid, key in self.pairs]
+        # Resolved once here rather than per request: `flat` is deliberately
+        # not retained (it would pin the whole device tree for the process's
+        # lifetime), so everything the client needs is extracted now.
+        endpoints = [flat[qid].endpoint(key) for qid, key in self.pairs]
         self.series_titles = [
-            flat[qid].endpoint(key).name or flat[qid].endpoint(key).description or f"{qid}/{key}"
-            for qid, key in self.pairs]
+            endpoint.name or endpoint.description or f"{qid}/{key}"
+            for endpoint, (qid, key) in zip(endpoints, self.pairs)]
+        self.binary_lanes = binary_lanes
+        self.series_kinds = [_resolve_series_kind(endpoint, binary_lanes) for endpoint in endpoints]
+        self.series_units = [endpoint.unit for endpoint in endpoints]
+        # Same str()-keyed shape as widgets.describe_endpoint's own `values`
+        # -- note a Python True key serializes as "True", not "true".
+        self.series_values = [
+            ({str(k): v for k, v in endpoint.values.items()} if endpoint.values else None)
+            for endpoint in endpoints]
         self.title = title or id
         self.unit = unit
         self.window = parse_duration(window)
@@ -139,6 +170,8 @@ class GraphPanel(Panel):
             "unit": self.unit,
             "window": self.window,
             "series_titles": self.series_titles,
+            "series_kinds": self.series_kinds,
+            "binary_lanes": self.binary_lanes,
         }
 
 

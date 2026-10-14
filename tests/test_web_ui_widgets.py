@@ -1,10 +1,11 @@
-"""Tests for phc.extensions.web_ui.widgets: infer_widget_kind()'s pure
-inference matrix, describe_endpoint()'s shape, and describe_device()'s
-branch-pruning behavior."""
+"""Tests for phc.extensions.web_ui.widgets: infer_widget_kind()'s and
+infer_series_kind()'s pure inference matrices, describe_endpoint()'s shape,
+and describe_device()'s branch-pruning behavior."""
 
 from phc.core.endpoint import Endpoint
 from phc.devices.virtual.device import VirtualDevice
-from phc.extensions.web_ui.widgets import describe_device, describe_endpoint, infer_widget_kind
+from phc.extensions.web_ui.widgets import (
+    describe_device, describe_endpoint, infer_series_kind, infer_widget_kind)
 
 # ---------- infer_widget_kind ----------
 
@@ -205,3 +206,29 @@ def test_describe_endpoint_reports_its_devices_health():
 
     device.health.record_failure("ConnectionError: refused")
     assert describe_endpoint("lamp", endpoint, device)["healthy"] is False
+
+
+# ---------- infer_series_kind ----------
+
+def test_bool_endpoint_is_a_binary_series():
+    assert infer_series_kind(Endpoint("state", value_type="bool")) == "binary"
+
+
+def test_writability_does_not_affect_series_kind():
+    """Unlike a widget, a graph series doesn't care who writes it: a PIR
+    sensor and a light switch both plot as on/off lanes."""
+    assert infer_series_kind(Endpoint("motion", writable=False, value_type="bool")) == "binary"
+    assert infer_series_kind(Endpoint("relay", writable=True, value_type="bool")) == "binary"
+
+
+def test_numeric_and_untyped_endpoints_are_numeric_series():
+    for value_type in ("int", "float", "str", None):
+        ep = Endpoint("x", value_type=value_type)
+        assert infer_series_kind(ep) == "numeric", value_type
+
+
+def test_multi_state_int_is_not_a_binary_series():
+    """A labelled int is an enum, not an on/off signal -- a panel wanting
+    lanes for one says so with binary_lanes (see GraphPanel)."""
+    ep = Endpoint("speed", value_type="int", values={0: "off", 1: "low", 2: "high"})
+    assert infer_series_kind(ep) == "numeric"

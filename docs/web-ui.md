@@ -96,9 +96,15 @@ referenced logdb instance, or its series is empty. `title` defaults to
 `id`. `unit` (optional) labels the Y axis. `window` (default `24h`) sets
 the chart's initial zoom; the full retained history is still fetched and
 pannable via the range selector. `decimation` (optional) is a list of
-`{older_than, factor}` tiers: samples older than `older_than` are averaged
+`{older_than, factor}` tiers: samples older than `older_than` are collapsed
 in groups of `factor`, bounding how much history data is shipped to the
 browser as it grows.
+
+`type: bool` endpoints instead get their own stacked on/off lane
+(stepped, labelled by endpoint name) and move numeric series in the
+panel to a right-hand axis, so switches and sensors neither overlap each
+other nor vanish under an unrelated magnitude. `binary_lanes`
+(`true`/`false`) overrides this per panel; there's no per-series form.
 
 `kind: timers` renders a create/edit/delete UI for user timers, backed by a
 named [`phc/extensions/timer`](timer.md) instance:

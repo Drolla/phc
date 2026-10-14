@@ -57,7 +57,6 @@ def test_graph_panel_series_title_falls_back_to_qualified_label():
 
     assert panel.series_titles == ["lamp/power"]
 
-
 def test_graph_panel_series_title_prefers_name_over_description():
     lamp = VirtualDevice("lamp", endpoints=[
         Endpoint("power", writable=True, value_type="int",
@@ -126,11 +125,75 @@ def test_graph_panel_describe_shape_omits_internal_wiring():
         "unit": "%",
         "window": 3600,
         "series_titles": ["Lamp power"],
+        "series_kinds": ["numeric"],
+        "binary_lanes": None,
     }
     # logdb_instance/pairs are internal wiring, not needed client-side --
     # see GraphPanel's own docstring.
     assert "logdb_instance" not in described
     assert "pairs" not in described
+
+
+def _mixed_flat():
+    """A device whose endpoints cover both series kinds, plus a labelled bool.
+
+    Mirrors the real-world panel that motivated lanes (a power reading, an
+    on/off flag and a ratio on one chart)."""
+    return {"pump": VirtualDevice("pump", endpoints=[
+        Endpoint("power", value_type="float", unit="W", name="Power"),
+        Endpoint("active", value_type="bool", name="Active",
+                 values={False: "off", True: "on"}),
+        Endpoint("cop", value_type="float", name="COP"),
+    ])}
+
+
+def _graph(flat, **kwargs):
+    kwargs.setdefault("selectors", ["pump/*"])
+    return GraphPanel(flat, id="g", logdb_instance="logdb.house", **kwargs)
+
+
+def test_graph_panel_infers_binary_kind_for_bool_endpoints_only():
+    panel = _graph(_mixed_flat())
+
+    # Parallel to series_titles/labels, in selector-resolution order
+    # (resolve_selectors sorts by endpoint key: active, cop, power).
+    assert panel.series_titles == ["Active", "COP", "Power"]
+    assert panel.series_kinds == ["binary", "numeric", "numeric"]
+
+
+def test_graph_panel_carries_per_series_units_and_value_labels():
+    panel = _graph(_mixed_flat())
+
+    assert panel.series_units == [None, None, "W"]
+    # str()-keyed, matching widgets.describe_endpoint -- a Python True
+    # serializes as "True", which the client has to match on.
+    assert panel.series_values == [{"False": "off", "True": "on"}, None, None]
+
+
+def test_graph_panel_binary_lanes_true_forces_every_series_into_a_lane():
+    panel = _graph(_mixed_flat(), binary_lanes=True)
+
+    assert panel.series_kinds == ["binary", "binary", "binary"]
+
+
+def test_graph_panel_binary_lanes_false_restores_one_shared_axis():
+    panel = _graph(_mixed_flat(), binary_lanes=False)
+
+    assert panel.series_kinds == ["numeric", "numeric", "numeric"]
+    assert panel.describe()["binary_lanes"] is False
+
+
+def test_graph_panel_rejects_non_boolean_binary_lanes():
+    with pytest.raises(ConfigError):
+        _graph(_mixed_flat(), binary_lanes="yes")
+
+def test_graph_panel_does_not_retain_the_device_tree():
+    """`flat` is the whole device tree; a panel holding it would pin it for
+    the process's lifetime. Everything needed is extracted in __init__."""
+    panel = _graph(_mixed_flat())
+
+    assert not any(isinstance(value, dict) and "pump" in value
+                   for value in vars(panel).values())
 
 
 def test_get_panel_kind_class_returns_timers_panel():

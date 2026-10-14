@@ -296,12 +296,20 @@ async def handle_graph_data(request: web.Request) -> web.Response:
                          for label in panel.labels)]
         for row in rows
     ]
+    # Per-series rendering metadata, parallel to `labels[1:]`. Lane offsets
+    # for binary series are applied by graph.js, not baked into `rows`.
+    series = [
+        {"title": title, "kind": kind, "unit": unit, "values": values}
+        for title, kind, unit, values in zip(
+            panel.series_titles, panel.series_kinds, panel.series_units, panel.series_values)
+    ]
     logger.debug("web_ui graph %s -> %d row(s) from %s", graph_id, len(wire_rows), panel.logdb_instance)
     return web.json_response({
         "labels": ["Time", *panel.series_titles],
         "unit": panel.unit,
         "window": panel.window,
         "rows": wire_rows,
+        "series": series,
     })
 
 

@@ -410,6 +410,47 @@ def test_get_api_graph_returns_history_from_referenced_logdb_instance(tmp_path):
     asyncio.run(run())
 
 
+def test_get_api_graph_describes_each_series_rendering_kind(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        params = _graph_page_params(selectors=["lamp/*", "sensor/*"])
+        client, _ = await _client_for_graph(registry, params=params, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            # Parallel to labels[1:], so the client can map each column to
+            # how it should be drawn (see widgets.infer_series_kind).
+            assert body["series"] == [
+                {"title": "lamp/state", "kind": "binary", "unit": None, "values": None},
+                {"title": "sensor/temp", "kind": "numeric", "unit": "C", "values": None},
+            ]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_rows_stay_raw_for_binary_series(tmp_path):
+    """A binary series' lane offset belongs to the renderer, not the wire.
+
+    /api/graph is a read API like /api/tree; baking a display offset into
+    its values would make an off switch report e.g. 4.0, and would put the
+    offset constant in two places at once. graph.js applies it instead."""
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        registry["logdb.house"].store.log(1.0, {"lamp/state": 1.0})
+        registry["logdb.house"].store.log(2.0, {"lamp/state": 0.0})
+        client, _ = await _client_for_graph(registry, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            assert body["series"][0]["kind"] == "binary"
+            assert body["rows"] == [[1.0, 1.0], [2.0, 0.0]]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
 def test_get_api_graph_unknown_graph_id_404(tmp_path):
     async def run():
         flat = _flat()
