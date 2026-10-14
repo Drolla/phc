@@ -35,6 +35,7 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
+    name: Temperature
     description: Air temperature
     field: temperature_2m
   - key: humidity
@@ -42,6 +43,7 @@ endpoints:
     writable: false
     type: float
     unit: "%"
+    name: Humidity
     description: Relative humidity
     field: relative_humidity_2m
   - key: precipitation
@@ -49,6 +51,7 @@ endpoints:
     writable: false
     type: float
     unit: mm
+    name: Precipitation
     description: Precipitation over the current hour
     field: precipitation
   - key: pressure
@@ -56,6 +59,7 @@ endpoints:
     writable: false
     type: float
     unit: hPa
+    name: Pressure
     description: Mean sea-level pressure
     field: pressure_msl
   - key: wind_speed
@@ -63,6 +67,7 @@ endpoints:
     writable: false
     type: float
     unit: m/s
+    name: Wind Speed
     description: Wind speed
     field: wind_speed_10m
   - key: wind_direction
@@ -70,12 +75,14 @@ endpoints:
     writable: false
     type: float
     unit: "°"
+    name: Wind Direction
     description: Wind direction
     field: wind_direction_10m
   - key: weather_code
     readable: true
     writable: false
     type: int
+    name: Weather Code
     description: >
       WMO weather interpretation code (0=clear, 1-3=mainly clear/partly
       cloudy/overcast, 45/48=fog, 51-67=drizzle, 61-67=rain, 71-77=snow,
@@ -87,5 +94,6 @@ endpoints:
     writable: false
     type: bool
     values: { false: "night", true: "day" }
+    name: Daylight
     description: True while it is daytime at the location, False at night
     field: is_day

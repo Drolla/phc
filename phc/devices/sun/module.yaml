@@ -32,41 +32,49 @@ endpoints:
     readable: true
     writable: false
     type: float
+    name: Sunrise
     description: Today's sunrise, Unix timestamp
   - key: sunset
     readable: true
     writable: false
     type: float
+    name: Sunset
     description: Today's sunset, Unix timestamp
   - key: solar_noon
     readable: true
     writable: false
     type: float
+    name: Solar Noon
     description: Today's solar noon (the sun's highest point today), Unix timestamp
   - key: dawn
     readable: true
     writable: false
     type: float
+    name: Civil Dawn
     description: Today's civil dawn (sun 6 degrees below the horizon), Unix timestamp
   - key: dusk
     readable: true
     writable: false
     type: float
+    name: Civil Dusk
     description: Today's civil dusk (sun 6 degrees below the horizon), Unix timestamp
   - key: elevation
     readable: true
     writable: false
     type: float
     unit: "°"
+    name: Solar Elevation
     description: Current solar elevation angle above the horizon (negative at night)
   - key: azimuth
     readable: true
     writable: false
     type: float
     unit: "°"
+    name: Solar Azimuth
     description: Current solar azimuth angle clockwise from north
   - key: is_daylight
     readable: true
     writable: false
     type: bool
+    name: Daylight
     description: True whenever the current solar elevation is above the horizon

@@ -53,6 +53,7 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
+    name: Temperature
     description: Air temperature
     field: temperature
   - key: humidity
@@ -60,6 +61,7 @@ endpoints:
     writable: false
     type: float
     unit: "%"
+    name: Humidity
     description: Relative humidity
     field: humidity
   - key: pressure
@@ -67,6 +69,7 @@ endpoints:
     writable: false
     type: float
     unit: hPa
+    name: Pressure
     description: Barometric pressure
     field: pressure
   - key: radon_st
@@ -90,6 +93,7 @@ endpoints:
     writable: false
     type: float
     unit: ppm
+    name: CO2
     description: CO2 concentration
     field: co2
   - key: voc

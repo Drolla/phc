@@ -23,52 +23,61 @@ endpoints:
     writable: false
     type: float
     unit: "%"
+    name: CPU Usage
     description: Overall CPU utilization, averaged since last poll.
   - key: memory_percent
     readable: true
     writable: false
     type: float
     unit: "%"
+    name: Memory Usage
     description: Physical memory (RAM) currently in use.
   - key: network_rx_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
+    name: Network Receive Rate
     description: Inbound network throughput since last poll.
   - key: network_tx_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
+    name: Network Transmit Rate
     description: Outbound network throughput since last poll.
   - key: disk_usage_percent
     readable: true
     writable: false
     type: float
     unit: "%"
+    name: Disk Usage
     description: Used space on `disk_path`.
   - key: disk_read_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
+    name: Disk Read Rate
     description: Disk read throughput since last poll.
   - key: disk_write_rate
     readable: true
     writable: false
     type: float
     unit: "B/s"
+    name: Disk Write Rate
     description: Disk write throughput since last poll.
   - key: cpu_temperature
     readable: true
     writable: false
     type: float
     unit: "°C"
+    name: CPU Temperature
     description: CPU temperature.
   - key: uptime_seconds
     readable: true
     writable: false
     type: float
     unit: s
+    name: Uptime
     description: Seconds since the machine last booted.

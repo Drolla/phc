@@ -72,6 +72,11 @@ Changes merged into `main` since the 0.1.0 release, in order.
   on the same scale as a 0-30C temperature trace and read as flat. The
   panel's own `unit:`, if set, picks which unit's series get the left
   axis. See [`docs/web-ui.md`](docs/web-ui.md).
+- A widget with no `name:`/`description:` now labels itself from its
+  humanized `key` (e.g. `fan_level` -> "Fan Level") instead of showing the
+  raw key verbatim. The `name` vs `description` convention -- short Title
+  Case label vs longer tooltip sentence -- is documented for the first
+  time, in [`docs/configuration.md`](docs/configuration.md#endpoint-display-text-name-vs-description).
 
 ### 2026-10-01
 

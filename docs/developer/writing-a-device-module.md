@@ -161,6 +161,11 @@ between the devices of one system and isolated from any other.
 
 ## `module.yaml` Schema
 
+Every endpoint should set a `name` (and usually a `description`) following
+the convention in [Endpoint Display Text](../configuration.md#endpoint-display-text-name-vs-description) —
+the web UI falls back to a humanized `key` otherwise, which rarely reads
+well for anything but the most self-explanatory keys.
+
 `parameters:` declares the module's device-level params: a list of `{name,
 description, default, override, scope}` entries. A declared name becomes an
 ordinary top-level field on a device entry (and, for a `scope: module`
