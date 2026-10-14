@@ -287,7 +287,9 @@ async def handle_graph_data(request: web.Request) -> web.Response:
     if instance is None or not hasattr(instance, "store"):
         raise web.HTTPNotFound(text=f"unknown logdb instance {panel.logdb_instance!r}")
 
-    rows = instance.store.get_decimated(labels=panel.labels, decimation=panel.decimation)
+    rows = instance.store.get_decimated(
+        labels=panel.labels, decimation=panel.decimation,
+        aggregations=panel.series_aggregations)
     # json.dumps would otherwise emit a literal NaN token for a missing
     # value -- not valid JSON, and fetch().json() throws on it in the
     # browser -- so replace with None/null here.

@@ -22,7 +22,8 @@ from phc.core.device import Device
 from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.selectors import resolve_selectors
-from phc.extensions.web_ui.widgets import infer_series_kind
+from phc.extensions.web_ui.widgets import (
+    BINARY_AGGREGATIONS, infer_series_aggregation, infer_series_kind)
 
 logger = logging.getLogger("phc.web_ui")
 
@@ -122,19 +123,26 @@ class GraphPanel(Panel):
     Each series also carries a rendering kind ("binary" or "numeric", see
     widgets.infer_series_kind), which graph.js uses to draw bool
     endpoints as separate on/off lanes. `binary_lanes` overrides that
-    inference for the whole panel."""
+    inference for the whole panel; `binary_aggregation` likewise
+    overrides how decimation collapses the binary series (numeric series
+    are always averaged)."""
 
     kind = "graph"
 
     def __init__(self, flat: dict[str, Device], id: str, logdb_instance: str, selectors: list[str],
                  title: str | None = None, unit: str | None = None, window: str = "24h",
-                 decimation: list[dict] | None = None, binary_lanes: bool | None = None):
+                 decimation: list[dict] | None = None, binary_lanes: bool | None = None,
+                 binary_aggregation: str | None = None):
         if not id:
             raise ConfigError("web_ui graph panel: 'id' must not be empty")
         if binary_lanes is not None and not isinstance(binary_lanes, bool):
             raise ConfigError(
                 f"web_ui graph panel: 'binary_lanes' must be true, false, or unset, "
                 f"got {binary_lanes!r}")
+        if binary_aggregation is not None and binary_aggregation not in BINARY_AGGREGATIONS:
+            raise ConfigError(
+                f"web_ui graph panel: 'binary_aggregation' must be one of "
+                f"{BINARY_AGGREGATIONS} or unset, got {binary_aggregation!r}")
         self.id = id
         self.logdb_instance = logdb_instance
         self.pairs = resolve_selectors(selectors, flat)
@@ -151,6 +159,13 @@ class GraphPanel(Panel):
             for endpoint, (qid, key) in zip(endpoints, self.pairs)]
         self.binary_lanes = binary_lanes
         self.series_kinds = [_resolve_series_kind(endpoint, binary_lanes) for endpoint in endpoints]
+        self.binary_aggregation = binary_aggregation
+        # Keyed by label, the shape LogDb.get_decimated() wants -- and
+        # robust to its header reconciliation, which may reorder columns.
+        self.series_aggregations = {
+            label: (binary_aggregation if binary_aggregation is not None and kind == "binary"
+                    else infer_series_aggregation(endpoint, kind))
+            for label, kind, endpoint in zip(self.labels, self.series_kinds, endpoints)}
         self.series_units = [endpoint.unit for endpoint in endpoints]
         # Same str()-keyed shape as widgets.describe_endpoint's own `values`
         # -- note a Python True key serializes as "True", not "true".

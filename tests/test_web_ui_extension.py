@@ -451,6 +451,47 @@ def test_get_api_graph_rows_stay_raw_for_binary_series(tmp_path):
             await client.close()
     asyncio.run(run())
 
+def test_get_api_graph_decimates_a_bool_series_by_max_not_average(tmp_path):
+    """End to end: a brief "on" inside a decimated bucket reaches the
+    browser as a clean 1.0, not as the fraction of the bucket it covered."""
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        store = registry["logdb.house"].store
+        # lamp/state is bool; four samples, on only for the third.
+        for t, v in enumerate([0.0, 0.0, 1.0, 0.0]):
+            store.log(1.0 + t, {"lamp/state": v})
+        params = _graph_page_params(decimation=[{"older_than": "1s", "factor": 4}])
+        client, _ = await _client_for_graph(registry, params=params, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            assert body["series"][0]["kind"] == "binary"
+            # One decimated row, and the brief event survived it.
+            assert [row[1] for row in body["rows"]] == [1.0]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+def test_get_api_graph_binary_aggregation_avg_restores_the_duty_cycle(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        store = registry["logdb.house"].store
+        for t, v in enumerate([0.0, 0.0, 1.0, 0.0]):
+            store.log(1.0 + t, {"lamp/state": v})
+        params = _graph_page_params(decimation=[{"older_than": "1s", "factor": 4}],
+                                     binary_aggregation="avg")
+        client, _ = await _client_for_graph(registry, params=params, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            assert [row[1] for row in body["rows"]] == [0.25]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
 def test_get_api_graph_unknown_graph_id_404(tmp_path):
     async def run():
         flat = _flat()

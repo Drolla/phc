@@ -1,11 +1,12 @@
 """Tests for phc.extensions.web_ui.widgets: infer_widget_kind()'s and
-infer_series_kind()'s pure inference matrices, describe_endpoint()'s shape,
+infer_series_kind()/infer_series_aggregation()'s pure inference matrices, describe_endpoint()'s shape,
 and describe_device()'s branch-pruning behavior."""
 
-from phc.core.endpoint import Endpoint
+from phc.core.endpoint import AGGREGATIONS, Endpoint
 from phc.devices.virtual.device import VirtualDevice
 from phc.extensions.web_ui.widgets import (
-    describe_device, describe_endpoint, infer_series_kind, infer_widget_kind)
+    BINARY_AGGREGATIONS, describe_device, describe_endpoint, infer_series_aggregation,
+    infer_series_kind, infer_widget_kind)
 
 # ---------- infer_widget_kind ----------
 
@@ -232,3 +233,35 @@ def test_multi_state_int_is_not_a_binary_series():
     lanes for one says so with binary_lanes (see GraphPanel)."""
     ep = Endpoint("speed", value_type="int", values={0: "off", 1: "low", 2: "high"})
     assert infer_series_kind(ep) == "numeric"
+
+
+# ---------- infer_series_aggregation ----------
+
+def test_numeric_series_is_always_averaged():
+    """Whatever the endpoint's own aggregation says -- it governs how a
+    sample is logged, but averaging is the only sane reduction for a
+    magnitude on a chart."""
+    for aggregation in ("max", "min"):
+        ep = Endpoint("power", value_type="float", aggregation=aggregation)
+        assert infer_series_aggregation(ep, "numeric") == "avg"
+
+def test_binary_series_follows_the_endpoints_own_aggregation():
+    assert infer_series_aggregation(
+        Endpoint("a", value_type="bool"), "binary") == "max"  # the default
+    assert infer_series_aggregation(
+        Endpoint("b", value_type="bool", aggregation="min"), "binary") == "min"
+
+def test_series_kind_decides_not_the_value_type():
+    """Takes the resolved kind, so a panel forcing lanes over an int
+    endpoint gets the binary rule for it too (see GraphPanel's
+    binary_lanes)."""
+    level = Endpoint("level", value_type="int")
+    assert infer_series_aggregation(level, "binary") == "max"
+    assert infer_series_aggregation(level, "numeric") == "avg"
+
+def test_every_endpoint_aggregation_is_a_valid_decimation_mode():
+    """The inheritance must be total: no endpoint can name a mode
+    LogDb.get_decimated would reject."""
+    for aggregation in AGGREGATIONS:
+        ep = Endpoint("x", value_type="bool", aggregation=aggregation)
+        assert infer_series_aggregation(ep, "binary") in BINARY_AGGREGATIONS

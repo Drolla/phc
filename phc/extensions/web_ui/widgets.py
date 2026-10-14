@@ -10,6 +10,8 @@ from phc.core.endpoint import Endpoint
 
 WIDGET_KINDS = ("toggle", "dropdown", "slider", "number", "text", "label")
 SERIES_KINDS = ("binary", "numeric")
+# How decimation may collapse a graph series' samples -- see infer_series_aggregation.
+BINARY_AGGREGATIONS = ("max", "min", "avg")
 
 
 def infer_widget_kind(endpoint: Endpoint) -> str:
@@ -32,6 +34,18 @@ def infer_series_kind(endpoint: Endpoint) -> str:
     drawn as its own stacked on/off lane rather than sharing a numeric
     y-axis with unrelated magnitudes."""
     return "binary" if endpoint.value_type == "bool" else "numeric"
+
+
+def infer_series_aggregation(endpoint: Endpoint, series_kind: str) -> str:
+    """Pick how decimation should collapse this series' samples.
+
+    Numeric is always averaged. Binary defers to the endpoint's own
+    `aggregation` ("max" by default), so decimation keeps answering the
+    same question ("was it ever on?") that produced the logged samples.
+
+    Takes the resolved `series_kind` rather than re-deriving it, so a
+    panel forcing lanes via `binary_lanes` gets matching decimation."""
+    return endpoint.aggregation if series_kind == "binary" else "avg"
 
 
 def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | None = None) -> dict:

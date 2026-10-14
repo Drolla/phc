@@ -187,6 +187,54 @@ def test_graph_panel_rejects_non_boolean_binary_lanes():
     with pytest.raises(ConfigError):
         _graph(_mixed_flat(), binary_lanes="yes")
 
+def test_graph_panel_defaults_binary_to_endpoint_aggregation_and_numeric_to_avg():
+    panel = _graph(_mixed_flat())
+
+    # Keyed by label (what LogDb.get_decimated wants), not a parallel list.
+    assert panel.series_aggregations == {
+        "pump/active": "max",  # the bool endpoint's own `aggregation` default
+        "pump/cop": "avg",
+        "pump/power": "avg",
+    }
+
+def test_graph_panel_binary_series_follows_endpoint_aggregation_min():
+    """The endpoint is the per-series control: declaring `aggregation: min`
+    makes its lane decimate by min, with no panel-level setting."""
+    flat = {"pump": VirtualDevice("pump", endpoints=[
+        Endpoint("active", value_type="bool", aggregation="min"),
+    ])}
+    panel = _graph(flat)
+
+    assert panel.series_aggregations == {"pump/active": "min"}
+
+def test_graph_panel_binary_aggregation_avg_restores_averaging():
+    panel = _graph(_mixed_flat(), binary_aggregation="avg")
+
+    assert panel.series_aggregations["pump/active"] == "avg"
+
+def test_graph_panel_binary_aggregation_leaves_numeric_series_averaged():
+    """A panel-wide setting must not turn a power chart into a peak chart."""
+    panel = _graph(_mixed_flat(), binary_aggregation="max")
+
+    assert panel.series_aggregations["pump/cop"] == "avg"
+    assert panel.series_aggregations["pump/power"] == "avg"
+
+def test_graph_panel_binary_lanes_true_also_switches_int_series_to_max():
+    """One override, one coherent story: forcing a level endpoint into a
+    lane also gives it the lane-appropriate decimation rule."""
+    flat = {"dim": VirtualDevice("dim", endpoints=[
+        Endpoint("level", value_type="int", min=0, max=99),
+    ])}
+    panel = _graph(flat, selectors=["dim/*"], binary_lanes=True)
+
+    assert panel.series_kinds == ["binary"]
+    assert panel.series_aggregations == {"dim/level": "max"}
+
+def test_graph_panel_rejects_invalid_binary_aggregation():
+    with pytest.raises(ConfigError):
+        _graph(_mixed_flat(), binary_aggregation="mean")
+
+
 def test_graph_panel_does_not_retain_the_device_tree():
     """`flat` is the whole device tree; a panel holding it would pin it for
     the process's lifetime. Everything needed is extracted in __init__."""

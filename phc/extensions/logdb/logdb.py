@@ -48,6 +48,11 @@ _MIN_HEADER_RESERVE = 512
 _INITIAL_CHUNK_SIZE = 65536
 _NAN = float("nan")
 
+# How get_decimated() may collapse a group of samples into one value.
+# A private copy of the vocabulary, not an import: this module stays
+# decoupled from phc.core/phc.extensions (see the module docstring).
+_AGGREGATIONS = ("avg", "min", "max")
+
 
 class LogDb:
     """CSV-backed, in-memory ring buffer of numeric samples.
@@ -234,10 +239,11 @@ class LogDb:
 
     def get_decimated(self, labels: list[str] | None = None,
                        decimation: list[tuple[float, int]] | None = None,
-                       now: float | None = None) -> list[dict[str, float]]:
+                       now: float | None = None,
+                       aggregations: dict[str, str] | None = None) -> list[dict[str, float]]:
         """Like get_range(), but coarsens older data.
 
-        Older samples are averaged within each decimation tier, trading
+        Older samples are collapsed within each decimation tier, trading
         resolution for a bounded response size on a UI's full-history
         request (see phc.extensions.web_ui.panels.GraphPanel).
 
@@ -252,8 +258,16 @@ class LogDb:
         Groups are formed oldest-to-newest and always restart cleanly at
         a tier boundary (never straddling two factors), each emitting one
         row using the group's last (most recent) timestamp and, per
-        label, the average of its non-NaN values in the group (all-NaN
-        emits NaN, matching get_range()'s own "no data" convention).
+        label, its non-NaN values in the group reduced per `aggregations`
+        (all-NaN emits NaN, matching get_range()'s own "no data"
+        convention, whichever reduction is used).
+
+        `aggregations` maps a label to "avg" (the default for any label
+        not listed), "min" or "max". Averaging a column that only ever
+        holds 0/1 turns a group into the fraction of it that was "on",
+        which is the wrong answer when the caller wants "was it ever
+        on?" -- so the caller, which knows what its columns mean, says
+        so per label. Unknown labels are ignored, like `labels` itself.
 
         `labels` (default: self.labels) is filtered down to labels this
         instance actually has, so a caller-supplied label this instance
@@ -264,6 +278,12 @@ class LogDb:
         mismatch."""
         keys = [label for label in (labels if labels is not None else self.labels)
                 if label in self._columns]
+        modes = aggregations or {}
+        for label, mode in modes.items():
+            if mode not in _AGGREGATIONS:
+                raise ValueError(
+                    f"invalid aggregation {mode!r} for label {label!r}, "
+                    f"expected one of {_AGGREGATIONS}")
         n = len(self._times)
         if n == 0:
             return []
@@ -296,24 +316,35 @@ class LogDb:
             pos = start
             while pos < end:
                 group_end = min(pos + factor, end)
-                rows.append(self._averaged_row(pos, group_end, keys))
+                rows.append(self._decimated_row(pos, group_end, keys, modes))
                 pos = group_end
         return rows
 
-    def _averaged_row(self, start: int, end: int, keys: list[str]) -> dict[str, float]:
-        """Build one decimated record averaging in-memory rows [start, end).
+    def _decimated_row(self, start: int, end: int, keys: list[str],
+                        modes: dict[str, str]) -> dict[str, float]:
+        """Build one decimated record from in-memory rows [start, end).
 
-        Averages the given labels; uses the last row's timestamp."""
+        Each label is reduced by its mode in `modes` ("avg" when absent);
+        uses the last row's timestamp. NaNs are skipped under every mode,
+        and a group with nothing but NaNs emits NaN."""
         row = {"time": self._times[end - 1]}
         for label in keys:
             col = self._columns[label]
-            total, count = 0.0, 0
+            mode = modes.get(label, "avg")
+            total, count, best = 0.0, 0, _NAN
             for pos in range(start, end):
                 value = col[pos]
-                if not math.isnan(value):
+                if math.isnan(value):
+                    continue
+                count += 1
+                if mode == "avg":
                     total += value
-                    count += 1
-            row[label] = total / count if count else _NAN
+                # `count == 1` seeds `best` on the first real value --
+                # a comparison against the initial NaN is always False,
+                # and `not best` would mis-seed on a legitimate 0.0.
+                elif count == 1 or (value > best if mode == "max" else value < best):
+                    best = value
+            row[label] = (total / count if count else _NAN) if mode == "avg" else best
         return row
 
     # ---------- header reconciliation ----------
