@@ -107,12 +107,6 @@ series in the panel to a right-hand axis. `binary_aggregation`
 (`avg`/`min`) and `binary_lanes` (`true`/`false`) override this per
 panel; there's no per-series form.
 
-Graphs follow the page's light/dark theme, including a switch made while
-the page is open (zoom and pan are preserved). Series colors come from a
-fixed palette assigned in series order, with its own stepping per theme,
-validated for colorblind separation and contrast against each theme's
-background.
-
 `kind: timers` renders a create/edit/delete UI for user timers, backed by a
 named [`phc/extensions/timer`](timer.md) instance:
 

@@ -8,11 +8,9 @@
  * v1 loads once per page view -- no auto-refresh -- to avoid the
  * complexity of preserving a user's zoom/pan state across a live update.
  *
- * Binary series (see phc/extensions/web_ui/widgets.py's infer_series_kind)
- * are drawn as stacked on/off lanes rather than sharing a y-axis, where
- * they would otherwise sit on top of each other -- or be flattened onto
- * the baseline by an unrelated series' magnitude. The lane offset is
- * applied here only; the server ships raw 0/1 values.
+ * Binary series are drawn as stacked on/off lanes rather than sharing a
+ * y-axis. The lane offset is applied here only; the server ships raw
+ * 0/1 values.
  *
  * Theming: Dygraphs hardcodes light-theme colors, so themeOptions()
  * below supplies the JS-only ones, re-applied on phc:themechange. */
@@ -23,10 +21,19 @@ var LANE_PITCH = 1.0;
 var LANE_HEIGHT = 0.7;
 var LANE_PAD = 0.15;
 
-/* Lane labels sit in the y-axis gutter; Dygraphs crops an over-wide
- * label mid-glyph, so a longer title is shortened instead. */
-var LANE_LABEL_WIDTH = 150;
-var LANE_LABEL_MAX_CHARS = 20;
+/* Lane label gutter: a share of canvas width, capped, so phones get a
+ * narrow gutter with shortened labels rather than losing ~40% of chart. */
+var LANE_LABEL_FRACTION = 0.28;
+var LANE_LABEL_MAX_PX = 110;
+/* Estimate at ~11px sans-serif, erring narrow -- Dygraphs crops mid-glyph. */
+var LANE_LABEL_PX_PER_CHAR = 6.2;
+
+function laneLabelWidth(container) {
+  var canvas = container.querySelector(".graph-canvas");
+  var available = (canvas && canvas.clientWidth) || 0;
+  if (!available) { return LANE_LABEL_MAX_PX; }
+  return Math.min(available * LANE_LABEL_FRACTION, LANE_LABEL_MAX_PX);
+}
 
 /* Series colors, assigned in order and never cycled. Validated for
  * colorblind separation and contrast against each theme's --bs-body-bg;
@@ -53,6 +60,18 @@ window.addEventListener("phc:themechange", function () {
   graphs.forEach(function (entry) {
     restyle(entry, themeOptions());
   });
+});
+
+/* Recompute the lane label gutter on resize. Debounced since a
+ * drag-resize fires continuously and each update redraws every chart. */
+var resizeTimer = null;
+window.addEventListener("resize", function () {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () {
+    graphs.forEach(function (entry) {
+      if (entry.lanes.count > 0) { restyle(entry, laneAxisOptions(entry)); }
+    });
+  }, 150);
 });
 
 /* Apply `options` to a live chart without resetting the user's zoom/pan. */
@@ -96,12 +115,12 @@ function initGraph(container) {
       options.ylabel = data.unit || "";
       options.showRangeSelector = true;
       options.dateWindow = [now - windowSeconds * 1000, now];
-      /* `series` is absent when a cached copy of this script meets an
-       * older server (or vice versa); degrade to the pre-lane chart. */
+      /* `series` may be absent if script/server versions mismatch; degrade
+       * to a plain single-axis chart rather than throwing. */
       var lanes = assignLanes(data.series || []);
       var rows = buildRows(data.rows, lanes);
       if (lanes.count > 0) {
-        applyLaneOptions(options, data, lanes);
+        applyLaneOptions(options, data, lanes, container);
       }
       graphs.push({
         graph: new Dygraph(container.querySelector(".graph-canvas"), rows, options),
@@ -155,21 +174,14 @@ function buildRows(wireRows, lanes) {
   });
 }
 
-/* Lanes on the left axis, numeric series on their own right-hand axis so
- * an unrelated magnitude can't flatten them. Dygraphs' own tick spacing
- * would skip or duplicate lane baselines, so each lane gets one explicit
- * tick carrying its series name; a tick with an explicit label bypasses
- * axisLabelFormatter. */
-function applyLaneOptions(options, data, lanes) {
+function applyLaneOptions(options, data, lanes, container) {
   var seriesOpts = {};
   for (var i = 0; i < lanes.series.length; i++) {
     var title = lanes.series[i].title;
     if (lanes.byIndex[i]) {
       seriesOpts[title] = {
         axis: "y",
-        /* A switch holds its value between samples; interpolating would
-         * draw a ramp through states it was never in. */
-        stepPlot: true,
+        stepPlot: true,  /* a switch holds its value between samples */
         drawPoints: false,
         highlightCircleSize: 0,
         strokeWidth: 2,
@@ -179,34 +191,48 @@ function applyLaneOptions(options, data, lanes) {
     }
   }
 
-  var ticks = [];
-  for (var t = 0; t < lanes.series.length; t++) {
-    var e = lanes.byIndex[t];
-    if (e) {
-      ticks.push({ v: e.lane * LANE_PITCH, label: shortenLabel(e.title, LANE_LABEL_MAX_CHARS) });
-    }
-  }
-
   options.series = seriesOpts;
   options.labelsShowZeroValues = true;  /* else a lane resting at 0 drops out of the legend */
+  var axes = laneAxisOptions({ container: container, lanes: lanes }).axes;
   options.axes = {
-    y: {
-      valueRange: [-LANE_PAD, (lanes.count - 1) * LANE_PITCH + LANE_HEIGHT + LANE_PAD],
-      ticker: function () { return ticks; },
-      axisLabelWidth: LANE_LABEL_WIDTH,
-      /* Dygraphs resolves valueFormatter per *axis*, not per series, so
-       * this one function serves every lane and branches on the series
-       * name it is handed. */
-      valueFormatter: function (y, opts, seriesName) {
-        return formatLaneValue(y, lanes.byTitle[seriesName]);
-      },
-    },
+    y: axes.y,
   };
   if (lanes.hasNumeric) {
     options.axes.y2 = { independentTicks: true, drawGrid: false };
     options.y2label = data.unit || "";
+    options.ylabel = "";
+  } else {
+    options.ylabel = "";
   }
-  options.ylabel = "";
+}
+
+/* The y-axis block for a laned chart. Rebuilt on demand since the label
+ * gutter depends on canvas width. One explicit tick per lane, since
+ * Dygraphs' own tick spacing would skip or duplicate lane baselines. */
+function laneAxisOptions(entry) {
+  var lanes = entry.lanes;
+  var width = laneLabelWidth(entry.container);
+  var maxChars = Math.max(6, Math.floor(width / LANE_LABEL_PX_PER_CHAR));
+  var ticks = [];
+  for (var t = 0; t < lanes.series.length; t++) {
+    var e = lanes.byIndex[t];
+    if (e) {
+      ticks.push({ v: e.lane * LANE_PITCH, label: shortenLabel(e.title, maxChars) });
+    }
+  }
+  return {
+    axes: {
+      y: {
+        valueRange: [-LANE_PAD, (lanes.count - 1) * LANE_PITCH + LANE_HEIGHT + LANE_PAD],
+        ticker: function () { return ticks; },
+        axisLabelWidth: width,
+        /* Resolved per axis, not per series, so this branches on seriesName. */
+        valueFormatter: function (y, opts, seriesName) {
+          return formatLaneValue(y, lanes.byTitle[seriesName]);
+        },
+      },
+    },
+  };
 }
 
 /* Elide the middle, not the tail: sibling devices often share a long
@@ -220,16 +246,15 @@ function shortenLabel(title, maxChars) {
   return title.slice(0, head) + "…" + title.slice(title.length - tail);
 }
 
-/* Invert the lane transform and name the state. Decimation averages a
- * bucket's samples (see LogDb.get_decimated), so a value strictly
- * between off and on is a duty cycle over that bucket, not a glitch. */
+/* Invert the lane transform and name the state. Under
+ * `binary_aggregation: avg`, a value strictly between 0 and 1 is a
+ * genuine duty cycle, not a glitch. */
 function formatLaneValue(y, entry) {
   if (y === null || isNaN(y)) { return ""; }
   if (!entry) { return y; }
   var v = (y - entry.lane * LANE_PITCH) / LANE_HEIGHT;
   var labels = entry.values || {};
-  /* describe_endpoint str()-keys these, so a Python True arrives as
-   * "True"; accept either casing. */
+  /* Python True str()-keys as "True"; accept either casing. */
   if (v <= 0.001) { return labels["False"] || labels["false"] || "off"; }
   if (v >= 0.999) { return labels["True"] || labels["true"] || "on"; }
   return Math.round(v * 100) + "% on";

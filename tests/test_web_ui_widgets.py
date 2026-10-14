@@ -1,5 +1,5 @@
 """Tests for phc.extensions.web_ui.widgets: infer_widget_kind()'s and
-infer_series_kind()/infer_series_aggregation()'s pure inference matrices, describe_endpoint()'s shape,
+infer_series_kind()'s pure inference matrices, describe_endpoint()'s shape,
 and describe_device()'s branch-pruning behavior."""
 
 from phc.core.endpoint import AGGREGATIONS, Endpoint
@@ -245,11 +245,13 @@ def test_numeric_series_is_always_averaged():
         ep = Endpoint("power", value_type="float", aggregation=aggregation)
         assert infer_series_aggregation(ep, "numeric") == "avg"
 
+
 def test_binary_series_follows_the_endpoints_own_aggregation():
     assert infer_series_aggregation(
         Endpoint("a", value_type="bool"), "binary") == "max"  # the default
     assert infer_series_aggregation(
         Endpoint("b", value_type="bool", aggregation="min"), "binary") == "min"
+
 
 def test_series_kind_decides_not_the_value_type():
     """Takes the resolved kind, so a panel forcing lanes over an int
@@ -258,6 +260,7 @@ def test_series_kind_decides_not_the_value_type():
     level = Endpoint("level", value_type="int")
     assert infer_series_aggregation(level, "binary") == "max"
     assert infer_series_aggregation(level, "numeric") == "avg"
+
 
 def test_every_endpoint_aggregation_is_a_valid_decimation_mode():
     """The inheritance must be total: no endpoint can name a mode

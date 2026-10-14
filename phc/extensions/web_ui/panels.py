@@ -23,7 +23,7 @@ from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.selectors import resolve_selectors
 from phc.extensions.web_ui.widgets import (
-    BINARY_AGGREGATIONS, infer_series_aggregation, infer_series_kind)
+    BINARY_AGGREGATIONS, infer_series_aggregation, infer_series_kind, series_title)
 
 logger = logging.getLogger("phc.web_ui")
 
@@ -155,7 +155,7 @@ class GraphPanel(Panel):
         # lifetime), so everything the client needs is extracted now.
         endpoints = [flat[qid].endpoint(key) for qid, key in self.pairs]
         self.series_titles = [
-            endpoint.name or endpoint.description or f"{qid}/{key}"
+            series_title(flat[qid], endpoint, qid)
             for endpoint, (qid, key) in zip(endpoints, self.pairs)]
         self.binary_lanes = binary_lanes
         self.series_kinds = [_resolve_series_kind(endpoint, binary_lanes) for endpoint in endpoints]

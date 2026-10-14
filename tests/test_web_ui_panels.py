@@ -49,13 +49,40 @@ def test_graph_panel_resolves_selectors_and_builds_labels():
     assert panel.logdb_instance == "logdb.house"
 
 
-def test_graph_panel_series_title_falls_back_to_qualified_label():
+def test_graph_panel_series_title_falls_back_to_the_device_not_the_raw_pair():
+    """An unnamed endpoint on a single-endpoint device is just the device:
+    a y-axis label has no device heading above it for context, and
+    "lamp/power" reads as plumbing."""
     lamp = VirtualDevice("lamp", endpoints=[Endpoint("power", writable=True, value_type="int")])
     flat = {"lamp": lamp}
 
     panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["lamp/*"])
 
-    assert panel.series_titles == ["lamp/power"]
+    assert panel.series_titles == ["Lamp"]
+
+
+def test_graph_panel_series_title_adds_the_endpoint_on_a_multi_endpoint_device():
+    """With more than one endpoint the device name alone is ambiguous, so
+    the endpoint is appended -- unlike the single-endpoint case above."""
+    hp = VirtualDevice("heat_pump", name="Heat Pump", endpoints=[
+        Endpoint("supply", value_type="float"),
+        Endpoint("return_", value_type="float"),
+    ])
+    flat = {"hp": hp}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["hp/*"])
+
+    assert panel.series_titles == ["Heat Pump Return", "Heat Pump Supply"]
+
+
+def test_graph_panel_series_title_humanizes_an_identifier():
+    """Underscores become spaces; a digit-led word and an acronym survive."""
+    flat = {"z": VirtualDevice("motion_1st_floor", endpoints=[Endpoint("state")])}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["z/*"])
+
+    assert panel.series_titles == ["Motion 1st Floor"]
+
 
 def test_graph_panel_series_title_prefers_name_over_description():
     lamp = VirtualDevice("lamp", endpoints=[
@@ -187,6 +214,7 @@ def test_graph_panel_rejects_non_boolean_binary_lanes():
     with pytest.raises(ConfigError):
         _graph(_mixed_flat(), binary_lanes="yes")
 
+
 def test_graph_panel_defaults_binary_to_endpoint_aggregation_and_numeric_to_avg():
     panel = _graph(_mixed_flat())
 
@@ -196,6 +224,7 @@ def test_graph_panel_defaults_binary_to_endpoint_aggregation_and_numeric_to_avg(
         "pump/cop": "avg",
         "pump/power": "avg",
     }
+
 
 def test_graph_panel_binary_series_follows_endpoint_aggregation_min():
     """The endpoint is the per-series control: declaring `aggregation: min`
@@ -207,10 +236,12 @@ def test_graph_panel_binary_series_follows_endpoint_aggregation_min():
 
     assert panel.series_aggregations == {"pump/active": "min"}
 
+
 def test_graph_panel_binary_aggregation_avg_restores_averaging():
     panel = _graph(_mixed_flat(), binary_aggregation="avg")
 
     assert panel.series_aggregations["pump/active"] == "avg"
+
 
 def test_graph_panel_binary_aggregation_leaves_numeric_series_averaged():
     """A panel-wide setting must not turn a power chart into a peak chart."""
@@ -218,6 +249,7 @@ def test_graph_panel_binary_aggregation_leaves_numeric_series_averaged():
 
     assert panel.series_aggregations["pump/cop"] == "avg"
     assert panel.series_aggregations["pump/power"] == "avg"
+
 
 def test_graph_panel_binary_lanes_true_also_switches_int_series_to_max():
     """One override, one coherent story: forcing a level endpoint into a
@@ -229,6 +261,7 @@ def test_graph_panel_binary_lanes_true_also_switches_int_series_to_max():
 
     assert panel.series_kinds == ["binary"]
     assert panel.series_aggregations == {"dim/level": "max"}
+
 
 def test_graph_panel_rejects_invalid_binary_aggregation():
     with pytest.raises(ConfigError):
