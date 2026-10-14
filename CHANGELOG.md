@@ -8,6 +8,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-14
+
+**Breaking changes**
+
+- An endpoint's `log_aggregation:` is renamed to `aggregation:`. The field
+  was never logging-specific -- scripting's `sticky()` reads the same
+  value, and a graph panel now uses it too -- so the `log_` prefix
+  described only one of its consumers. There is no alias: a config still
+  using the old spelling fails at load with a "unrecognized key" error
+  rather than silently reverting to the `max` default. The Python API
+  renames with it (`Endpoint.aggregation`, `subscribe_sticky()`,
+  `update_sticky_value()`, `get_sticky_value()`,
+  `invalidate_sticky_value()`, and `AGGREGATIONS`); `sticky()` and
+  `reset_sticky()` in task expressions are unchanged. The field is also
+  documented for the first time, in
+  [`docs/concepts.md`](docs/concepts.md).
+
+**New features**
+
+- A web UI graph panel now draws `type: bool` endpoints as their own
+  stacked on/off lanes instead of overlaying every 0/1 series on one
+  axis, where a panel of switches, motion sensors and door contacts read
+  as a single tangle. Each lane is stepped, labelled with the endpoint's
+  name on the left axis, and numeric series in the same panel move to an
+  independent right-hand axis so a magnitude like compressor power can no
+  longer flatten a flag onto the baseline. A panel with no bool endpoint
+  renders exactly as before. `binary_lanes: true|false` overrides the
+  inference per panel. See
+  [`docs/web-ui.md`](docs/web-ui.md#binary-series).
+- Decimation no longer averages a bool series. Because an endpoint's
+  `aggregation` has already reduced many ticks into each stored sample,
+  averaging a bucket of those produced neither a peak nor a true duty
+  cycle, and a zoomed-out switch dissolved into part-height fragments. A
+  binary series is now collapsed by its own `aggregation` (so the logging
+  and display stages agree), and `binary_aggregation: avg|min|max`
+  overrides it per panel -- `avg` restores the duty-cycle view, reported
+  in the legend as e.g. "38% on". Numeric series are always averaged.
+  `LogDb.get_decimated()` gains an optional per-label `aggregations` map;
+  omitting it averages as before.
+
+**Improvements**
+
+- Graph panels follow the page's light/dark theme. Previously the chart
+  kept Dygraphs' hardcoded light-theme colors, so on a dark page the axis
+  numbers, gridlines and range selector were close to invisible and
+  several series traces disappeared into the background. Series colors
+  are now an explicit palette with its own stepping per theme, validated
+  for colorblind separation and for contrast against each theme's
+  background. A theme switch made while the page is open restyles the
+  charts in place, preserving zoom and pan.
+- Graph series with no `name:` are labelled from their device rather than
+  the raw `device/endpoint` pair, so a lane reads "Motion Cellar" instead
+  of "zway.motion_cellar/state"; the endpoint is appended only when its
+  device has more than one. The label gutter is now a share of the chart
+  width instead of a fixed 150px, which gives a phone noticeably more
+  room for the plot, and over-long names are elided in the middle rather
+  than cropped mid-word.
+
 ### 2026-10-01
 
 **New features**

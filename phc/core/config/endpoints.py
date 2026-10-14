@@ -14,7 +14,7 @@ import re
 
 from phc.core.config.descriptors import _ENDPOINT_ENTRY_KEYS, _HISTORY_ENTRY_KEYS, ModuleDescriptor
 from phc.core.config.params import _UNSET
-from phc.core.endpoint import LOG_AGGREGATIONS, ON_INVALID_MODES, VALUE_TYPES, Endpoint
+from phc.core.endpoint import AGGREGATIONS, ON_INVALID_MODES, VALUE_TYPES, Endpoint
 from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.registry import get_endpoint_class
@@ -30,9 +30,9 @@ _TEMPLATE_FIELD_RE = re.compile(r"\{(\w+)\}")
 # Endpoint-spec fields that are structural/identity metadata rather than
 # display or protocol data -- never templated even though some are strings,
 # since substituting `key` (used for merge-by-key lookups before this point)
-# or `kind`/`type`/`log_aggregation`/`device_profile`/`endpoint_profile`
+# or `kind`/`type`/`aggregation`/`device_profile`/`endpoint_profile`
 # would be meaningless or actively wrong.
-_TEMPLATE_EXCLUDED_FIELDS = {"key", "kind", "type", "log_aggregation",
+_TEMPLATE_EXCLUDED_FIELDS = {"key", "kind", "type", "aggregation",
                              "device_profile", "endpoint_profile"}
 
 
@@ -205,11 +205,11 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
             raise ConfigError(
                 f"device {device_id!r}: endpoint {spec['key']!r} has invalid type "
                 f"{value_type!r}, expected one of {VALUE_TYPES}")
-        log_aggregation = spec.get("log_aggregation", "max")
-        if log_aggregation not in LOG_AGGREGATIONS:
+        aggregation = spec.get("aggregation", "max")
+        if aggregation not in AGGREGATIONS:
             raise ConfigError(
-                f"device {device_id!r}: endpoint {spec['key']!r} has invalid log_aggregation "
-                f"{log_aggregation!r}, expected one of {LOG_AGGREGATIONS}")
+                f"device {device_id!r}: endpoint {spec['key']!r} has invalid aggregation "
+                f"{aggregation!r}, expected one of {AGGREGATIONS}")
         on_invalid = spec.get("on_invalid", "pass")
         if on_invalid not in ON_INVALID_MODES:
             raise ConfigError(
@@ -239,7 +239,7 @@ def _merge_endpoints(module: ModuleDescriptor, instance_endpoints: list, device_
                 value_type=value_type,
                 unit=spec.get("unit"),
                 values=spec.get("values"),
-                log_aggregation=log_aggregation,
+                aggregation=aggregation,
                 min=spec.get("min"),
                 max=spec.get("max"),
                 format=spec.get("format"),

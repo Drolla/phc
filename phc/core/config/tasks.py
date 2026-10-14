@@ -30,7 +30,7 @@ def _subscribe_referenced_endpoints(paths: set[str], flat: dict[str, Device], ta
         if device_id not in flat:
             raise ConfigError(f"task {task_tag!r}: {context} device {device_id!r} not found")
         endpoint = flat[device_id].endpoint(endpoint_key)
-        endpoint.subscribe_log(task_tag)
+        endpoint.subscribe_sticky(task_tag)
         sticky_endpoints.add(endpoint)
 
 
@@ -47,7 +47,7 @@ def _build_condition(spec: dict | None, task_tag: str,
 
     For `expr`, every endpoint it references -- via `refs:` or inline as a
     string literal (`state("house.motion1.state")`, see
-    scripting.Compiled.referenced_paths) -- is subscribed for sticky log
+    scripting.Compiled.referenced_paths) -- is subscribed for sticky value
     tracking under `task_tag` and added to `sticky_endpoints`, so
     load_system()'s tick hook keeps its sticky() window advancing every
     tick regardless of when/whether this condition is evaluated."""

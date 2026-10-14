@@ -244,6 +244,99 @@ def test_get_decimated_zero_and_negative_factor_tiers_are_ignored(tmp_path):
     db.close()
 
 
+# ---------- get_decimated: per-label aggregation ----------
+
+def test_get_decimated_without_aggregations_still_averages(tmp_path):
+    """The default must stay averaging -- every pre-existing caller and
+    test depends on it."""
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1000.0
+    _seed(db, now, 4)  # values 0..3
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0)
+    assert [r["a"] for r in rows] == [1.5]
+    db.close()
+
+
+def test_get_decimated_max_aggregation_takes_group_maximum(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    # A bool column: on only briefly, in the middle of the group.
+    for t, v in enumerate([0.0, 0.0, 1.0, 0.0]):
+        db.log(1.0 + t, {"a": v})
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0,
+                             aggregations={"a": "max"})
+    # The brief "on" survives the bucket rather than being diluted to 0.25.
+    assert [r["a"] for r in rows] == [1.0]
+    db.close()
+
+
+def test_get_decimated_min_aggregation_takes_group_minimum(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    for t, v in enumerate([1.0, 1.0, 0.0, 1.0]):
+        db.log(1.0 + t, {"a": v})
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0,
+                             aggregations={"a": "min"})
+    assert [r["a"] for r in rows] == [0.0]
+    db.close()
+
+
+def test_get_decimated_all_zero_group_is_zero_not_nan(tmp_path):
+    """0.0 is a real value, not "no data" -- the all-off bucket of a bool
+    series must read off, not blank."""
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    for t in range(4):
+        db.log(1.0 + t, {"a": 0.0})
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0,
+                             aggregations={"a": "max"})
+    assert [r["a"] for r in rows] == [0.0]
+    db.close()
+
+
+def test_get_decimated_mixed_aggregations_per_label(tmp_path):
+    """One call, different reductions per column -- a graph panel mixes a
+    bool series with numeric ones."""
+    db = LogDb(_csv_path(tmp_path), ["flag", "power"], full_vector_interval=100)
+    for t, (flag, power) in enumerate([(0.0, 10.0), (1.0, 20.0),
+                                        (0.0, 30.0), (0.0, 40.0)]):
+        db.log(1.0 + t, {"flag": flag, "power": power})
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0,
+                             aggregations={"flag": "max"})
+    assert len(rows) == 1
+    assert rows[0]["flag"] == 1.0   # max
+    assert rows[0]["power"] == 25.0  # avg -- unlisted labels default to it
+    db.close()
+
+
+def test_get_decimated_max_skips_nan_and_all_nan_group_emits_nan(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a", "b"], full_vector_interval=100)
+    db.log(1.0, {"a": 1.0})           # b: no data
+    db.log(2.0, {})                    # both: no data
+    db.log(3.0, {"a": 0.0})
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0,
+                             aggregations={"a": "max", "b": "max"})
+    assert len(rows) == 1
+    assert rows[0]["a"] == 1.0            # the NaN is skipped, not treated as 0
+    assert math.isnan(rows[0]["b"])        # nothing but NaNs -> NaN, as with avg
+    db.close()
+
+
+def test_get_decimated_aggregation_for_unknown_label_is_ignored(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    now = 1000.0
+    _seed(db, now, 4)
+    rows = db.get_decimated(decimation=[(0.5, 4)], now=10_000.0,
+                             aggregations={"a": "max", "bogus": "min"})
+    assert [r["a"] for r in rows] == [3.0]
+    db.close()
+
+
+def test_get_decimated_rejects_invalid_aggregation_mode(tmp_path):
+    db = LogDb(_csv_path(tmp_path), ["a"], full_vector_interval=100)
+    _seed(db, 1000.0, 4)
+    with pytest.raises(ValueError):
+        db.get_decimated(aggregations={"a": "mean"})
+    db.close()
+
+
 # ---------- restore ----------
 
 def test_restore_round_trip(tmp_path):

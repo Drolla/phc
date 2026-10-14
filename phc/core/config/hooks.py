@@ -28,7 +28,7 @@ def _make_sticky_tick_hook(sticky_endpoints: set):
     automatically on the next tick -- no re-registration needed."""
     def _hook(devices: dict[str, Device]) -> None:
         for endpoint in sticky_endpoints:
-            endpoint.update_log_value()
+            endpoint.update_sticky_value()
     return _hook
 
 

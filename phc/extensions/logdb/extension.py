@@ -1,7 +1,7 @@
 """logdb extension wiring: resolves selectors, builds a LogDb store.
 
 Resolves an extensions.logdb.<instance>'s `selectors` list against the
-live device tree, subscribes every matched endpoint for sticky log
+live device tree, subscribes every matched endpoint for sticky value
 tracking, builds a LogDb store, and registers the "log_db" task action
 kind so a hand-authored `tasks:` entry can sample it on its own
 schedule -- see phc.core.config._load_extensions for how configure() is
@@ -23,7 +23,7 @@ class LogDbInstance:
     """One configured logdb instance: a LogDb store plus resolved pairs.
 
     Each pair subscribed for sticky min/max tracking (see
-    phc.core.endpoint.Endpoint.subscribe_log). Looked up by name from a
+    phc.core.endpoint.Endpoint.subscribe_sticky). Looked up by name from a
     log_db task action (see phc.core.config._load_extensions/_build_action)."""
 
     def __init__(self, store: LogDb, pairs: list[tuple[str, str]], subscriber_id: str):
@@ -42,14 +42,14 @@ class LogDbInstance:
             device = devices.get(qualified_id)
             if device is None:
                 continue
-            device.endpoint(endpoint_key).update_log_value()
+            device.endpoint(endpoint_key).update_sticky_value()
 
     def sample(self, devices: dict[str, Device]) -> None:
         """Called when the log_db task fires: reads each sticky value.
 
         Reads (and invalidates) each subscribed endpoint's sticky value
         -- not the live value -- so a brief event between two log
-        samples is still captured (per log_aggregation) rather than
+        samples is still captured (per aggregation) rather than
         only whatever the state happened to be exactly when the task
         fired. Only bool/int/float sticky values
         are stored (bool -> 0.0/1.0); other types are simply absent from
@@ -65,7 +65,7 @@ class LogDbInstance:
             if device is None:
                 continue
             endpoint = device.endpoint(endpoint_key)
-            raw = endpoint.get_log_value(self.subscriber_id)
+            raw = endpoint.get_sticky_value(self.subscriber_id)
             if isinstance(raw, bool):
                 values[f"{qualified_id}/{endpoint_key}"] = 1.0 if raw else 0.0
             elif isinstance(raw, (int, float)):
@@ -73,7 +73,7 @@ class LogDbInstance:
                 if endpoint.format:
                     value = float(format(value, endpoint.format))
                 values[f"{qualified_id}/{endpoint_key}"] = value
-            endpoint.invalidate_log_value(self.subscriber_id)
+            endpoint.invalidate_sticky_value(self.subscriber_id)
         self.store.log(now, values)
 
 
@@ -82,7 +82,7 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
     """Extension entry point (see phc.core.config._load_extensions).
 
     Resolves the selectors once against the static device tree,
-    subscribes every resolved endpoint for sticky log tracking under
+    subscribes every resolved endpoint for sticky value tracking under
     `instance_key`, and opens/restores the CSV-backed store.
     `extensions_registry` (see phc.core.config._load_extensions) is
     unused here -- logdb never references another extension's
@@ -90,7 +90,7 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
     phc.extensions.web_ui's graph panels) reference by name."""
     pairs = resolve_selectors(params["selectors"], flat)
     for qualified_id, endpoint_key in pairs:
-        flat[qualified_id].endpoint(endpoint_key).subscribe_log(instance_key)
+        flat[qualified_id].endpoint(endpoint_key).subscribe_sticky(instance_key)
     labels = [f"{qid}/{key}" for qid, key in pairs]
     max_age = parse_duration(params["max_age"]) if params["max_age"] is not None else None
     store = LogDb(

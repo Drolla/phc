@@ -19,11 +19,12 @@ _TRUTHY_TEXT = {"true", "1", "on", "yes"}
 # Default `format` for a float-typed endpoint when none is declared explicitly.
 _DEFAULT_FLOAT_FORMAT = ".1f"
 
-# Aggregation rules recognized by `log_aggregation:` -- see the sticky log
-# value methods below. "max" is the default: for the common case (alarms,
-# "on" states), the most-alarming value seen since the last log sample is
-# the one worth keeping, not whatever happened to be current at sample time.
-LOG_AGGREGATIONS = ("min", "max")
+# How several observations of this endpoint collapse into one value --
+# see the sticky value methods below. "max" is the default: for the common
+# case (alarms, "on" states), the most-alarming value seen since the last
+# read is the one worth keeping, not whatever happened to be current at
+# sample time.
+AGGREGATIONS = ("min", "max")
 
 # What to do with a write whose value falls outside a declared min/max.
 # "pass" is the default: min/max are a display hint (e.g. a slider's
@@ -53,7 +54,7 @@ class Endpoint:
     def __init__(self, key: str, *, readable: bool = True, writable: bool = False,
                  params: dict | None = None, description: str = "", name: str = "",
                  value_type: str | None = None, unit: str | None = None,
-                 values: dict | None = None, log_aggregation: str = "max",
+                 values: dict | None = None, aggregation: str = "max",
                  min: float | int | None = None, max: float | int | None = None,
                  format: str | None = None, read_transform: str | None = None,
                  write_transform: str | None = None, history: int = 0,
@@ -61,9 +62,9 @@ class Endpoint:
         if value_type is not None and value_type not in VALUE_TYPES:
             raise ValueError(f"endpoint {key!r}: invalid type {value_type!r}, "
                               f"expected one of {VALUE_TYPES}")
-        if log_aggregation not in LOG_AGGREGATIONS:
-            raise ValueError(f"endpoint {key!r}: invalid log_aggregation {log_aggregation!r}, "
-                              f"expected one of {LOG_AGGREGATIONS}")
+        if aggregation not in AGGREGATIONS:
+            raise ValueError(f"endpoint {key!r}: invalid aggregation {aggregation!r}, "
+                              f"expected one of {AGGREGATIONS}")
         if min is not None and max is not None and min > max:
             raise ValueError(f"endpoint {key!r}: min ({min!r}) is greater than max ({max!r})")
         if not isinstance(history, int) or isinstance(history, bool) or history < 0:
@@ -92,7 +93,7 @@ class Endpoint:
         self.value_type = value_type
         self.unit = unit
         self.values = values
-        self.log_aggregation = log_aggregation
+        self.aggregation = aggregation
         self.min = min
         self.max = max
         self.on_invalid = on_invalid
@@ -107,13 +108,13 @@ class Endpoint:
         self._event = None
         self._update_time = 0.0
         self._last_read_time: float | None = None
-        # Sticky log values: {subscriber_id: value | None}, one slot per
-        # logger subscribed via subscribe_log() (see those methods below).
-        # A plain dict, not a single value, because independently-scheduled
-        # loggers sampling the same endpoint (e.g. two logdb instances with
-        # different intervals) each need their own since-last-sample
-        # min/max window.
-        self._log_subscriptions: dict[str, object] = {}
+        # Sticky values: {subscriber_id: value | None}, one slot per
+        # subscriber registered via subscribe_sticky() (see those methods
+        # below). A plain dict, not a single value, because independently
+        # scheduled subscribers tracking the same endpoint (e.g. two logdb
+        # instances with different intervals, or a task using sticky())
+        # each need their own since-last-read min/max window.
+        self._sticky_subscriptions: dict[str, object] = {}
         # Bounded FIFO of past committed values, advanced on a cadence by
         # phc.core.config's history tick hook (see record_history() below) --
         # deque(maxlen=0) silently drops every append, so a plain endpoint
@@ -276,48 +277,48 @@ class Endpoint:
             self._state = self._next_state
             self._update_time = time.time()
 
-    def subscribe_log(self, subscriber_id: str) -> None:
+    def subscribe_sticky(self, subscriber_id: str) -> None:
         """Register `subscriber_id` for sticky min/max tracking.
 
-        E.g. "logdb.house_log" (see update_log_value()). Idempotent --
+        E.g. "logdb.house_log" (see update_sticky_value()). Idempotent --
         re-subscribing an already-subscribed id does not reset its
         current sticky value."""
-        self._log_subscriptions.setdefault(subscriber_id, None)
+        self._sticky_subscriptions.setdefault(subscriber_id, None)
 
-    def update_log_value(self) -> None:
+    def update_sticky_value(self) -> None:
         """Advance every subscriber's sticky value from the CURRENT state.
 
-        Uses get(), per this endpoint's log_aggregation rule. Meant to
-        be called once per tick (after that tick's state has been
-        committed) by whichever logger owns each subscription -- see
-        phc.core.scheduler's tick-hooks pass. A no-op while the
-        endpoint has never been set (get() is None), and for any
-        endpoint with no subscribers."""
+        Per this endpoint's aggregation rule. Meant to be called once
+        per tick (after that tick's state has been committed) by
+        whichever subscriber owns each subscription -- a logdb instance
+        or a task using sticky() -- see phc.core.scheduler's tick-hooks
+        pass. A no-op while the endpoint has never been set (get() is
+        None), and for any endpoint with no subscribers."""
         current = self._state
         if current is None:
             return
-        for subscriber_id, sticky in self._log_subscriptions.items():
+        for subscriber_id, sticky in self._sticky_subscriptions.items():
             if sticky is None:
-                self._log_subscriptions[subscriber_id] = current
-            elif self.log_aggregation == "max":
-                self._log_subscriptions[subscriber_id] = max(sticky, current)
+                self._sticky_subscriptions[subscriber_id] = current
+            elif self.aggregation == "max":
+                self._sticky_subscriptions[subscriber_id] = max(sticky, current)
             else:
-                self._log_subscriptions[subscriber_id] = min(sticky, current)
+                self._sticky_subscriptions[subscriber_id] = min(sticky, current)
 
-    def get_log_value(self, subscriber_id: str):
+    def get_sticky_value(self, subscriber_id: str):
         """The subscriber's current sticky value.
 
         None if nothing has been observed since subscribing or since
-        the last invalidate_log_value()."""
-        return self._log_subscriptions.get(subscriber_id)
+        the last invalidate_sticky_value()."""
+        return self._sticky_subscriptions.get(subscriber_id)
 
-    def invalidate_log_value(self, subscriber_id: str) -> None:
+    def invalidate_sticky_value(self, subscriber_id: str) -> None:
         """Reset the subscriber's sticky value to None.
 
         Meant to be called right after a logger reads it
-        (get_log_value()), so the next update_log_value() call starts a
+        (get_sticky_value()), so the next update_sticky_value() call starts a
         fresh min/max window."""
-        self._log_subscriptions[subscriber_id] = None
+        self._sticky_subscriptions[subscriber_id] = None
 
     def record_history(self) -> bool:
         """Append the current committed state to the history buffer.

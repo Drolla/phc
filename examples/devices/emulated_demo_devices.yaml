@@ -49,12 +49,12 @@
           max: 100
           unit: "%"
           default: 0
-          # log_aggregation: min tracks brightness dips for a logdb
-          # consumer (see examples/logdb_system.yaml); history: 5
+          # aggregation: min keeps brightness dips for a logdb consumer
+          # (see examples/logdb_system.yaml); history: 5
           # independently feeds fractile()/median() queries (see
           # examples/emulated_system.yaml and docs/scripting.md's "Value
           # history & fractiles").
-          log_aggregation: min
+          aggregation: min
           history: 5
 
     # A bool with no values mapping, unlike living_light above: both

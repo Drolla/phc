@@ -53,7 +53,7 @@ def configure(params: dict, flat: dict[str, Device], instance_key: str,
   every tick.
 - `instance_key` — `"<extension>.<instance>"`, e.g. `"logdb.house_log"`.
   Use it in log messages and as a subscriber id (see
-  `Endpoint.subscribe_log`).
+  `Endpoint.subscribe_sticky`).
 - `extensions_registry` — the live registry of other instances. It is
   still being filled while `configure()` runs, so **do not** resolve
   another instance here; do it in `on_bind` (below).

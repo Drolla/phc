@@ -34,7 +34,7 @@ from phc.core.registry import _device_modules, _extension_packages, extension_pa
 # onto another (see _overlay_endpoint_spec) without a separate deep-merge
 # rule for params.
 _ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "name", "description",
-                        "type", "unit", "values", "log_aggregation", "min", "max",
+                        "type", "unit", "values", "aggregation", "min", "max",
                         "default", "format", "endpoint_profile", "read_transform",
                         "write_transform", "history", "on_invalid"}
 

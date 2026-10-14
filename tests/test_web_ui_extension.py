@@ -403,8 +403,95 @@ def test_get_api_graph_returns_history_from_referenced_logdb_instance(tmp_path):
             resp = await client.get("/api/graph/lamp_history")
             assert resp.status == 200
             body = await resp.json()
-            assert body["labels"] == ["Time", "lamp/state"]
+            # "Lamp", not "lamp/state": an unnamed endpoint on a
+            # single-endpoint device falls back to the device (see
+            # widgets.series_title).
+            assert body["labels"] == ["Time", "Lamp"]
             assert body["rows"] == [[1.0, 1.0], [2.0, 0.0]]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_describes_each_series_rendering_kind(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        params = _graph_page_params(selectors=["lamp/*", "sensor/*"])
+        client, _ = await _client_for_graph(registry, params=params, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            # Parallel to labels[1:], so the client can map each column to
+            # how it should be drawn (see widgets.infer_series_kind).
+            assert body["series"] == [
+                {"title": "Lamp", "kind": "binary", "unit": None, "values": None},
+                {"title": "Sensor", "kind": "numeric", "unit": "C", "values": None},
+            ]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_rows_stay_raw_for_binary_series(tmp_path):
+    """A binary series' lane offset belongs to the renderer, not the wire.
+
+    /api/graph is a read API like /api/tree; baking a display offset into
+    its values would make an off switch report e.g. 4.0, and would put the
+    offset constant in two places at once. graph.js applies it instead."""
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        registry["logdb.house"].store.log(1.0, {"lamp/state": 1.0})
+        registry["logdb.house"].store.log(2.0, {"lamp/state": 0.0})
+        client, _ = await _client_for_graph(registry, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            assert body["series"][0]["kind"] == "binary"
+            assert body["rows"] == [[1.0, 1.0], [2.0, 0.0]]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_decimates_a_bool_series_by_max_not_average(tmp_path):
+    """End to end: a brief "on" inside a decimated bucket reaches the
+    browser as a clean 1.0, not as the fraction of the bucket it covered."""
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        store = registry["logdb.house"].store
+        # lamp/state is bool; four samples, on only for the third.
+        for t, v in enumerate([0.0, 0.0, 1.0, 0.0]):
+            store.log(1.0 + t, {"lamp/state": v})
+        params = _graph_page_params(decimation=[{"older_than": "1s", "factor": 4}])
+        client, _ = await _client_for_graph(registry, params=params, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            assert body["series"][0]["kind"] == "binary"
+            # One decimated row, and the brief event survived it.
+            assert [row[1] for row in body["rows"]] == [1.0]
+        finally:
+            await client.close()
+    asyncio.run(run())
+
+
+def test_get_api_graph_binary_aggregation_avg_restores_the_duty_cycle(tmp_path):
+    async def run():
+        flat = _flat()
+        registry = _logdb_registry(tmp_path, flat)
+        store = registry["logdb.house"].store
+        for t, v in enumerate([0.0, 0.0, 1.0, 0.0]):
+            store.log(1.0 + t, {"lamp/state": v})
+        params = _graph_page_params(decimation=[{"older_than": "1s", "factor": 4}],
+                                     binary_aggregation="avg")
+        client, _ = await _client_for_graph(registry, params=params, flat=flat)
+        try:
+            resp = await client.get("/api/graph/lamp_history")
+            body = await resp.json()
+            assert [row[1] for row in body["rows"]] == [0.25]
         finally:
             await client.close()
     asyncio.run(run())
