@@ -52,12 +52,16 @@ class LogDbInstance:
         samples is still captured (per aggregation) rather than
         only whatever the state happened to be exactly when the task
         fired. Only bool/int/float sticky values
-        are stored (bool -> 0.0/1.0); other types are simply absent from
-        this row (LogDb.log() records them as "no data"). A float value
-        is rounded per the endpoint's declared `format` (e.g. ".1f") --
-        the same precision to_text() would display -- so raw sensor
-        noise (e.g. 23.834982187699923) doesn't bloat the CSV with
-        digits beyond what the endpoint considers meaningful."""
+        are stored (bool -> 0.0/1.0); other types (including the raw
+        Unix timestamp behind a `datetime` endpoint, logged unrounded)
+        are simply absent from this row (LogDb.log() records them as
+        "no data"). A `type: float` value is rounded per the endpoint's
+        declared `format` (e.g. ".1f") -- the same precision to_text()
+        would display -- so raw sensor noise (e.g. 23.834982187699923)
+        doesn't bloat the CSV with digits beyond what the endpoint
+        considers meaningful. `format` is skipped for any other type,
+        since e.g. a `datetime` endpoint's `format` is a strftime
+        pattern, not a numeric mini-spec Python's format() accepts."""
         now = time.time()
         values: dict[str, float] = {}
         for qualified_id, endpoint_key in self.pairs:
@@ -70,7 +74,7 @@ class LogDbInstance:
                 values[f"{qualified_id}/{endpoint_key}"] = 1.0 if raw else 0.0
             elif isinstance(raw, (int, float)):
                 value = float(raw)
-                if endpoint.format:
+                if endpoint.format and endpoint.value_type == "float":
                     value = float(format(value, endpoint.format))
                 values[f"{qualified_id}/{endpoint_key}"] = value
             endpoint.invalidate_sticky_value(self.subscriber_id)

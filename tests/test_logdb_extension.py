@@ -175,6 +175,33 @@ def test_sample_rounds_float_per_endpoint_format(tmp_path):
     instance.store.close()
 
 
+def test_sample_logs_datetime_endpoint_unrounded(tmp_path):
+    """A `datetime` endpoint's `format` is a strftime pattern, not a numeric
+    mini-spec -- applying it via format() like a float's would raise. The
+    raw Unix timestamp should be logged as-is instead."""
+    flat = {"sun": VirtualDevice("sun", endpoints=[
+        Endpoint("sunrise", writable=True, value_type="datetime"),
+    ])}
+    params = {
+        "selectors": ["sun/sunrise"],
+        "csv_path": str(tmp_path / "log.csv"),
+        "full_vector_interval": 100,
+        "max_records": None,
+        "max_age": None,
+        "header_reserve_bytes": None,
+    }
+    instance = configure(params, flat, "logdb.house_log")
+    sensor = flat["sun"]
+
+    _commit(sensor, "sunrise", 1791956970.8)
+    instance.on_tick(flat)
+    instance.sample(flat)
+
+    row = instance.store.get_range(0, float("inf"))[0]
+    assert row["sun/sunrise"] == 1791956970.8
+    instance.store.close()
+
+
 def test_two_instances_sampling_same_endpoint_track_independent_sticky_values(tmp_path):
     flat = _house()
     lamp = flat["house.desk_lamp"]

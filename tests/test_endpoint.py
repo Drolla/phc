@@ -250,6 +250,31 @@ def test_explicit_int_format_applies():
     assert ep.to_text() == "0007"
 
 
+# ---------- datetime ----------
+
+def test_datetime_format_defaults_to_full_timestamp():
+    ep = Endpoint("sunrise", value_type="datetime")
+    assert ep.format == "%Y-%m-%d %H:%M:%S"
+
+
+def test_datetime_to_text_formats_as_local_time():
+    import datetime as dt
+    ts = dt.datetime(2026, 10, 14, 6, 42, 50).timestamp()
+    ep = Endpoint("sunrise", value_type="datetime", format="%H:%M:%S")
+    ep.set(ts)
+    ep.update_state()
+    assert ep.to_text() == "06:42:50"
+
+
+def test_datetime_round_trips_through_from_text():
+    import datetime as dt
+    ts = dt.datetime(2026, 10, 14, 6, 42, 50).timestamp()
+    ep = Endpoint("sunrise", value_type="datetime")
+    ep.set(ts)
+    ep.update_state()
+    assert ep.from_text(ep.to_text()) == ts
+
+
 def test_bool_to_text_and_from_text():
     ep = Endpoint("flag", value_type="bool")
     ep.set(True)
