@@ -357,15 +357,65 @@ extensions:
               title: Lights
               collapsed: false
               selectors: ["house.light_corridor/*", "house.porch_light/*"]
-            - id: temperature_history
-              title: Temperature
-              collapsed: false
+            - id: history
+              title: History
+              collapsed: true
               panels:
+                - kind: graph
+                  id: security_history
+                  logdb_instance: "logdb.full_history"
+                  title: "Security & Lights"
+                  selectors:
+                    - "house.surveillance/*"
+                    - "house.alarm/*"
+                    - "house.light_corridor/sw1"
+                    - "house.porch_light/sw"
+                    - "house.siren/state"
+                  window: 24h
+                  decimation:
+                    - { older_than: 25h, factor: 3 }
+                    - { older_than: 8D, factor: 8 }
                 - kind: graph
                   id: temperature_history
                   logdb_instance: "logdb.full_history"
                   title: "Indoor & Outdoor Temperature"
                   selectors: ["house.cellar_air/temperature", "weather.outdoor/temperature"]
+                  window: 24h
+                  decimation:
+                    - { older_than: 25h, factor: 3 }
+                    - { older_than: 8D, factor: 8 }
+
+        - id: environment
+          title: Environment
+          sections:
+            - id: air_quality
+              title: Air Quality
+              collapsed: false
+              selectors: ["house.cellar_air/*"]
+            - id: weather
+              title: Weather
+              collapsed: false
+              selectors: ["weather.*/*"]
+            - id: radon
+              title: Radon
+              collapsed: false
+              selectors: ["house.cellar_air/radon_st"]
+            - id: sun
+              title: Sun
+              collapsed: true
+              selectors: ["sun_zurich/*"]
+            - id: environment_history
+              title: History
+              collapsed: true
+              panels:
+                - kind: graph
+                  id: environment_history
+                  logdb_instance: "logdb.full_history"
+                  title: "Temperature & Radon"
+                  selectors:
+                    - "house.cellar_air/temperature"
+                    - "weather.outdoor/temperature"
+                    - "house.cellar_air/radon_st"
                   window: 24h
                   decimation:
                     - { older_than: 25h, factor: 3 }
@@ -389,57 +439,6 @@ extensions:
                 - kind: timers
                   id: house_timers
                   timer_instance: "timer.house"
-
-        - id: environment
-          title: Environment
-          sections:
-            - id: air_quality
-              title: Air Quality
-              collapsed: false
-              selectors: ["house.cellar_air/*"]
-            - id: weather
-              title: Weather
-              collapsed: false
-              selectors: ["weather.*/*"]
-            - id: radon_history
-              title: Radon
-              collapsed: false
-              panels:
-                - kind: graph
-                  id: radon_history
-                  logdb_instance: "logdb.full_history"
-                  title: "Radon"
-                  selectors: ["house.cellar_air/radon_st"]
-                  window: 24h
-                  decimation:
-                    - { older_than: 25h, factor: 3 }
-                    - { older_than: 8D, factor: 8 }
-            - id: sun
-              title: Sun
-              collapsed: true
-              selectors: ["sun_zurich/*"]
-
-        - id: history
-          title: History
-          sections:
-            - id: history_charts
-              title: History
-              collapsed: false
-              panels:
-                - kind: graph
-                  id: security_history
-                  logdb_instance: "logdb.full_history"
-                  title: "Security & Lights"
-                  selectors:
-                    - "house.surveillance/*"
-                    - "house.alarm/*"
-                    - "house.light_corridor/sw1"
-                    - "house.porch_light/sw"
-                    - "house.siren/state"
-                  window: 24h
-                  decimation:
-                    - { older_than: 25h, factor: 3 }
-                    - { older_than: 8D, factor: 8 }
 
   # A live view of this whole system's scheduler/task queue and endpoint
   # state -- see examples/debug_portal_system.yaml for a narrower

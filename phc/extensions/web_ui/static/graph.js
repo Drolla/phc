@@ -5,8 +5,10 @@
  * it's fetched as JSON (see extensions/web_ui/server.py's
  * handle_graph_data) and handed to Dygraphs directly.
  *
- * v1 loads once per page view -- no auto-refresh -- to avoid the
- * complexity of preserving a user's zoom/pan state across a live update.
+ * v1 loads once per graph-panel -- on page load if already visible,
+ * otherwise on first expand of its collapsed section -- no auto-refresh,
+ * to avoid the complexity of preserving a user's zoom/pan state across a
+ * live update.
  *
  * Binary series are drawn as stacked on/off lanes rather than sharing a
  * y-axis. The lane offset is applied here only; the server ships raw
@@ -58,8 +60,24 @@ var SERIES_COLORS = {
 /* Live charts plus the lane data a restyle/resize needs to rebuild ticks. */
 var graphs = [];
 
+/* A graph inside a collapsed <details class="section"> (see
+ * _macros.html's render_section) defers its /api/graph/* fetch until
+ * that section is actually opened, rather than loading data for every
+ * collapsed history section on every page view. */
 document.addEventListener("DOMContentLoaded", function () {
-  document.querySelectorAll(".graph-panel").forEach(initGraph);
+  document.querySelectorAll(".graph-panel").forEach(function (container) {
+    var section = container.closest("details.section");
+    if (!section || section.open) {
+      initGraph(container);
+    } else {
+      section.addEventListener("toggle", function onToggle() {
+        if (section.open) {
+          section.removeEventListener("toggle", onToggle);
+          initGraph(container);
+        }
+      });
+    }
+  });
 });
 
 /* Listen for base.html's event rather than the media query directly --
