@@ -87,6 +87,7 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
+    name: Temperature
     description: Air temperature measured by this unit
     channel: temp
   - key: humidity
@@ -94,6 +95,7 @@ endpoints:
     writable: false
     type: float
     unit: "%"
+    name: Humidity
     description: Relative humidity measured by this unit
     channel: hum
   - key: relay
@@ -101,5 +103,6 @@ endpoints:
     writable: true
     type: bool
     values: { false: "off", true: "on" }
+    name: Relay
     description: Switchable relay output on this unit
     channel: relay
