@@ -166,6 +166,11 @@ re-cased, not expanded, so it still reads as "Temp" rather than
 - An endpoint can omit both, but should only do so when its `key` is
   already a self-explanatory word (e.g. `state`, `armed`) — short technical
   keys like `bit0` or `fan_level` need an explicit `name`.
+- On a single-endpoint device, an endpoint `name` that just repeats the
+  device's own `name` (e.g. device "Cellar Light" with its one endpoint
+  also named "Cellar Light") is redundant in a widget that already shows
+  both — drop the endpoint `name` and let it fall through to the
+  humanized `key` instead (typically "Switch", "State" or similar).
 
 See [`docs/developer/writing-a-device-module.md`](developer/writing-a-device-module.md) for the full
 `module.yaml` endpoint schema.
