@@ -134,26 +134,34 @@ endpoint_profiles:
     type: bool
     writable: true
     values: { false: "off", true: "on" }
+    name: Switch
   dimmer:
     type: int
     writable: true
     min: 0
     max: 99
+    name: Dimmer
   motion:
     type: bool
     values: { false: "clear", true: "triggered" }
+    name: Motion
   temperature:
     type: float
     unit: "°C"
+    name: Temperature
   humidity:
     type: float
     unit: "%"
+    name: Humidity
   luminosity:
     type: float
     unit: "%"
+    name: Luminosity
   pressure:
     type: float
     unit: kPa
+    name: Pressure
   battery:
     type: int
     unit: "%"
+    name: Battery

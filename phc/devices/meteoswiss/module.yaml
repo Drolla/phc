@@ -38,6 +38,7 @@ endpoints:
     writable: false
     type: float
     unit: "°C"
+    name: Temperature
     description: Air temperature
     column: tre200s0
   - key: precipitation
@@ -45,6 +46,7 @@ endpoints:
     writable: false
     type: float
     unit: mm
+    name: Precipitation (10 min)
     description: 10-minute precipitation
     column: rre150z0
   - key: direction
@@ -52,6 +54,7 @@ endpoints:
     writable: false
     type: float
     unit: "°"
+    name: Wind Direction
     description: Wind direction
     column: dkl010z0
   - key: speed
@@ -59,6 +62,7 @@ endpoints:
     writable: false
     type: float
     unit: m/s
+    name: Wind Speed
     description: Wind speed
     column: fu3010z0
   - key: pressure
@@ -66,6 +70,7 @@ endpoints:
     writable: false
     type: float
     unit: hPa
+    name: QNH Pressure
     description: QNH pressure
     column: pp0qnhs0
   - key: humidity
@@ -73,5 +78,6 @@ endpoints:
     writable: false
     type: float
     unit: "%"
+    name: Humidity
     description: Relative humidity
     column: ure200s0
