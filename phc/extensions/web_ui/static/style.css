@@ -289,6 +289,17 @@ input[type="range"].widget-input {
   color: var(--bs-secondary-color);
 }
 
+/* Lane labels are series names, not numbers, so they contain spaces --
+   and Dygraphs gives each label div a fixed width but no white-space
+   rule, so a two-word name wraps to a second line and overlaps the lane
+   below it (the vendored rule's overflow:hidden clips the box, not the
+   collision). Keep each on one line; graph.js has already shortened the
+   text to the gutter's character budget, so there is nothing left to
+   wrap for. */
+.dygraph-axis-label-y {
+  white-space: nowrap;
+}
+
 .dygraph-legend {
   background: var(--bs-body-bg);
   color: var(--bs-body-color);
