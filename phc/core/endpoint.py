@@ -3,6 +3,7 @@
 import math
 import time
 from collections import deque
+from datetime import datetime
 
 from phc.core import scripting
 
@@ -12,12 +13,18 @@ _UNSET = object()
 
 # Endpoint value types recognized by `type:` in module.yaml/instance YAML.
 # None (the default) means untyped passthrough -- see Endpoint docstring.
-VALUE_TYPES = ("int", "float", "bool", "str")
+# "datetime" stores a Unix timestamp (like "float") but displays/parses as
+# local wall-clock time -- see to_text()/from_text().
+VALUE_TYPES = ("int", "float", "bool", "str", "datetime")
 
 _TRUTHY_TEXT = {"true", "1", "on", "yes"}
 
 # Default `format` for a float-typed endpoint when none is declared explicitly.
 _DEFAULT_FLOAT_FORMAT = ".1f"
+
+# Default `format` (a strftime pattern) for a datetime-typed endpoint when
+# none is declared explicitly.
+_DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # How several observations of this endpoint collapse into one value --
 # see the sticky value methods below. "max" is the default: for the common
@@ -98,7 +105,8 @@ class Endpoint:
         self.max = max
         self.on_invalid = on_invalid
         self.format = format if format is not None else (
-            _DEFAULT_FLOAT_FORMAT if value_type == "float" else None)
+            _DEFAULT_FLOAT_FORMAT if value_type == "float" else
+            _DEFAULT_DATETIME_FORMAT if value_type == "datetime" else None)
         self.history_size = history
         self.history_interval = history_interval
 
@@ -369,6 +377,8 @@ class Endpoint:
             return str(self.values[value])
         if self.value_type == "bool":
             text = "true" if value else "false"
+        elif self.value_type == "datetime":
+            text = datetime.fromtimestamp(value).strftime(self.format)
         elif self.format:
             text = format(value, self.format)
         else:
@@ -401,6 +411,8 @@ class Endpoint:
             return float(s)
         if self.value_type == "bool":
             return s.lower() in _TRUTHY_TEXT
+        if self.value_type == "datetime":
+            return datetime.strptime(s, self.format).timestamp()
         return s
 
     state = property(get, set)

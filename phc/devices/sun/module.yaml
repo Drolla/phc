@@ -31,33 +31,38 @@ endpoints:
   - key: sunrise
     readable: true
     writable: false
-    type: float
+    type: datetime
+    format: "%H:%M:%S"
     name: Sunrise
-    description: Today's sunrise, Unix timestamp
+    description: Today's sunrise
   - key: sunset
     readable: true
     writable: false
-    type: float
+    type: datetime
+    format: "%H:%M:%S"
     name: Sunset
-    description: Today's sunset, Unix timestamp
+    description: Today's sunset
   - key: solar_noon
     readable: true
     writable: false
-    type: float
+    type: datetime
+    format: "%H:%M:%S"
     name: Solar Noon
-    description: Today's solar noon (the sun's highest point today), Unix timestamp
+    description: Today's solar noon (the sun's highest point today)
   - key: dawn
     readable: true
     writable: false
-    type: float
+    type: datetime
+    format: "%H:%M:%S"
     name: Civil Dawn
-    description: Today's civil dawn (sun 6 degrees below the horizon), Unix timestamp
+    description: Today's civil dawn (sun 6 degrees below the horizon)
   - key: dusk
     readable: true
     writable: false
-    type: float
+    type: datetime
+    format: "%H:%M:%S"
     name: Civil Dusk
-    description: Today's civil dusk (sun 6 degrees below the horizon), Unix timestamp
+    description: Today's civil dusk (sun 6 degrees below the horizon)
   - key: elevation
     readable: true
     writable: false
