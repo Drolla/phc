@@ -102,10 +102,10 @@ def test_describe_endpoint_stringifies_values_keys():
     assert described["values"] == {"0": "off", "1": "on"}
 
 
-def test_describe_endpoint_label_defaults_to_key_when_no_description():
-    ep = Endpoint("state")
+def test_describe_endpoint_label_defaults_to_humanized_key_when_no_description():
+    ep = Endpoint("fan_level")
     described = describe_endpoint("d", ep)
-    assert described["label"] == "state"
+    assert described["label"] == "Fan Level"
 
 
 def test_describe_endpoint_label_prefers_name_over_description():
@@ -140,7 +140,7 @@ def test_describe_endpoint_suppresses_description_identical_to_name():
 def test_describe_endpoint_suppresses_description_when_unset():
     ep = Endpoint("state")
     described = describe_endpoint("d", ep)
-    assert described["label"] == "state"
+    assert described["label"] == "State"
     assert described["description"] == ""
 
 
