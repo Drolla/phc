@@ -250,3 +250,24 @@ Re-run `pip install -e .` after every update in case dependencies changed
   `csv_path:` in `system.yaml` are resolved relative to
   `WorkingDirectory:`; confirm the directory exists and is owned by the
   `phc` user (step 5).
+- **Shell script fails with “cannot execute: required file not found”** —
+  the file likely has Windows CRLF line endings; convert it with
+  `dos2unix`.
+- **PHC commands behave incorrectly when run outside `/opt/phc`** —
+  always execute helper scripts and manual runs from the installation
+  directory, as paths and the virtual environment depend on it.
+- **Service does not pick up code changes** —
+  restart PHC after modifying Python files:
+  `sudo systemctl restart phc.service`.
+- **PHC runs with the wrong Python interpreter** —
+  a bare `phc` or `python -m phc` picks up whatever is on `PATH`; use the
+  virtual environment's own executable, `/opt/phc/.venv/bin/phc` (step 4).
+- **Log directory missing or unwritable** —
+  the `logs/` directory an extension writes to is relative to
+  `WorkingDirectory:`; create it and fix ownership with
+  `sudo -u phc mkdir -p /opt/phc/logs` (step 5).
+- **Nothing in a log file** —
+  there is no log file by default: PHC logs to stdout and systemd
+  captures it, so `journalctl -u phc.service -f` is the log viewer. A
+  file log exists only if `system.yaml`'s `log:` list declares a file
+  `dest:` — see [Logging](configuration.md#logging).
