@@ -27,25 +27,6 @@ var LANE_LABEL_FRACTION = 0.28;
 var LANE_LABEL_MAX_PX = 110;
 /* Estimate at ~11px sans-serif, erring narrow -- Dygraphs crops mid-glyph. */
 var LANE_LABEL_PX_PER_CHAR = 6.2;
-/* Each lane needs enough height for its own label: the axis font is 14px,
-   so anything under ~22px of pitch puts adjacent names within a couple of
-   pixels of each other. The CSS height is a floor for a small panel; past
-   about eight lanes the canvas has to grow instead, or the labels collide
-   however they are wrapped or shortened. */
-var LANE_MIN_PITCH_PX = 22;
-/* x-axis labels plus the range selector strip, which don't scale with lanes. */
-var LANE_CHROME_PX = 75;
-
-/* Grow .graph-canvas to fit `count` lanes, leaving its CSS height as the
-   minimum. Set before Dygraphs reads the element, so it measures the final
-   size and needs no resize afterwards. */
-function fitCanvasToLanes(container, count) {
-  var canvas = container.querySelector(".graph-canvas");
-  if (!canvas || count < 1) { return; }
-  var span = (count - 1) + LANE_HEIGHT + 2 * LANE_PAD;
-  var needed = Math.ceil(LANE_MIN_PITCH_PX * span + LANE_CHROME_PX);
-  if (needed > canvas.clientHeight) { canvas.style.height = needed + "px"; }
-}
 
 function laneLabelWidth(container) {
   var canvas = container.querySelector(".graph-canvas");
@@ -139,7 +120,6 @@ function initGraph(container) {
       var lanes = assignLanes(data.series || []);
       var rows = buildRows(data.rows, lanes);
       if (lanes.count > 0) {
-        fitCanvasToLanes(container, lanes.count);
         applyLaneOptions(options, data, lanes, container);
       }
       graphs.push({
