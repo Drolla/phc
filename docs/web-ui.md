@@ -93,12 +93,14 @@ lazily, at request time, so it may be declared either before or after this
 `web_ui:` instance. `selectors` picks which endpoints to plot (same syntax
 as [`phc/extensions/logdb`](logdb.md)'s own `selectors`) — each must also be covered by the
 referenced logdb instance, or its series is empty. `title` defaults to
-`id`. `unit` (optional) labels the Y axis. `window` (default `24h`) sets
-the chart's initial zoom; the full retained history is still fetched and
-pannable via the range selector. `decimation` (optional) is a list of
-`{older_than, factor}` tiers: samples older than `older_than` are collapsed
-in groups of `factor`, bounding how much history data is shipped to the
-browser as it grows. Numeric series are averaged.
+`id`. `unit` (optional) labels the Y axis and, when the panel's numeric
+series span more than one unit (see below), names which of them gets the
+left axis. `window` (default `24h`) sets the chart's initial zoom; the
+full retained history is still fetched and pannable via the range
+selector. `decimation` (optional) is a list of `{older_than, factor}`
+tiers: samples older than `older_than` are collapsed in groups of
+`factor`, bounding how much history data is shipped to the browser as it
+grows. Numeric series are averaged.
 
 `type: bool` endpoints instead get their own stacked on/off lane
 (stepped, labelled by endpoint name, decimated via the endpoint's
@@ -106,6 +108,20 @@ browser as it grows. Numeric series are averaged.
 series in the panel to a right-hand axis. `binary_aggregation`
 (`avg`/`min`) and `binary_lanes` (`true`/`false`) override this per
 panel; there's no per-series form.
+
+If a panel has no `type: bool` endpoints but its numeric series still
+declare more than one `unit:` (e.g. temperature and humidity on one
+chart), they are likewise split across the left/right axes, grouped by
+their own endpoints' `unit:` — not by the panel's `selectors` order. The
+panel's own `unit:`, if set, picks which group goes on the left; a group
+with no declared `unit:` (e.g. a dimensionless ratio) counts as its own
+group rather than merging into whichever numbered axis happens to be
+first. Only two axes exist, so a panel mixing three or more units puts
+the extras on the right axis together — split into separate panels if
+that reads badly. This grouping only applies when the panel has no
+`type: bool` lanes; a laned panel's left axis is already lane baselines,
+so its numeric series always share the single right-hand axis regardless
+of unit.
 
 `kind: timers` renders a create/edit/delete UI for user timers, backed by a
 named [`phc/extensions/timer`](timer.md) instance:

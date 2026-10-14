@@ -12,6 +12,14 @@
  * y-axis. The lane offset is applied here only; the server ships raw
  * 0/1 values.
  *
+ * When there are no binary lanes, numeric series spanning more than one
+ * declared `unit:` are split across the left/right axes too (see
+ * assignUnitAxes) -- otherwise, say, a 0-100% humidity trace shares a
+ * scale with a 0-30C temperature trace and reads as a flat line. Only
+ * two axes exist, so with 3+ distinct units the extras fall back onto
+ * the second axis. A laned chart's y-axis is already lane baselines, so
+ * this split only ever applies to y/y2 when lanes.count is 0.
+ *
  * Theming: Dygraphs hardcodes light-theme colors, so themeOptions()
  * below supplies the JS-only ones, re-applied on phc:themechange. */
 
@@ -121,6 +129,8 @@ function initGraph(container) {
       var rows = buildRows(data.rows, lanes);
       if (lanes.count > 0) {
         applyLaneOptions(options, data, lanes, container);
+      } else {
+        applyUnitAxisOptions(options, data.series || [], data.unit);
       }
       graphs.push({
         graph: new Dygraph(container.querySelector(".graph-canvas"), rows, options),
@@ -155,6 +165,66 @@ function assignLanes(series) {
     byTitle: byTitle,
     series: series,
   };
+}
+
+/* Group numeric series by their declared unit, in first-appearance order,
+ * and assign the first group to `y` and every later group to `y2`. Only
+ * meaningful when there are no binary lanes (those already own `y`).
+ * `null`/missing units count as one group of their own -- so a ratio like
+ * COP, with no unit, doesn't get silently merged into a temperature axis
+ * just because both happen to be unitless-looking numbers. */
+function assignUnitAxes(series, declaredUnit) {
+  var order = [];
+  var byUnit = {};
+  for (var i = 0; i < series.length; i++) {
+    var entry = series[i];
+    if (entry.kind !== "numeric") { continue; }
+    var unit = entry.unit === undefined ? null : entry.unit;
+    if (!(unit in byUnit)) {
+      byUnit[unit] = { unit: unit, titles: [] };
+      order.push(unit);
+    }
+    byUnit[unit].titles.push(entry.title);
+  }
+  /* The panel's own `unit:` (if set) names the axis the author built the
+   * chart around; put it first rather than whichever unit happens to sort
+   * first among the endpoints. Series order otherwise follows
+   * resolve_selectors' alphabetical-by-endpoint sort (see panels.py), which
+   * has no relation to a selector's position in the panel's own config. */
+  if (declaredUnit) {
+    var preferred = order.indexOf(declaredUnit);
+    if (preferred > 0) {
+      order.splice(preferred, 1);
+      order.unshift(declaredUnit);
+    }
+  }
+  var axisByTitle = {};
+  var labels = { y: null, y2: null };
+  order.forEach(function (unit, idx) {
+    var axis = idx === 0 ? "y" : "y2";
+    if (labels[axis] === null) { labels[axis] = unit || ""; }
+    byUnit[unit].titles.forEach(function (title) { axisByTitle[title] = axis; });
+  });
+  return { split: order.length > 1, axisByTitle: axisByTitle, labels: labels };
+}
+
+/* Apply the y/y2 split from assignUnitAxes, if it found more than one
+ * unit among the (lane-less) series. A single-unit chart is left exactly
+ * as it was before this existed: one shared axis, labelled from the
+ * panel's own `unit:` (data.unit), not from assignUnitAxes' grouping. */
+function applyUnitAxisOptions(options, series, declaredUnit) {
+  var grouping = assignUnitAxes(series, declaredUnit);
+  if (!grouping.split) { return; }
+  var seriesOpts = {};
+  series.forEach(function (entry) {
+    if (entry.kind === "numeric") {
+      seriesOpts[entry.title] = { axis: grouping.axisByTitle[entry.title] };
+    }
+  });
+  options.series = seriesOpts;
+  options.ylabel = grouping.labels.y || "";
+  options.y2label = grouping.labels.y2 || "";
+  options.axes = { y2: { independentTicks: true, drawGrid: false } };
 }
 
 /* Wire rows -> Dygraphs rows: epoch seconds to Date, and each binary

@@ -65,6 +65,13 @@ Changes merged into `main` since the 0.1.0 release, in order.
   width instead of a fixed 150px, which gives a phone noticeably more
   room for the plot, and over-long names are elided in the middle rather
   than cropped mid-word.
+- A graph panel's numeric series are split across the left/right axes
+  when they declare more than one `unit:` between them, even with no
+  `type: bool` endpoints in the mix -- previously every numeric series
+  shared one axis regardless of unit, so e.g. a 0-100% humidity trace sat
+  on the same scale as a 0-30C temperature trace and read as flat. The
+  panel's own `unit:`, if set, picks which unit's series get the left
+  axis. See [`docs/web-ui.md`](docs/web-ui.md).
 
 ### 2026-10-01
 

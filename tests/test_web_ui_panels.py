@@ -197,6 +197,21 @@ def test_graph_panel_carries_per_series_units_and_value_labels():
     assert panel.series_values == [{"False": "off", "True": "on"}, None, None]
 
 
+def test_graph_panel_carries_distinct_units_for_an_all_numeric_panel():
+    """The environment_history shape: no bool endpoints at all, but
+    temperature (C) and humidity (%) share one panel. graph.js uses this
+    per-series unit (not just the single panel-wide `unit:`) to put them
+    on separate axes -- see static/graph.js's assignUnitAxes."""
+    flat = {"room": VirtualDevice("room", endpoints=[
+        Endpoint("temp", value_type="float", unit="C", name="Temp"),
+        Endpoint("hum", value_type="float", unit="%", name="Hum"),
+    ])}
+    panel = _graph(flat, selectors=["room/*"], unit="C")
+
+    assert panel.series_kinds == ["numeric", "numeric"]
+    assert panel.series_units == ["%", "C"]  # sorted by key: hum, temp
+
+
 def test_graph_panel_binary_lanes_true_forces_every_series_into_a_lane():
     panel = _graph(_mixed_flat(), binary_lanes=True)
 
