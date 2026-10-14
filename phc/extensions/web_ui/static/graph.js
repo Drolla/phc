@@ -12,7 +12,10 @@
  * are drawn as stacked on/off lanes rather than sharing a y-axis, where
  * they would otherwise sit on top of each other -- or be flattened onto
  * the baseline by an unrelated series' magnitude. The lane offset is
- * applied here only; the server ships raw 0/1 values. */
+ * applied here only; the server ships raw 0/1 values.
+ *
+ * Theming: Dygraphs hardcodes light-theme colors, so themeOptions()
+ * below supplies the JS-only ones, re-applied on phc:themechange. */
 
 /* A lane is PITCH tall; its trace fills HEIGHT of that, leaving dead
  * space between lanes. */
@@ -25,9 +28,60 @@ var LANE_PAD = 0.15;
 var LANE_LABEL_WIDTH = 150;
 var LANE_LABEL_MAX_CHARS = 20;
 
+/* Series colors, assigned in order and never cycled. Validated for
+ * colorblind separation and contrast against each theme's --bs-body-bg;
+ * the dark column is the same eight hues re-stepped, not an automatic
+ * lightening of the light one. Beyond eight series (in practice binary
+ * ones with their own lane label) there's no ninth color. */
+var SERIES_COLORS = {
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+          "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500",
+         "#d55181", "#008300", "#9085e9", "#e66767"],
+};
+
+/* Live charts plus the lane data a restyle/resize needs to rebuild ticks. */
+var graphs = [];
+
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll(".graph-panel").forEach(initGraph);
 });
+
+/* Listen for base.html's event rather than the media query directly --
+ * a separate matchMedia listener could fire before data-bs-theme updates. */
+window.addEventListener("phc:themechange", function () {
+  graphs.forEach(function (entry) {
+    restyle(entry, themeOptions());
+  });
+});
+
+/* Apply `options` to a live chart without resetting the user's zoom/pan. */
+function restyle(entry, options) {
+  options.dateWindow = entry.graph.xAxisRange();
+  entry.graph.updateOptions(options);
+}
+
+/* JS-only color options Dygraphs needs, read from computed style so
+ * style.css stays the single source of truth. */
+function themeOptions() {
+  var styles = getComputedStyle(document.documentElement);
+  var read = function (token, fallback) {
+    return (styles.getPropertyValue(token) || "").trim() || fallback;
+  };
+  var dark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+  var grid = read("--bs-border-color", dark ? "#495057" : "#dee2e6");
+  var axis = read("--bs-secondary-color", dark ? "#adb5bd" : "#6c757d");
+  return {
+    colors: SERIES_COLORS[dark ? "dark" : "light"],
+    axisLineColor: axis,
+    gridLineColor: grid,
+    /* Range selector defaults are invisible against a dark page. */
+    rangeSelectorBackgroundStrokeColor: grid,
+    rangeSelectorForegroundStrokeColor: axis,
+    rangeSelectorPlotFillColor: dark ? "#2c3136" : "#dfe4ea",
+    rangeSelectorPlotStrokeColor: dark ? "#5c646c" : "#9aa4b0",
+  };
+}
 
 function initGraph(container) {
   var graphId = container.dataset.graphId;
@@ -37,12 +91,11 @@ function initGraph(container) {
     .then(function (response) { return response.json(); })
     .then(function (data) {
       var now = Date.now();
-      var options = {
-        labels: data.labels,
-        ylabel: data.unit || "",
-        showRangeSelector: true,
-        dateWindow: [now - windowSeconds * 1000, now],
-      };
+      var options = themeOptions();
+      options.labels = data.labels;
+      options.ylabel = data.unit || "";
+      options.showRangeSelector = true;
+      options.dateWindow = [now - windowSeconds * 1000, now];
       /* `series` is absent when a cached copy of this script meets an
        * older server (or vice versa); degrade to the pre-lane chart. */
       var lanes = assignLanes(data.series || []);
@@ -50,7 +103,11 @@ function initGraph(container) {
       if (lanes.count > 0) {
         applyLaneOptions(options, data, lanes);
       }
-      new Dygraph(container.querySelector(".graph-canvas"), rows, options);
+      graphs.push({
+        graph: new Dygraph(container.querySelector(".graph-canvas"), rows, options),
+        container: container,
+        lanes: lanes,
+      });
     });
 }
 

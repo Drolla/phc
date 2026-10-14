@@ -21,13 +21,24 @@
     // OS theme-change events; never touches anything an HTMX widget swap
     // replaces, so -- unlike a JS-driven Bootstrap/Semantic component --
     // it never needs re-invocation after a poll's outerHTML swap.
+    //
+    // Anything that can't be styled in CSS alone listens for the
+    // phc:themechange event below instead of watching the media query
+    // itself: a second listener would race this one, and could restyle
+    // against the attribute's *previous* value. Dygraphs is the one such
+    // case -- several of its colors are JS options, not CSS (see
+    // static/graph.js).
     (function () {
       var mq = window.matchMedia('(prefers-color-scheme: dark)');
-      var apply = function () {
-        document.documentElement.setAttribute('data-bs-theme', mq.matches ? 'dark' : 'light');
+      var apply = function (notify) {
+        var theme = mq.matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-bs-theme', theme);
+        if (notify) {
+          window.dispatchEvent(new CustomEvent('phc:themechange', { detail: { theme: theme } }));
+        }
       };
-      apply();
-      mq.addEventListener('change', apply);
+      apply(false);  // before first paint; no listener can exist yet
+      mq.addEventListener('change', function () { apply(true); });
     })();
   </script>
 </head>

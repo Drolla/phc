@@ -266,9 +266,39 @@ input[type="range"].widget-input {
   margin-bottom: 0.25rem;
 }
 
+/* The plotting area carries --bs-body-bg rather than letting the panel's
+   tinted card show through: Dygraphs' own defaults assume a plain light
+   surface, and the series palette (see graph.js) is validated for
+   contrast against body-bg in both themes -- against the tinted card
+   several hues fall below 3:1. */
 .graph-canvas {
   width: 100%;
   height: 300px;
+  background: var(--bs-body-bg);
+  border-radius: var(--bs-border-radius);
+  padding: 0.25rem 0.25rem 0 0;
+}
+
+/* Dygraphs ships hardcoded light-theme colors -- #000 axis labels and a
+   #fff legend in dygraph.min.css, plus "black"/"gray" line colors passed
+   as JS options (see graph.js's themeOptions). These override the CSS
+   half in our own file rather than patching the vendored bundle, so a
+   Dygraphs upgrade can't silently drop them. Both are theme-token
+   driven, so they follow data-bs-theme with no dark-specific rule. */
+.dygraph-axis-label {
+  color: var(--bs-secondary-color);
+}
+
+.dygraph-legend {
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  padding: 0.25rem 0.4rem;
+  box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.15);
+  /* Dygraphs positions this absolutely over the plot; its own width:250px
+     can overflow a narrow phone viewport. */
+  max-width: 100%;
 }
 
 /* Timers panel: a management table plus an add/edit form, sharing the
