@@ -142,6 +142,35 @@ the `phc.devices`/`phc.extensions` entry point group. Either way,
 device module](developer/writing-a-device-module.md#shipping-a-module-outside-phc).
 
 
+## Endpoint Display Text: `name` vs `description`
+
+An endpoint spec may set `name` and/or `description`. The web UI resolves a
+widget's label as `name` → `description` → the endpoint's `key`, humanized
+(e.g. `motion_cellar` → "Motion Cellar"; an abbreviation like `temp` is only
+re-cased, not expanded, so it still reads as "Temp" rather than
+"Temperature").
+
+- `name` is the short label shown on the widget itself: one to three words,
+  Title Case, no trailing punctuation (e.g. `Outside Temperature`,
+  `Radon (24h avg)` — a short disambiguating qualifier like a time window or
+  which sensor stays in `name`; a physical unit does not, since the value
+  already shows it).
+- `description` is a longer, plain-English sentence explaining what the
+  endpoint measures or controls (e.g. `Outdoor air temperature measured by
+  the heating system`). It's shown as the widget's `(i)` tooltip when it
+  adds something `name` doesn't already say. An endpoint whose only
+  reasonable label is a short phrase can set `description` alone and skip
+  `name` — but a long sentence belongs in `description`, never in `name`,
+  and should not stand in as the only display text if a short `name` would
+  otherwise be missing.
+- An endpoint can omit both, but should only do so when its `key` is
+  already a self-explanatory word (e.g. `state`, `armed`) — short technical
+  keys like `bit0` or `fan_level` need an explicit `name`.
+
+See [`docs/developer/writing-a-device-module.md`](developer/writing-a-device-module.md) for the full
+`module.yaml` endpoint schema.
+
+
 ## Modules and Shared Configuration
 
 A `module.yaml` declares each parameter's `scope` (default `device`) and

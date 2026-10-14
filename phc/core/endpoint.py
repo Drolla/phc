@@ -41,8 +41,8 @@ class Endpoint:
 
     See docs/configuration.md for the endpoint field reference (`type`,
     `unit`, `values`, `min`/`max`, `format`, `read_transform`/
-    `write_transform`, `history`/`history_interval`, and the `name` vs
-    `description` convention).
+    `write_transform`, `history`/`history_interval`) and its "Endpoint
+    Display Text" section for the `name` vs `description` convention.
 
     `update_time` (wall clock) marks the last value CHANGE, shown as an
     absolute time by the web UI; `last_read_time`/`age` (monotonic) mark
