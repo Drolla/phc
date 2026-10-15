@@ -405,7 +405,7 @@ def test_get_api_graph_returns_history_from_referenced_logdb_instance(tmp_path):
             body = await resp.json()
             # "Lamp", not "lamp/state": an unnamed endpoint on a
             # single-endpoint device falls back to the device (see
-            # widgets.series_title).
+            # widgets.graph_series_titles).
             assert body["labels"] == ["Time", "Lamp"]
             assert body["rows"] == [[1.0, 1.0], [2.0, 0.0]]
         finally:
