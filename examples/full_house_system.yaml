@@ -79,7 +79,6 @@ devices:
         name: Corridor Light
         endpoints:
           - key: sw1
-            name: "Corridor Light"
             device: "ZWayVDev_zway_7-1-37"
             endpoint_profile: switch
 
@@ -126,7 +125,6 @@ devices:
         name: Porch Light
         endpoints:
           - key: sw
-            name: "Porch Light"
             device: "ZWayVDev_zway_20-1-37"
             endpoint_profile: switch
 
