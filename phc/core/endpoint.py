@@ -378,6 +378,7 @@ class Endpoint:
         if self.value_type == "bool":
             text = "true" if value else "false"
         elif self.value_type == "datetime":
+            assert self.format is not None  # defaulted to _DEFAULT_DATETIME_FORMAT in __init__
             text = datetime.fromtimestamp(value).strftime(self.format)
         elif self.format:
             text = format(value, self.format)
