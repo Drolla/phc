@@ -8,95 +8,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-15
+
+**Improvements**
+
+- Graph series labels are resolved against the panel's other series:
+  device name for single-endpoint devices, device prefix on collisions,
+  shared words dropped under one unit. See [`docs/web-ui.md`](docs/web-ui.md).
+
 ### 2026-10-14
 
 **Breaking changes**
 
-- An endpoint's `log_aggregation:` is renamed to `aggregation:`. The field
-  was never logging-specific -- scripting's `sticky()` reads the same
-  value, and a graph panel now uses it too -- so the `log_` prefix
-  described only one of its consumers. There is no alias: a config still
-  using the old spelling fails at load with a "unrecognized key" error
-  rather than silently reverting to the `max` default. The Python API
-  renames with it (`Endpoint.aggregation`, `subscribe_sticky()`,
-  `update_sticky_value()`, `get_sticky_value()`,
-  `invalidate_sticky_value()`, and `AGGREGATIONS`); `sticky()` and
-  `reset_sticky()` in task expressions are unchanged. The field is also
-  documented for the first time, in
+- Endpoint `log_aggregation:` renamed to `aggregation:` (no alias). See
   [`docs/concepts.md`](docs/concepts.md).
 
 **New features**
 
-- A web UI graph panel now draws `type: bool` endpoints as their own
-  stacked on/off lanes instead of overlaying every 0/1 series on one
-  axis, where a panel of switches, motion sensors and door contacts read
-  as a single tangle. Each lane is stepped, labelled with the endpoint's
-  name on the left axis, and numeric series in the same panel move to an
-  independent right-hand axis so a magnitude like compressor power can no
-  longer flatten a flag onto the baseline. A panel with no bool endpoint
-  renders exactly as before. `binary_lanes: true|false` overrides the
-  inference per panel. See
-  [`docs/web-ui.md`](docs/web-ui.md#binary-series).
-- Decimation no longer averages a bool series. Because an endpoint's
-  `aggregation` has already reduced many ticks into each stored sample,
-  averaging a bucket of those produced neither a peak nor a true duty
-  cycle, and a zoomed-out switch dissolved into part-height fragments. A
-  binary series is now collapsed by its own `aggregation` (so the logging
-  and display stages agree), and `binary_aggregation: avg|min|max`
-  overrides it per panel -- `avg` restores the duty-cycle view, reported
-  in the legend as e.g. "38% on". Numeric series are always averaged.
-  `LogDb.get_decimated()` gains an optional per-label `aggregations` map;
-  omitting it averages as before.
+- Graph panels draw `type: bool` endpoints as stacked on/off lanes;
+  `binary_lanes:` overrides. See [`docs/web-ui.md`](docs/web-ui.md#binary-series).
+- Bool series are decimated by their `aggregation` instead of averaged;
+  `binary_aggregation:` overrides per panel.
 
 **Improvements**
 
-- Graph panels follow the page's light/dark theme. Previously the chart
-  kept Dygraphs' hardcoded light-theme colors, so on a dark page the axis
-  numbers, gridlines and range selector were close to invisible and
-  several series traces disappeared into the background. Series colors
-  are now an explicit palette with its own stepping per theme, validated
-  for colorblind separation and for contrast against each theme's
-  background. A theme switch made while the page is open restyles the
-  charts in place, preserving zoom and pan.
-- Graph series with no `name:` are labelled from their device rather than
-  the raw `device/endpoint` pair, so a lane reads "Motion Cellar" instead
-  of "zway.motion_cellar/state"; the endpoint is appended only when its
-  device has more than one. The label gutter is now a share of the chart
-  width instead of a fixed 150px, which gives a phone noticeably more
-  room for the plot, and over-long names are elided in the middle rather
-  than cropped mid-word.
-- A graph panel's numeric series are split across the left/right axes
-  when they declare more than one `unit:` between them, even with no
-  `type: bool` endpoints in the mix -- previously every numeric series
-  shared one axis regardless of unit, so e.g. a 0-100% humidity trace sat
-  on the same scale as a 0-30C temperature trace and read as flat. The
-  panel's own `unit:`, if set, picks which unit's series get the left
-  axis. See [`docs/web-ui.md`](docs/web-ui.md).
-- A widget with no `name:`/`description:` now labels itself from its
-  humanized `key` (e.g. `fan_level` -> "Fan Level") instead of showing the
-  raw key verbatim. The `name` vs `description` convention -- short Title
-  Case label vs longer tooltip sentence -- is documented for the first
-  time, in [`docs/configuration.md`](docs/configuration.md#endpoint-display-text-name-vs-description).
+- Graph panels follow the page's light/dark theme.
+- Graph numeric series with different `unit:`s are split across the
+  left/right axes.
+- Endpoint `name` vs `description` convention documented in
+  [`docs/configuration.md`](docs/configuration.md#endpoint-display-text-name-vs-description);
+  unnamed endpoints show their humanized key.
 
 ### 2026-10-01
 
 **New features**
 
-- A new `viessmann` device module reads and controls a Viessmann heating
-  installation -- heat pump, boiler, gateway or room control -- through
-  Viessmann's ViCare cloud API, using the PyViCare library for
-  authentication and transport (a new dependency). Endpoints name a
-  feature and one of its properties, and optionally a command to write, so
-  a config can reach any feature the hardware reports without code
-  changes; `module.yaml` ships endpoint profiles for the readings most
-  installations share. Devices on one gateway share a single API response
-  per poll. See [`docs/viessmann.md`](docs/viessmann.md) and
-  [`examples/viessmann_heatpump.yaml`](examples/viessmann_heatpump.yaml).
-- `python -m phc.devices.viessmann.discover` lists an account's
-  installations, gateways, devices and every feature of each with its
-  current value and the commands that write it, and generates endpoint
-  definitions to paste into a config -- which features exist depends
-  entirely on the hardware, so this is how to find out what to configure.
+- New `viessmann` device module (ViCare cloud API, via PyViCare), with a
+  `discover` tool to list features and generate endpoint definitions. See
+  [`docs/viessmann.md`](docs/viessmann.md).
 
 ### 2026-09-30
 
