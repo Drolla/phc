@@ -5,7 +5,9 @@ From its existing generic metadata
 per-endpoint-kind registration. This is the ONLY place that decision
 is made; callers branch on the result but never re-derive it."""
 
+import os
 import re
+from collections import Counter
 
 from phc.core.device import Device
 from phc.core.endpoint import Endpoint
@@ -64,18 +66,53 @@ def _humanize(token: str) -> str:
     return " ".join(words)
 
 
-def series_title(device: Device, endpoint: Endpoint, qualified_id: str) -> str:
-    """The label for one graph series: a name a person would recognize.
+def _endpoint_label(endpoint: Endpoint) -> str:
+    """An endpoint's display label: `name`, else `description`, else its key."""
+    return endpoint.name or endpoint.description or _humanize(endpoint.key)
 
-    Prefers the endpoint's own `name`/`description`. Otherwise falls back
-    to the device name, appending the endpoint key only when the device
-    has more than one endpoint."""
-    if endpoint.name or endpoint.description:
-        return endpoint.name or endpoint.description
-    device_label = device.name or device.id or qualified_id
-    if len(device.endpoints) <= 1:
-        return _humanize(device_label)
-    return f"{_humanize(device_label)} {_humanize(endpoint.key)}"
+
+def _device_label(device: Device) -> str:
+    """A device's display label; only an id fallback is humanized."""
+    return _humanize(device.name) if device.name == device.id else device.name
+
+
+def graph_series_titles(series: list[tuple[Device, Endpoint]]) -> list[str]:
+    """Labels for a graph panel's (device, endpoint) series.
+
+    Resolved against each other, since a series has no device heading.
+    Rules: see docs/web-ui.md."""
+    shown = Counter(id(device) for device, _ in series)
+    titled = []  # (title, whether it already names the device)
+    for device, endpoint in series:
+        label = _endpoint_label(endpoint)
+        siblings = [_endpoint_label(e) for e in device.endpoints.values()]
+        if len(siblings) > 1 and siblings.count(label) == 1:
+            titled.append((label, False))
+        elif len(siblings) == 1 or shown[id(device)] == 1:
+            titled.append((_device_label(device), True))
+        else:
+            titled.append((f"{_device_label(device)} {_humanize(endpoint.key)}", True))
+
+    counts = Counter(title for title, _ in titled)
+    titled = [(f"{_device_label(device)} {title}", True) if counts[title] > 1 and not named
+              else (title, named) for (title, named), (device, _) in zip(titled, series)]
+    titles = [title for title, _ in titled]
+
+    units = {endpoint.unit for _, endpoint in series}
+    if not any(named for _, named in titled) and len(units) == 1 and None not in units:
+        titles = _drop_shared_words(titles)
+    return titles
+
+
+def _drop_shared_words(titles: list[str]) -> list[str]:
+    """Strip leading/trailing words common to every (distinct) title.
+
+    Unchanged if that would leave a title empty."""
+    words = [title.split() for title in titles]
+    lead = len(os.path.commonprefix(words))
+    trail = len(os.path.commonprefix([w[lead:][::-1] for w in words]))
+    trimmed = [" ".join(w[lead:len(w) - trail]) for w in words]
+    return trimmed if all(trimmed) else titles
 
 
 def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | None = None) -> dict:
@@ -93,7 +130,7 @@ def describe_endpoint(qualified_id: str, endpoint: Endpoint, device: Device | No
     caller holding a bare Endpoint can still describe it; such a widget
     reports healthy, since it has nothing to say otherwise."""
     healthy = device.health.healthy if device is not None else True
-    label = endpoint.name or endpoint.description or _humanize(endpoint.key)
+    label = _endpoint_label(endpoint)
     return {
         "device": qualified_id,
         "endpoint": endpoint.key,
