@@ -166,11 +166,16 @@ re-cased, not expanded, so it still reads as "Temp" rather than
 - An endpoint can omit both, but should only do so when its `key` is
   already a self-explanatory word (e.g. `state`, `armed`) — short technical
   keys like `bit0` or `fan_level` need an explicit `name`.
-- On a single-endpoint device, an endpoint `name` that just repeats the
-  device's own `name` (e.g. device "Cellar Light" with its one endpoint
-  also named "Cellar Light") is redundant in a widget that already shows
-  both — drop the endpoint `name` and let it fall through to the
-  humanized `key` instead (typically "Switch", "State" or similar).
+- A single-endpoint device rarely needs an endpoint `name` at all. A
+  graph labels its series by the device name, and a widget shows the
+  endpoint label under the device's own heading, where the profile's name
+  or the humanized `key` ("Switch", "State", "Battery") is enough.
+  Repeating the device's name there (device "Cellar Light" with its one
+  endpoint also named "Cellar Light") just shows it twice.
+
+A graph panel builds its series labels from these same fields plus the
+device name, so it needs no labels of its own; see
+[Graph panels](web-ui.md) for how they're chosen.
 
 See [`docs/developer/writing-a-device-module.md`](developer/writing-a-device-module.md) for the full
 `module.yaml` endpoint schema.

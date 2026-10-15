@@ -102,8 +102,26 @@ tiers: samples older than `older_than` are collapsed in groups of
 `factor`, bounding how much history data is shipped to the browser as it
 grows. Numeric series are averaged.
 
+Series are labelled automatically, with no per-series config. A graph
+has no device heading above each series the way a widget does, so each
+label is worked out against the panel's other series:
+
+- An endpoint whose own label (`name`, else `description`, else its
+  key) tells it apart from its device's other endpoints is shown by that
+  label alone — "Outside Temperature", "Parents' Room Light".
+- A single-endpoint device, or an endpoint whose label several of its
+  device's endpoints share (e.g. three zway relays all called "Switch"),
+  is shown by its device name ("Siren", "2nd Floor Light"). If the panel
+  shows more than one such endpoint of the same device, the key is
+  added to tell them apart.
+- If two series end up with the same label, each gets its device name in
+  front ("Living Room Temperature" vs "Parents' Room Temperature").
+- When no label needed a device name and every series has the same
+  `unit:`, words all labels share are dropped. A °C panel of "Supply
+  Temperature" and "Return Temperature" reads "Supply"/"Return".
+
 `type: bool` endpoints instead get their own stacked on/off lane
-(stepped, labelled by endpoint name, decimated via the endpoint's
+(stepped, labelled as above, decimated via the endpoint's
 [`aggregation`](concepts.md) rather than averaging) and move numeric
 series in the panel to a right-hand axis. `binary_aggregation`
 (`avg`/`min`) and `binary_lanes` (`true`/`false`) override this per

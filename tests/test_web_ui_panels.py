@@ -45,15 +45,15 @@ def test_graph_panel_resolves_selectors_and_builds_labels():
     assert panel.kind == "graph"
     assert panel.pairs == [("lamp", "power")]
     assert panel.labels == ["lamp/power"]
-    assert panel.series_titles == ["Lamp power"]
+    assert panel.series_titles == ["Lamp"]
     assert panel.logdb_instance == "logdb.house"
 
 
-def test_graph_panel_series_title_falls_back_to_the_device_not_the_raw_pair():
-    """An unnamed endpoint on a single-endpoint device is just the device:
-    a y-axis label has no device heading above it for context, and
-    "lamp/power" reads as plumbing."""
-    lamp = VirtualDevice("lamp", endpoints=[Endpoint("power", writable=True, value_type="int")])
+def test_graph_panel_series_title_is_the_device_for_a_single_endpoint_device():
+    """A y-axis label has no device heading above it, so the device -- not
+    the endpoint's own name, nor "lamp/power" -- identifies the series."""
+    lamp = VirtualDevice("lamp", endpoints=[
+        Endpoint("power", writable=True, value_type="int", name="Switch")])
     flat = {"lamp": lamp}
 
     panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["lamp/*"])
@@ -61,9 +61,8 @@ def test_graph_panel_series_title_falls_back_to_the_device_not_the_raw_pair():
     assert panel.series_titles == ["Lamp"]
 
 
-def test_graph_panel_series_title_adds_the_endpoint_on_a_multi_endpoint_device():
-    """With more than one endpoint the device name alone is ambiguous, so
-    the endpoint is appended -- unlike the single-endpoint case above."""
+def test_graph_panel_series_title_is_the_endpoint_on_a_multi_endpoint_device():
+    """Unique endpoint labels need no device prefix."""
     hp = VirtualDevice("heat_pump", name="Heat Pump", endpoints=[
         Endpoint("supply", value_type="float"),
         Endpoint("return_", value_type="float"),
@@ -72,7 +71,94 @@ def test_graph_panel_series_title_adds_the_endpoint_on_a_multi_endpoint_device()
 
     panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["hp/*"])
 
-    assert panel.series_titles == ["Heat Pump Return", "Heat Pump Supply"]
+    assert panel.series_titles == ["Return", "Supply"]
+
+
+def test_graph_panel_series_title_prefixes_the_device_on_a_collision():
+    flat = {
+        "liv": VirtualDevice("liv", name="Living Room", endpoints=[
+            Endpoint("temp", name="Temperature"), Endpoint("hum", name="Humidity")]),
+        "par": VirtualDevice("par", name="Parents' Room", endpoints=[
+            Endpoint("temp", name="Temperature"), Endpoint("hum", name="Humidity")]),
+    }
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house",
+                       selectors=["liv/temp", "par/temp", "liv/hum"])
+
+    titles = dict(zip(panel.labels, panel.series_titles))
+    assert titles == {
+        "liv/temp": "Living Room Temperature",
+        "par/temp": "Parents' Room Temperature",
+        "liv/hum": "Humidity",
+    }
+
+
+def test_graph_panel_series_title_falls_back_to_the_key_within_one_device():
+    """Same label twice on one device: the device prefix can't tell them
+    apart, so the key replaces the label."""
+    flat = {"light": VirtualDevice("light", name="2nd Floor Light", endpoints=[
+        Endpoint("base", name="Switch"), Endpoint("sv1", name="Switch")])}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["light/*"])
+
+    assert panel.series_titles == ["2nd Floor Light Base", "2nd Floor Light Sv1"]
+
+
+def test_graph_panel_series_title_uses_the_device_for_a_label_shared_on_it():
+    """"Switch" can't say which of the device's switches it is, so with only
+    one of them in the panel the device names the series."""
+    flat = {"light": VirtualDevice("light", name="2nd Floor Light", endpoints=[
+        Endpoint("base", name="Switch"), Endpoint("sv1", name="Switch")])}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["light/sv1"])
+
+    assert panel.series_titles == ["2nd Floor Light"]
+
+
+def test_graph_panel_series_title_keeps_a_hand_written_device_name_verbatim():
+    flat = {"cdf": VirtualDevice("cdf", name="Chaux-de-Fonds", endpoints=[Endpoint("t")])}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["cdf/*"])
+
+    assert panel.series_titles == ["Chaux-de-Fonds"]
+
+
+def test_graph_panel_series_title_drops_words_shared_under_one_unit():
+    flat = {"hp": VirtualDevice("hp", name="Heat Pump", endpoints=[
+        Endpoint("supply", unit="°C", name="Supply Temperature"),
+        Endpoint("dhw", unit="°C", name="Hot Water Temperature"),
+    ])}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["hp/*"])
+
+    assert panel.series_titles == ["Hot Water", "Supply"]
+
+
+def test_graph_panel_series_title_keeps_shared_words_across_units():
+    flat = {"hp": VirtualDevice("hp", name="Heat Pump", endpoints=[
+        Endpoint("supply", unit="°C", name="Supply Temperature"),
+        Endpoint("power", unit="%", name="Compressor Temperature"),
+    ])}
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["hp/*"])
+
+    assert panel.series_titles == ["Compressor Temperature", "Supply Temperature"]
+
+
+def test_graph_panel_series_title_keeps_shared_words_once_prefixed():
+    """Two "Radon" series told apart only by device would shrink to the
+    device names' one differing word, so a prefixed panel is left as is."""
+    flat = {
+        "office": VirtualDevice("office", name="Cellar Office", endpoints=[
+            Endpoint("radon", unit="Bq/m3", name="Radon"), Endpoint("co2", unit="ppm")]),
+        "room": VirtualDevice("room", name="Cellar Room", endpoints=[
+            Endpoint("radon", unit="Bq/m3", name="Radon"), Endpoint("co2", unit="ppm")]),
+    }
+
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house",
+                       selectors=["office/radon", "room/radon"])
+
+    assert panel.series_titles == ["Cellar Office Radon", "Cellar Room Radon"]
 
 
 def test_graph_panel_series_title_humanizes_an_identifier():
@@ -88,10 +174,11 @@ def test_graph_panel_series_title_prefers_name_over_description():
     lamp = VirtualDevice("lamp", endpoints=[
         Endpoint("power", writable=True, value_type="int",
                  name="Corridor Light", description="Lamp power"),
+        Endpoint("brightness", value_type="int"),
     ])
     flat = {"lamp": lamp}
 
-    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["lamp/*"])
+    panel = GraphPanel(flat, id="p", logdb_instance="logdb.house", selectors=["lamp/power"])
 
     assert panel.series_titles == ["Corridor Light"]
 
@@ -151,7 +238,7 @@ def test_graph_panel_describe_shape_omits_internal_wiring():
         "title": "Lamp",
         "unit": "%",
         "window": 3600,
-        "series_titles": ["Lamp power"],
+        "series_titles": ["Lamp"],
         "series_kinds": ["numeric"],
         "binary_lanes": None,
     }
