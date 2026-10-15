@@ -95,7 +95,7 @@ def graph_series_titles(series: list[tuple[Device, Endpoint]]) -> list[str]:
 
     counts = Counter(title for title, _ in titled)
     titled = [(f"{_device_label(device)} {title}", True) if counts[title] > 1 and not named
-              else (title, named) for (title, named), (device, _) in zip(titled, series)]
+              else (title, named) for (title, named), (device, _) in zip(titled, series, strict=True)]
     titles = [title for title, _ in titled]
 
     units = {endpoint.unit for _, endpoint in series}

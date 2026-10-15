@@ -85,7 +85,7 @@ def test_graph_panel_series_title_prefixes_the_device_on_a_collision():
     panel = GraphPanel(flat, id="p", logdb_instance="logdb.house",
                        selectors=["liv/temp", "par/temp", "liv/hum"])
 
-    titles = dict(zip(panel.labels, panel.series_titles))
+    titles = dict(zip(panel.labels, panel.series_titles, strict=True))
     assert titles == {
         "liv/temp": "Living Room Temperature",
         "par/temp": "Parents' Room Temperature",

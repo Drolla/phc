@@ -303,7 +303,7 @@ async def handle_graph_data(request: web.Request) -> web.Response:
     series = [
         {"title": title, "kind": kind, "unit": unit, "values": values}
         for title, kind, unit, values in zip(
-            panel.series_titles, panel.series_kinds, panel.series_units, panel.series_values)
+            panel.series_titles, panel.series_kinds, panel.series_units, panel.series_values, strict=True)
     ]
     logger.debug("web_ui graph %s -> %d row(s) from %s", graph_id, len(wire_rows), panel.logdb_instance)
     return web.json_response({

@@ -5,8 +5,13 @@ and describe_device()'s branch-pruning behavior."""
 from phc.core.endpoint import AGGREGATIONS, Endpoint
 from phc.devices.virtual.device import VirtualDevice
 from phc.extensions.web_ui.widgets import (
-    BINARY_AGGREGATIONS, describe_device, describe_endpoint, infer_series_aggregation,
-    infer_series_kind, infer_widget_kind)
+    BINARY_AGGREGATIONS,
+    describe_device,
+    describe_endpoint,
+    infer_series_aggregation,
+    infer_series_kind,
+    infer_widget_kind,
+)
 
 # ---------- infer_widget_kind ----------
 

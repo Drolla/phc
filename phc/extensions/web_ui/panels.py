@@ -23,7 +23,11 @@ from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.selectors import resolve_selectors
 from phc.extensions.web_ui.widgets import (
-    BINARY_AGGREGATIONS, graph_series_titles, infer_series_aggregation, infer_series_kind)
+    BINARY_AGGREGATIONS,
+    graph_series_titles,
+    infer_series_aggregation,
+    infer_series_kind,
+)
 
 logger = logging.getLogger("phc.web_ui")
 
@@ -155,7 +159,7 @@ class GraphPanel(Panel):
         # lifetime), so everything the client needs is extracted now.
         endpoints = [flat[qid].endpoint(key) for qid, key in self.pairs]
         self.series_titles = graph_series_titles(
-            [(flat[qid], endpoint) for endpoint, (qid, _) in zip(endpoints, self.pairs)])
+            [(flat[qid], endpoint) for endpoint, (qid, _) in zip(endpoints, self.pairs, strict=True)])
         self.binary_lanes = binary_lanes
         self.series_kinds = [_resolve_series_kind(endpoint, binary_lanes) for endpoint in endpoints]
         self.binary_aggregation = binary_aggregation
@@ -164,7 +168,7 @@ class GraphPanel(Panel):
         self.series_aggregations = {
             label: (binary_aggregation if binary_aggregation is not None and kind == "binary"
                     else infer_series_aggregation(endpoint, kind))
-            for label, kind, endpoint in zip(self.labels, self.series_kinds, endpoints)}
+            for label, kind, endpoint in zip(self.labels, self.series_kinds, endpoints, strict=True)}
         self.series_units = [endpoint.unit for endpoint in endpoints]
         # Same str()-keyed shape as widgets.describe_endpoint's own `values`
         # -- note a Python True key serializes as "True", not "true".
