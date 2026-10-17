@@ -31,6 +31,17 @@ nothing below it, so there is no node number, instance, command class or
 product wiring anywhere in the config — those stay the controller's
 business.
 
+> **The WebSocket API only sees devices the user has explicitly been given
+> access to.** A non-admin user's profile can be restricted to specific
+> rooms and/or an explicit device allow-list, under **Settings > User
+> management > (user) > Allow access to devices/rooms** — a restriction
+> that applies only to the ZAutomation WebSocket API PHC uses, not to plain
+> HTTP access. Battery virtual devices need to be added individually under
+> "Allow access to the following devices"; adding their room isn't enough.
+> If a `device:` pattern resolves fine over plain HTTP but PHC still fails
+> at startup with "no z-way device matches", check the PHC user's device
+> allow-list before suspecting the pattern itself.
+
 One `zway` device therefore groups whatever virtual devices you want to see
 together (a room's lights, a floor's sensors), one per endpoint. It is not
 tied to one piece of hardware.

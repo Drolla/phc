@@ -57,6 +57,13 @@
       name: Hallway Motion
       device: "Rez: Motion detector"
       endpoint_profile: motion
+    - key: battery
+      name: Hallway Motion Battery
+      # Same node as `motion` above, different command class -- its own
+      # virtual device, addressed by id since a title glob could collide
+      # with another endpoint sharing that node's title.
+      device: "ZWayVDev_zway_11-0-128"
+      endpoint_profile: battery
 
 - id: weather_station
   module: zway
