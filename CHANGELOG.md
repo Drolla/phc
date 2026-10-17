@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-17
+
+**Improvements**
+
+- Documented that Z-Way's ZAutomation WebSocket API only sees devices the
+  connecting user has been explicitly granted access to, separately from
+  room access -- notably battery virtual devices. See
+  [`docs/zway.md`](docs/zway.md). `examples/devices/zway_devices.yaml` gains
+  a worked battery endpoint on an existing sensor node.
+
 ### 2026-10-15
 
 **Improvements**
