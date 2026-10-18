@@ -10,11 +10,13 @@ import argparse
 import logging
 import signal
 import sys
+from pathlib import Path
 
 import yaml
 
 from phc.core.config import ConfigError, System, load_system
 from phc.core.config.descriptors import _load_extension_descriptor, _load_module_descriptor
+from phc.core.config.expand import check_syntax, expand_file
 from phc.core.registry import (
     discover_extensions,
     discover_modules,
@@ -96,6 +98,32 @@ def _validate(argv) -> int:
     return 0
 
 
+def _expand_config(argv) -> int:
+    """`phc expand --config X`: write the config with every `!include` spliced in.
+
+    The one YAML text a split-up config adds up to (see
+    phc.core.config.expand). Checks the result's YAML syntax, not its
+    content -- `phc validate` does that. Returns a process exit code."""
+    parser = argparse.ArgumentParser(prog="phc expand")
+    parser.add_argument("--config", required=True, help="path to the system YAML config")
+    parser.add_argument("--output", metavar="FILE", help="write to FILE instead of stdout")
+    args = parser.parse_args(argv)
+
+    try:
+        expanded = expand_file(args.config)
+        check_syntax(expanded)
+    except (ConfigError, OSError) as exc:
+        print(f"{args.config}: INVALID\n\n{exc}")
+        return 1
+
+    text = f"# Expanded from {args.config} by 'phc expand' -- generated, do not edit\n{expanded.text}"
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def _describe_parameters(parameters) -> list[str]:
     """One indented line per declared parameter, for the list commands."""
     lines = []
@@ -147,6 +175,7 @@ def _list_plugins(argv, kind: str) -> int:
 
 _SUBCOMMANDS = {
     "validate": _validate,
+    "expand": _expand_config,
     "list-modules": lambda argv: _list_plugins(argv, "module"),
     "list-extensions": lambda argv: _list_plugins(argv, "extension"),
 }
@@ -155,7 +184,7 @@ _SUBCOMMANDS = {
 def main(argv=None):
     """Parse arguments, load and run the configured system until stopped.
 
-    A leading subcommand (validate/list-modules/list-extensions) is
+    A leading subcommand (validate/expand/list-modules/list-extensions) is
     dispatched instead. Checked by hand rather than with argparse
     subparsers so the original, subcommand-less `phc --config X` spelling
     keeps working as the default action."""

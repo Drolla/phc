@@ -7,6 +7,9 @@ the way.
 One module per stage of the load, in dependency order:
 
 - `yamlio` -- the `!include`/`!placeholder` tags; file to nested dict.
+- `expand` -- full-line `!include` directives spliced into one YAML
+  text (the text-level replacement for yamlio's `!include`; so far
+  only used by `phc expand`).
 - `descriptors` -- parsed module.yaml/extension.yaml, and the key sets
   defining what a config entry may contain.
 - `params` -- parameter scope/override resolution, `modules.<name>:`.
