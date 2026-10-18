@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-18
+
+**Breaking changes**
+
+- `!include` is now text-level: a line of its own, re-indented to its
+  column; `key: !include`, `- !include` and `<<: !include` are removed.
+  See [`docs/configuration.md`](docs/configuration.md#splitting-configuration-across-files).
+
+**New features**
+
+- `!include <file>#<path>` inserts part of a file (dotted keys, list
+  entries by `id`/`tag` or `[n]`). See
+  [`docs/configuration.md`](docs/configuration.md#selecting-part-of-a-file-path).
+- `phc expand --config FILE` writes the fully expanded config. See
+  [`docs/configuration.md`](docs/configuration.md#seeing-the-result-phc-expand).
+
+**Improvements**
+
+- Examples: shared `examples/devices/` files hold their devices under
+  `devices:`, included with `#devices`.
+
 ### 2026-10-17
 
 **Improvements**
