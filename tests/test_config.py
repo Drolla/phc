@@ -932,7 +932,7 @@ def test_history_tick_hook_samples_only_once_per_interval(monkeypatch):
     # Monotonic, not time.time(): history sampling is an interval like any
     # other in the system (see phc.core.scheduler.Scheduler's class docstring).
     now = [1000.0]
-    monkeypatch.setattr("phc.core.config.hooks.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.endpoint.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # next_due starts at -inf -> immediately due
     assert ep.get_history() == [1.0]
@@ -956,7 +956,7 @@ def test_history_tick_hook_retries_after_a_skipped_none_sample(monkeypatch):
     hook = _make_history_tick_hook(records)
 
     now = [1000.0]
-    monkeypatch.setattr("phc.core.config.hooks.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.endpoint.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # ep.get() is still None -> record_history() is False
     assert ep.get_history() == []
@@ -2738,6 +2738,32 @@ def test_load_system_rejects_non_mapping_top_level(tmp_path):
 """)
     with pytest.raises(ConfigError, match="not a system config"):
         load_system(system_yaml)
+
+
+def test_load_system_rejects_unknown_top_level_key(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("heartbeat: 1s\ntaks: []\n")
+    with pytest.raises(ConfigError, match=r"unknown top-level key\(s\) 'taks' -- known: log, "):
+        load_system(system_yaml)
+
+
+def test_load_system_accepts_every_owned_top_level_key(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+log: [{ dest: stdout }]
+plugin_paths: []
+heartbeat: 2s
+max_workers: 4
+fetch_timeout: 5s
+intervals: { fast: 3s }
+modules: {}
+devices: []
+extensions: {}
+task_specs: []
+tasks: []
+""")
+    system = load_system(system_yaml)
+    assert (system.heartbeat, system.max_workers, system.fetch_timeout) == (2.0, 4, 5.0)
 
 
 def test_load_system_placeholder_raises(tmp_path):

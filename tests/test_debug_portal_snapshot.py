@@ -260,7 +260,7 @@ def test_derived_countdowns_each_read_their_own_clock(monkeypatch):
     the device poll countdown against the monotonic clock. Driven with the
     two clocks far apart, so reading the wrong one changes every number
     asserted below."""
-    import phc.core.endpoint as endpoint_module
+    import phc.core.endpoint.endpoint as endpoint_module
 
     # Fired at monotonic 20.0; still scheduled for wall 1200.0 (repeat is
     # None, so run() marks it finished without advancing due_time).
