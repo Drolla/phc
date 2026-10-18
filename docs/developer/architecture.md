@@ -48,12 +48,13 @@ so anything may import it without a cycle:
 `phc.core.config` is itself layered, one module per stage of a load:
 
 ```
-yamlio       -> (none)        !include / !placeholder; file to nested dict
+expand       -> (none)        full-line !include; files to one YAML text
+yamlio       -> expand        !placeholder; that text to nested dict
 descriptors  -> (none)        parsed module.yaml / extension.yaml
 params       -> descriptors   parameter scope/override resolution
 endpoints    -> descriptors, params    profiles, {param} templating, Endpoint
 extensions   -> descriptors   the extensions: section
-devices      -> descriptors, endpoints, params, yamlio
+devices      -> descriptors, endpoints, params
 tasks        -> (none)        conditions, actions, tasks
 hooks        -> (none)        the tick hooks the loader synthesizes
 system       -> everything above       System + load_system()
