@@ -40,3 +40,15 @@ tasks:
 given. See
 [`examples/emulated_surveillance-task_defs_3-coded.yaml`](../examples/emulated_surveillance-task_defs_3-coded.yaml)
 for a fuller worked example, wired into its intrusion-detection task.
+
+## Checking an instance's SMTP settings
+
+To test an instance's settings without starting phc, send a real test
+message through it (`--to`, `--from`, `--title` and `--message` override
+the defaults):
+
+```
+python -m phc.extensions.mail_alert.mail_alert examples/full_house_system.yaml house
+```
+
+It prints `sent` on success, or `FAILED: <error>` (exit 1) if delivery fails.
