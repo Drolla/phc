@@ -1,12 +1,12 @@
-"""Building tasks: a `tasks:` entry into a Task.
+"""Task config: the `task_specs:` and `tasks:` sections into a TaskRegistry.
 
-Its `condition:` becomes a Condition/ExprCondition, and each `action:` a
-registered Action kind.
+A task's `condition:` becomes a Condition/ExprCondition, and each
+`action:` a registered Action kind.
 
 `_build_task` is what a TaskRegistry calls to create tasks at runtime too
 (see phc.core.task.TaskRegistry) -- it is injected there rather than
 imported, which is what keeps phc.core.task free of any dependency on this
-package.
+module.
 """
 
 from phc.core import scripting
@@ -15,6 +15,9 @@ from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration, parse_time
 from phc.core.registry import get_task_kind_class
 from phc.core.task import Condition, ExprCondition, Task, TaskRegistry, resolve_endpoint_ref
+
+# Top-level system YAML keys this module parses (see load_tasks).
+CONFIG_KEYS = ("task_specs", "tasks")
 
 
 def _subscribe_referenced_endpoints(paths: set[str], flat: dict[str, Device], task_tag: str,
@@ -181,3 +184,56 @@ def _build_task(entry: dict, registry: TaskRegistry) -> Task:
         condition=condition,
         actions=actions,
     )
+
+
+def _make_sticky_tick_hook(sticky_endpoints: set):
+    """Build the sticky-window tick hook (see Scheduler pass 4).
+
+    Advances every rule-referenced endpoint's sticky min/max window each
+    tick -- the same mechanism phc.extensions.logdb uses for its own
+    subscriptions (see LogDbInstance.on_tick), but for
+    condition.expr's/kind:script's sticky()/reset_sticky() (see
+    phc.core.task._build_rule_namespace). Closes over the SAME set
+    object _build_condition/_build_action populate, so a task created
+    later at runtime (via create_task) that adds to it is picked up
+    automatically on the next tick -- no re-registration needed."""
+    def _hook(devices: dict[str, Device]) -> None:
+        for endpoint in sticky_endpoints:
+            endpoint.update_sticky_value()
+    return _hook
+
+
+def load_tasks(raw: dict, flat: dict[str, Device],
+               extensions: dict[str, object]) -> tuple[TaskRegistry, list]:
+    """Build the `task_specs:`/`tasks:` sections into a TaskRegistry.
+
+    Also returns the tick hooks the tasks need: the sticky-window hook,
+    if any task references an endpoint from an expression or script."""
+    # task_specs: entries are name -> raw dict, resolved lazily by a
+    # `create_task` action's `template:` (see phc.core.task.CreateTaskAction) --
+    # not built into Task objects here, matching the existing laziness of a
+    # create_task action's own literal `specs:` (see _build_task). Only a
+    # duplicate-tag check happens eagerly, to catch a copy-paste mistake at
+    # load time rather than only once some template is actually used.
+    task_specs: dict[str, dict] = {}
+    for entry in raw.get("task_specs") or []:
+        spec_tag = entry["tag"]
+        if spec_tag in task_specs:
+            raise ConfigError(f"task_specs: duplicate tag {spec_tag!r}")
+        task_specs[spec_tag] = entry
+
+    # The registry owns the live task list AND the context needed to build
+    # more of them at runtime (create_task, extensions.timer). _build_task is
+    # injected here as its builder, which is what lets phc.core.task create
+    # tasks without importing this module -- see TaskRegistry's docstring.
+    sticky_endpoints: set = set()
+    tasks = TaskRegistry(build_task=_build_task, flat=flat, extensions=extensions,
+                          sticky_endpoints=sticky_endpoints, task_specs=task_specs)
+    for entry in raw.get("tasks") or []:
+        tasks.add(_build_task(entry, tasks))
+
+    tags = [t.tag for t in tasks]
+    duplicates = {t for t in tags if tags.count(t) > 1}
+    if duplicates:
+        raise ConfigError(f"duplicate task tag(s): {sorted(duplicates)}")
+    return tasks, [_make_sticky_tick_hook(sticky_endpoints)] if sticky_endpoints else []

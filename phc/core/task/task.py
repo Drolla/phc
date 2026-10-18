@@ -490,7 +490,7 @@ class ScriptAction(Action):
     one body.
 
     `compiled`/`refs` are public (not `_compiled`/`_refs`) so
-    phc.core.config._build_action can inspect them after construction, to
+    phc.core.task.config._build_action can inspect them after construction, to
     validate/subscribe every endpoint the script references."""
 
     def __init__(self, *, code: str, task_tag: str, flat: dict[str, Device],

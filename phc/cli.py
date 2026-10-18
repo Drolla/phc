@@ -15,8 +15,9 @@ from pathlib import Path
 import yaml
 
 from phc.core.config import ConfigError, System, load_system
-from phc.core.config.descriptors import _load_extension_descriptor, _load_module_descriptor
 from phc.core.config.expand import check_syntax, expand_file
+from phc.core.device.config import _load_module_descriptor
+from phc.core.extension.config import _load_extension_descriptor
 from phc.core.registry import (
     discover_extensions,
     discover_modules,

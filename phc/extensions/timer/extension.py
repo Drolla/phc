@@ -8,7 +8,7 @@ phc.core.task.Task once at startup (see on_bind), and exposes the CRUD
 API `phc/extensions/web_ui`'s `kind: timers` panel drives (see
 phc/extensions/web_ui/panels.py's TimersPanel and
 phc/extensions/web_ui/server.py's timer routes) -- see
-phc.core.config._load_extensions for how configure() is invoked, and
+phc.core.extension.config._load_extensions for how configure() is invoked, and
 phc.core.scheduler.Scheduler for on_tick/on_bind timing.
 
 Timers are deliberately NOT a parallel scheduler: each becomes an ordinary
@@ -33,7 +33,7 @@ logger = logging.getLogger("phc.timer")
 def _task_spec(timer: TimerDef, instance_key: str) -> dict:
     """Build one timer's phc.core.task Task spec.
 
-    Same shape as a `tasks:` YAML entry (see phc.core.config._build_task),
+    Same shape as a `tasks:` YAML entry (see phc.core.task.config._build_task),
     consumed by phc.core.task.TaskRegistry.create. `time:` is always the
     timer's own literal Unix timestamp (parse_time's digit-string
     branch); `repeat:` (if set) then drives parse_time's own "already
@@ -53,7 +53,7 @@ def _task_spec(timer: TimerDef, instance_key: str) -> dict:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "TimerInstance":
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     Resolves `selectors` once against the static device tree, rejects
     at configure-time (ConfigError) any selector that matches zero

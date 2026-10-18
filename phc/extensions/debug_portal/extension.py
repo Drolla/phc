@@ -23,7 +23,7 @@ logger = logging.getLogger("phc.debug_portal")
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "DebugPortalInstance":
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     Resolves the selectors once against the static device tree, then
     builds the aiohttp app. `extensions_registry` is unused."""

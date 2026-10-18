@@ -1,24 +1,33 @@
 """The System object and load_system(): the top of this package.
 
-Ties every other layer together into a runnable system.
+load_system() runs the system YAML through each top-level section's
+owner, in phase order: settings (logging, plugin discovery, scheduler,
+intervals) -> devices -> extensions -> tasks -> bind. Each owner declares
+the keys it parses as CONFIG_KEYS; any other top-level key is an error.
 """
 
 from pathlib import Path
 
-from phc.core.config.descriptors import ModuleDescriptor, _load_module_descriptor
-from phc.core.config.devices import _build_device
-from phc.core.config.extensions import _load_extensions
-from phc.core.config.hooks import _collect_history_records, _make_history_tick_hook, _make_sticky_tick_hook
-from phc.core.config.params import _build_effective_module, _ModuleConfig, _resolve_module_config
-from phc.core.config.tasks import _build_task
+from phc.core import intervals, logging_setup, registry, scheduler
 from phc.core.config.yamlio import _find_placeholders, load_yaml
 from phc.core.device import Device
+from phc.core.device import config as device_config
+from phc.core.device.config import load_devices
+from phc.core.endpoint.config import _collect_history_records, _make_history_tick_hook
 from phc.core.errors import ConfigError
 from phc.core.extension import check_lifecycle_hooks, collect_hook
-from phc.core.intervals import parse_duration
+from phc.core.extension import config as extension_config
+from phc.core.extension.config import _load_extensions
 from phc.core.logging_setup import configure_logging
-from phc.core.registry import discover_extensions, discover_modules
+from phc.core.registry import discover_plugins
+from phc.core.scheduler import parse_settings
 from phc.core.task import Task, TaskRegistry
+from phc.core.task import config as task_config
+from phc.core.task.config import load_tasks
+
+_TOP_LEVEL_KEYS = (*logging_setup.CONFIG_KEYS, *registry.CONFIG_KEYS, *scheduler.CONFIG_KEYS,
+                   *intervals.CONFIG_KEYS, *device_config.CONFIG_KEYS,
+                   *extension_config.CONFIG_KEYS, *task_config.CONFIG_KEYS)
 
 
 class System:
@@ -34,31 +43,19 @@ class System:
         self.heartbeat = heartbeat
         self.roots = roots
         self.devices = devices
-        # Normally a TaskRegistry (load_system always builds one). A plain
-        # list is accepted for a hand-constructed System in a test, and
-        # wrapped so `system.tasks` has one type either way -- note the
-        # wrapper cannot build new tasks, having no builder.
+        # A plain list (hand-built System in a test) is wrapped; that wrapper
+        # has no builder, so it cannot create tasks.
         self.tasks = tasks if isinstance(tasks, TaskRegistry) else TaskRegistry(tasks)
-        # Concurrency controls for the Scheduler's device I/O (see Scheduler):
-        # max_workers bounds the thread pool; fetch_timeout (seconds) bounds how
-        # long a tick waits on any one device before moving on. Both optional.
+        # Scheduler I/O limits: thread pool size; per-device wait (s) per tick.
         self.max_workers = max_workers
         self.fetch_timeout = fetch_timeout
-        # Per-tick callables auto-collected from configured extension
-        # instances that expose an on_tick(devices) method (see
-        # _load_extensions/load_system) -- passed straight to
-        # Scheduler(tick_hooks=...).
+        # For the Scheduler: extensions' on_tick/on_start/on_stop, plus the
+        # loader's own tick hooks (history sampling, sticky windows).
         self.tick_hooks = tick_hooks or []
-        # One-time async lifecycle callables auto-collected from configured
-        # extension instances that expose on_start(devices)/on_stop(devices)
-        # (see _load_extensions/load_system) -- passed straight to
-        # Scheduler(start_hooks=..., stop_hooks=...).
         self.start_hooks = start_hooks or []
         self.stop_hooks = stop_hooks or []
-        # The _load_extensions registry, keyed by "<extension_name>.<instance_name>"
-        # -- exposed so a caller (e.g. phc.py's --debug-portal-port) can check
-        # what the system YAML already configured before adding its own
-        # extension instance on top of it.
+        # Instances by "<extension>.<instance>", e.g. for the CLI's
+        # --debug-portal-port to see what the YAML already configures.
         self.extensions = extensions or {}
 
     def scheduled_devices(self) -> dict[str, Device]:
@@ -103,121 +100,50 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
             "log_levels: is no longer a separate top-level key -- put each destination's "
             "'levels:' under log: instead, e.g. "
             "log: [{dest: stdout, levels: {default: INFO, scheduler: DEBUG}}]")
+    unknown = sorted(set(raw) - set(_TOP_LEVEL_KEYS))
+    if unknown:
+        raise ConfigError(
+            f"{path}: unknown top-level key(s) {', '.join(map(repr, unknown))} -- "
+            f"known: {', '.join(_TOP_LEVEL_KEYS)}")
+
+    # Phase 1, settings: everything later phases read.
+    config_dir = Path(path).resolve().parent
     try:
-        configure_logging(raw.get("log"), log_levels_override, Path(path).resolve().parent)
+        configure_logging(raw.get("log"), log_levels_override, config_dir)
     except ValueError as exc:
         raise ConfigError(str(exc)) from None
-    # `plugin_paths:` are resolved relative to the system YAML's own
-    # directory (like a `log:` file destination, and unlike an extension's
-    # own path params), so a config that ships its private device modules
-    # alongside itself stays relocatable.
-    config_dir = Path(path).resolve().parent
-    plugin_paths = [str((config_dir / p).resolve()) for p in (raw.get("plugin_paths") or [])]
-    for plugin_path in plugin_paths:
-        if not Path(plugin_path).is_dir():
-            raise ConfigError(f"plugin_paths: no such directory: {plugin_path}")
-    discover_modules(plugin_paths=plugin_paths)
-    discover_extensions(plugin_paths=plugin_paths)
-
+    discover_plugins(raw.get("plugin_paths"), config_dir)
+    settings = parse_settings(raw)
     intervals_map = raw.get("intervals") or {}
-    modules_config = raw.get("modules") or {}
-    heartbeat = parse_duration(raw.get("heartbeat", "1s"))
 
-    max_workers = raw.get("max_workers")
-    if max_workers is not None:
-        max_workers = int(max_workers)
-    fetch_timeout_raw = raw.get("fetch_timeout")
-    fetch_timeout = parse_duration(fetch_timeout_raw) if fetch_timeout_raw is not None else None
-
-    # Validate every modules.<name>: entry up front, regardless of whether a
-    # device actually uses that module -- otherwise a typo'd module name
-    # (e.g. "zwya" instead of "zway") is silently ignored here and only
-    # surfaces later, confusingly, as "parameter 'base_url' is required" on
-    # the first zway device. _load_module_descriptor raises ConfigError for
-    # an unknown module name; _resolve_module_config validates its params;
-    # _build_effective_module validates any modules.<name>.device_profiles/
-    # endpoint_profiles overlay.
-    flat: dict[str, Device] = {}
-    module_config_cache: dict[str, _ModuleConfig] = {}
-    effective_module_cache: dict[str, ModuleDescriptor] = {}
-    for module_name in modules_config:
-        module = _load_module_descriptor(module_name)
-        module_config_cache[module_name] = _resolve_module_config(module, modules_config)
-        effective_module_cache[module_name] = _build_effective_module(module, modules_config)
-
-    # One scratch dict per loaded system, handed to every device built from
-    # it (see Device.context): where a module keeps state shared between its
-    # own instances, scoped to this System rather than to the process.
-    device_context: dict = {}
-    roots = [
-        _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache,
-                      effective_module_cache, device_context)
-        for entry in raw.get("devices") or []
-    ]
-
-    # Every device's update_interval is resolved by now, so this is the
-    # first point an endpoint's history sampling cadence (its own
-    # interval:, or else its device's update:) can be determined -- see
-    # _collect_history_records.
+    # Phase 2, devices.
+    roots, flat = load_devices(raw, intervals_map)
+    # Needs every device's resolved update_interval (history's default cadence).
     history_records = _collect_history_records(flat)
 
+    # Phase 3, extensions: they may reference devices and each other.
     extensions_registry = _load_extensions(raw, flat, config_dir)
-    # Lifecycle hooks are found by NAME on each instance (see
-    # phc.core.extension for the contract and the timing of each), so a
-    # misspelled one would silently never run -- checked here instead.
+    # Hooks are found by name, so a misspelled one would silently never run.
     for instance_key, instance in extensions_registry.items():
         check_lifecycle_hooks(instance, instance_key)
 
     tick_hooks = collect_hook(extensions_registry, "on_tick")
     if history_records:
         tick_hooks.append(_make_history_tick_hook(history_records))
-    # Same auto-collection as tick_hooks above, but for a resource an
-    # extension instance needs to start/stop once rather than every tick
-    # (e.g. phc.extensions.web_ui's aiohttp server) -- see
-    # System.start_hooks/stop_hooks.
+    # Once-only start/stop, e.g. web_ui's HTTP server.
     start_hooks = collect_hook(extensions_registry, "on_start")
     stop_hooks = collect_hook(extensions_registry, "on_stop")
 
-    # task_specs: entries are name -> raw dict, resolved lazily by a
-    # `create_task` action's `template:` (see phc.core.task.CreateTaskAction) --
-    # not built into Task objects here, matching the existing laziness of a
-    # create_task action's own literal `specs:` (see _build_task). Only a
-    # duplicate-tag check happens eagerly, to catch a copy-paste mistake at
-    # load time rather than only once some template is actually used.
-    task_specs: dict[str, dict] = {}
-    for entry in raw.get("task_specs") or []:
-        spec_tag = entry["tag"]
-        if spec_tag in task_specs:
-            raise ConfigError(f"task_specs: duplicate tag {spec_tag!r}")
-        task_specs[spec_tag] = entry
+    # Phase 4, tasks: they may reference devices and extension instances.
+    tasks, task_tick_hooks = load_tasks(raw, flat, extensions_registry)
+    tick_hooks.extend(task_tick_hooks)
 
-    # The registry owns the live task list AND the context needed to build
-    # more of them at runtime (create_task, extensions.timer). _build_task is
-    # injected here as its builder, which is what lets phc.core.task create
-    # tasks without importing this module -- see TaskRegistry's docstring.
-    sticky_endpoints: set = set()
-    tasks = TaskRegistry(build_task=_build_task, flat=flat, extensions=extensions_registry,
-                          sticky_endpoints=sticky_endpoints, task_specs=task_specs)
-    for entry in raw.get("tasks") or []:
-        tasks.add(_build_task(entry, tasks))
-    if sticky_endpoints:
-        tick_hooks.append(_make_sticky_tick_hook(sticky_endpoints))
+    system = System(roots=roots, devices=flat, tasks=tasks, tick_hooks=tick_hooks,
+                     start_hooks=start_hooks, stop_hooks=stop_hooks, extensions=extensions_registry,
+                     **settings)
 
-    tags = [t.tag for t in tasks]
-    duplicates = {t for t in tags if tags.count(t) > 1}
-    if duplicates:
-        raise ConfigError(f"duplicate task tag(s): {sorted(duplicates)}")
-
-    system = System(heartbeat=heartbeat, roots=roots, devices=flat, tasks=tasks,
-                     max_workers=max_workers, fetch_timeout=fetch_timeout, tick_hooks=tick_hooks,
-                     start_hooks=start_hooks, stop_hooks=stop_hooks, extensions=extensions_registry)
-
-    # Extra one-time hook, auto-collected like tick_hooks/start_hooks/
-    # stop_hooks above, for an extension instance that needs to see the
-    # fully-built System (e.g. its tasks: -- not yet built when this
-    # instance's own configure() ran, see _load_extensions) before the
-    # Scheduler starts ticking. Unlike start_hooks, this runs synchronously
-    # here, at load time -- no running event loop is required or assumed.
+    # Phase 5, bind: hands the finished System (e.g. its tasks, not yet built
+    # at configure() time) to extensions; synchronous, no event loop needed.
     for on_bind in collect_hook(extensions_registry, "on_bind"):
         on_bind(system)
 

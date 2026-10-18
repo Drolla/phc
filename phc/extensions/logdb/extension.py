@@ -4,7 +4,7 @@ Resolves an extensions.logdb.<instance>'s `selectors` list against the
 live device tree, subscribes every matched endpoint for sticky value
 tracking, builds a LogDb store, and registers the "log_db" task action
 kind so a hand-authored `tasks:` entry can sample it on its own
-schedule -- see phc.core.config._load_extensions for how configure() is
+schedule -- see phc.core.extension.config._load_extensions for how configure() is
 invoked, and phc.core.registry.discover_extensions() for how this
 module's @register_task_kind decorator gets imported at startup."""
 
@@ -24,7 +24,8 @@ class LogDbInstance:
 
     Each pair subscribed for sticky min/max tracking (see
     phc.core.endpoint.Endpoint.subscribe_sticky). Looked up by name from a
-    log_db task action (see phc.core.config._load_extensions/_build_action)."""
+    log_db task action (see phc.core.extension.config._load_extensions and
+    phc.core.task.config._build_action)."""
 
     def __init__(self, store: LogDb, pairs: list[tuple[str, str]], subscriber_id: str):
         self.store = store
@@ -83,12 +84,12 @@ class LogDbInstance:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> LogDbInstance:
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     Resolves the selectors once against the static device tree,
     subscribes every resolved endpoint for sticky value tracking under
     `instance_key`, and opens/restores the CSV-backed store.
-    `extensions_registry` (see phc.core.config._load_extensions) is
+    `extensions_registry` (see phc.core.extension.config._load_extensions) is
     unused here -- logdb never references another extension's
     instance; it's the one other extensions (e.g.
     phc.extensions.web_ui's graph panels) reference by name."""

@@ -5,7 +5,7 @@ the live device tree (post-filtered to writable endpoints only, since
 restoring requires Device.set(), which requires writable=True),
 persists their current value to a small YAML file whenever one of them
 changes, and restores every persisted value once at startup, before
-the scheduler's first tick -- see phc.core.config._load_extensions for
+the scheduler's first tick -- see phc.core.extension.config._load_extensions for
 how configure() is invoked, and phc.core.scheduler.Scheduler for
 start_hooks/tick_hooks/stop_hooks timing."""
 
@@ -131,7 +131,7 @@ class RecoveryInstance:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> RecoveryInstance:
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     Resolves the selectors once against the static device tree,
     rejects at configure-time (ConfigError) any selector that matches

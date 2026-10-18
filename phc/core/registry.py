@@ -28,13 +28,20 @@ twice.
 """
 
 import importlib
+import importlib.resources
 import importlib.util
 import pkgutil
 import sys
 from importlib.metadata import entry_points
 from pathlib import Path
 
+import yaml
+
 from phc.core.endpoint import Endpoint
+from phc.core.errors import ConfigError
+
+# Top-level system YAML keys this module parses (see discover_plugins).
+CONFIG_KEYS = ("plugin_paths",)
 
 _device_modules: dict[str, type] = {}
 _endpoint_kinds: dict[str, type[Endpoint]] = {}
@@ -242,6 +249,21 @@ def discover_modules(package_name: str = "phc.devices", plugin_paths=()) -> None
     _discover_all(package_name, DEVICE_ENTRY_POINT_GROUP, "device", plugin_paths)
 
 
+def discover_plugins(plugin_paths: list | None, config_dir: Path) -> None:
+    """Discover device modules and extensions, including `plugin_paths:`.
+
+    The paths resolve against the system YAML's own directory (like a
+    `log:` file destination, and unlike an extension's own path params),
+    so a config that ships its private device modules alongside itself
+    stays relocatable."""
+    paths = [str((config_dir / p).resolve()) for p in plugin_paths or []]
+    for path in paths:
+        if not Path(path).is_dir():
+            raise ConfigError(f"plugin_paths: no such directory: {path}")
+    discover_modules(plugin_paths=paths)
+    discover_extensions(plugin_paths=paths)
+
+
 def discover_extensions(package_name: str = "phc.extensions", plugin_paths=()) -> None:
     """Import every extension's extension.py, recording its package.
 
@@ -251,3 +273,34 @@ def discover_extensions(package_name: str = "phc.extensions", plugin_paths=()) -
     for name, package in _discover_all(package_name, EXTENSION_ENTRY_POINT_GROUP,
                                         "extension", plugin_paths):
         _extension_packages[name] = package
+
+
+# Descriptor lookup goes through importlib.resources, not a path derived
+# from this file's own location: a module.yaml/extension.yaml is package
+# DATA (declared in pyproject.toml's [tool.setuptools.package-data]), and
+# resolving it relative to a source file only happens to work while the
+# package sits in a source checkout. importlib.resources asks the import
+# system where the package actually is, which keeps working for an
+# installed wheel -- and for a device module living in someone else's
+# distribution entirely, whose package the registry reports.
+
+
+def _read_descriptor_yaml(package: str, name: str, filename: str, kind: str) -> dict:
+    """Read and parse one packaged descriptor from `package`.
+
+    A device module's module.yaml or an extension's extension.yaml,
+    located through importlib.resources (see comment above).
+    `package` comes from the registry (module_package()/
+    extension_package()), i.e. wherever the plugin's code actually lives.
+
+    Raises ConfigError if the package or the descriptor within it doesn't
+    exist. ModuleNotFoundError is translated rather than propagated: to a
+    user, naming a module that doesn't exist is a config mistake like any
+    other, not an import failure."""
+    try:
+        resource = importlib.resources.files(package) / filename
+    except (ModuleNotFoundError, TypeError):
+        raise ConfigError(f"{kind} {name!r} is not installed (no {package} package)") from None
+    if not resource.is_file():
+        raise ConfigError(f"{kind} {name!r} has no {filename} (looked in {package})")
+    return yaml.safe_load(resource.read_text(encoding="utf-8")) or {}

@@ -5,7 +5,7 @@ the live device tree, builds a RandomLightController (the pure
 algorithm, see random_light.py), and registers the "random_light" task
 action kind so a `tasks:` entry can run the periodic randomize pass (or
 force every light on/off) on its own schedule -- see
-phc.core.config._load_extensions for configure()'s call site, and
+phc.core.extension.config._load_extensions for configure()'s call site, and
 phc.core.registry.discover_extensions() for how @register_task_kind
 here gets picked up at startup."""
 
@@ -79,7 +79,7 @@ def _parse_probability(value, label: str) -> float:
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "RandomLightInstance":
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     See also docs/random-light.md. `extensions_registry` is unused --
     random_light never references another extension's instance.

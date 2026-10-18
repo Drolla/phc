@@ -39,7 +39,7 @@ class Device:
         self.qualified_id = f"{parent_qualified_id}.{id}" if parent_qualified_id else id
         self.params = params or {}
         # Scratch space shared by every device built from ONE system config
-        # (see phc.core.config.devices._build_device, which creates one dict
+        # (see phc.core.device.config._build_device, which creates one dict
         # per load and hands it to every device). A module needing state
         # shared between its own instances -- a connection pool, a batched
         # request registry, a cached session cookie -- keeps it here, under
@@ -195,7 +195,7 @@ class Device:
     # fetch()/update_state() are deliberately not recursive into children
     # (unlike get()/get_text()/set()/etc. below): phc.core.scheduler.Scheduler
     # drives every device -- parent and descendant alike -- directly from
-    # the flat device dict (see phc.core.config._build_device), so recursing
+    # the flat device dict (see phc.core.device.config._build_device), so recursing
     # here would redo a child's own, separately-scheduled work a second
     # time in the same tick.
 

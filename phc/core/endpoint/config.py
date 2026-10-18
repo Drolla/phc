@@ -1,23 +1,57 @@
-"""Endpoint construction: expanding profiles and building Endpoint objects.
+"""Endpoint config: profile expansion and Endpoint construction from specs.
 
-Overlays instance overrides, substitutes `{param}` templates, and parses
-the interval/history fields that go with them.
+Overlays instance overrides, substitutes `{param}` templates, parses the
+interval/history fields that go with them, and samples declared endpoint
+histories on their own cadence (see _make_history_tick_hook).
 
-The stage between a resolved parameter set (see params.py) and a real
-Device (see devices.py). Every `intervals_map` parameter below is the
-system YAML's top-level `intervals:` section, used to resolve a named
-duration before parsing it.
+The stage between a resolved parameter set (see phc.core.device.config)
+and a real Device. Every `intervals_map` parameter below is the system
+YAML's top-level `intervals:` section, used to resolve a named duration
+before parsing it.
 """
+
+from __future__ import annotations
 
 import copy
 import re
+import time
+from typing import TYPE_CHECKING
 
-from phc.core.config.descriptors import _ENDPOINT_ENTRY_KEYS, _HISTORY_ENTRY_KEYS, ModuleDescriptor
-from phc.core.config.params import _UNSET
+from phc.core.device import Device
 from phc.core.endpoint import AGGREGATIONS, ON_INVALID_MODES, VALUE_TYPES, Endpoint
 from phc.core.errors import ConfigError
 from phc.core.intervals import parse_duration
 from phc.core.registry import get_endpoint_class
+
+if TYPE_CHECKING:
+    from phc.core.device.config import ModuleDescriptor
+
+# Keys recognized on an endpoint spec, at every stage before a module's own
+# `endpoint_parameters:` names are folded into Endpoint.params (see
+# _merge_endpoints). `params:` itself is deliberately absent -- a protocol
+# value (e.g. zway's command_group/address) is written as an ordinary
+# top-level field, declared per-module via endpoint_parameters:, not nested;
+# this also means a plain dict.update is enough to overlay one endpoint spec
+# onto another (see _overlay_endpoint_spec) without a separate deep-merge
+# rule for params.
+_ENDPOINT_ENTRY_KEYS = {"key", "kind", "readable", "writable", "name", "description",
+                        "type", "unit", "values", "aggregation", "min", "max",
+                        "default", "format", "endpoint_profile", "read_transform",
+                        "write_transform", "history", "on_invalid"}
+
+
+# Keys allowed on a `history: {size: ..., interval: ...}` long-form mapping.
+# `size` is required; `interval` is optional (defaults to the owning
+# device's resolved update interval -- see _collect_history_records).
+_HISTORY_ENTRY_KEYS = {"size", "interval"}
+
+
+# Sentinel distinguishing "modules.<name>.update was not set" from a stored
+# None ("this module's devices never poll by default") -- plain dict.get()
+# can't tell those apart, and the distinction matters the same way it
+# already does for a device's own `update: null` (see _resolve_interval).
+_UNSET = object()
+
 
 # Matches a bare {name} template field (no format-spec/conversion syntax --
 # these templates only ever need to substitute a plain param value, e.g.
@@ -329,3 +363,91 @@ def _parse_history_spec(raw, intervals_map: dict, device_id: str, endpoint_key: 
                 f"is invalid: {exc}") from None
 
     return size, interval
+
+
+class _HistoryRecord:
+    """One endpoint's history-sampling schedule.
+
+    Holds the Endpoint to sample, its resolved sampling interval
+    (seconds), and the monotonic time it is next due. Built once by
+    _collect_history_records() and driven by _make_history_tick_hook()'s
+    tick hook -- a plain __slots__ record, since this is internal
+    bookkeeping, not part of any public API."""
+
+    __slots__ = ("endpoint", "interval", "next_due")
+
+    def __init__(self, endpoint: Endpoint, interval: float):
+        self.endpoint = endpoint
+        self.interval = interval
+        # -inf so the very first tick hook invocation is immediately due,
+        # matching Device._last_run (see phc.core.device). Must not be 0.0:
+        # next_due is compared against time.monotonic(), whose zero point
+        # is arbitrary and on some platforms is the boot time -- 0.0 would
+        # still be "already due", but only by accident.
+        self.next_due = float("-inf")
+
+
+def _collect_history_records(flat: dict[str, Device]) -> list[_HistoryRecord]:
+    """Build one _HistoryRecord per `history:`-declaring endpoint.
+
+    Covers every endpoint of every device in `flat`. An endpoint's own
+    history_interval (declared `interval:`) wins; otherwise the owning
+    device's resolved update_interval is used, so declaring just
+    `history: N` gives "one sample per poll" for free. Raises ConfigError
+    for an endpoint on a device with no update: interval and no explicit
+    history interval -- there would be no cadence to sample it on.
+    Called once, after `roots` is built (see load_system), which is the
+    first point every device's resolved update_interval is known."""
+    records = []
+    for qualified_id, device in flat.items():
+        for endpoint in device.endpoints.values():
+            if endpoint.history_size == 0:
+                continue
+            interval = endpoint.history_interval
+            if interval is None:
+                interval = device.update_interval
+            if interval is None:
+                raise ConfigError(
+                    f"device {qualified_id!r}: endpoint {endpoint.key!r} declares "
+                    f"history: but the device has no update: interval to sample on "
+                    f"-- give the history an explicit interval "
+                    f"(history: {{size: {endpoint.history_size}, interval: 5m}}) or "
+                    f"set update: on the device")
+            records.append(_HistoryRecord(endpoint, interval))
+    return records
+
+
+def _make_history_tick_hook(records: list[_HistoryRecord]):
+    """Build the history-sampling tick hook (see Scheduler pass 4).
+
+    Samples every history-declaring endpoint's CURRENT committed value
+    into its buffer, once per its resolved interval -- the history
+    counterpart to _make_sticky_tick_hook, but on a per-endpoint cadence
+    rather than every tick. Unlike _make_sticky_tick_hook's
+    sticky_endpoints set, `records` is fixed at load time and never
+    grows at runtime: unlike a task, a device (and hence its endpoints'
+    history declarations) cannot be created after startup, so there is
+    no live-set-aliasing trick needed here.
+
+    A single time.monotonic() read per hook invocation, then a linear scan
+    over `records` -- negligible even at scale. Monotonic, like every
+    other interval in the system (see phc.core.scheduler.Scheduler's class
+    docstring): sampling a smoothing buffer is a pure cadence, with no
+    wall-clock meaning that an NTP/DST step should be allowed to disturb.
+    A record's next_due only advances when Endpoint.record_history()
+    actually appended a sample (it skips None/non-numeric/NaN, see that
+    method), so a device that hasn't been polled yet, or whose last read
+    failed, is retried every tick instead of losing a whole interval.
+    Deliberately not Task.mark_run()'s whole-multiples catch-up scheme: a
+    burst is structurally impossible here (this hook runs at most once per
+    tick, appending at most one sample), and a stable sampling grid has no
+    value for a smoothing buffer -- so a plain `next_due = mono + interval`
+    is enough."""
+    def _hook(devices: dict[str, Device]) -> None:
+        mono = time.monotonic()
+        for record in records:
+            if mono < record.next_due:
+                continue
+            if record.endpoint.record_history():
+                record.next_due = mono + record.interval
+    return _hook
