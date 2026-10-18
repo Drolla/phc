@@ -362,8 +362,8 @@ def credentials_from_config(path):
     """Read `modules.viessmann:` out of a PHC system config.
 
     Parsed with PHC's own loader, not yaml.safe_load: a real system config
-    puts its credentials behind `<<: !include` and splits itself across
-    !include-d files, and safe_load cannot read those tags at all.
+    keeps its credentials in `!include`-d files, which only PHC's text
+    expansion resolves.
 
     A credential left as `!placeholder` parses to its example text, which
     is not a usable password -- the login then fails the same way a wrong
@@ -372,7 +372,7 @@ def credentials_from_config(path):
     import yaml
 
     try:
-        from phc.core.config.yamlio import _include_stack, _IncludeLoader
+        from phc.core.config.yamlio import load_yaml
         from phc.core.errors import ConfigError
     except ImportError:
         print(f"cannot read {path}: PHC is not importable here, so !include "
@@ -383,9 +383,7 @@ def credentials_from_config(path):
         return {}
 
     try:
-        _include_stack.clear()
-        with open(path, encoding="utf-8") as handle:
-            raw = yaml.load(handle, Loader=_IncludeLoader) or {}
+        raw = load_yaml(path) or {}
     except (yaml.YAMLError, OSError, ConfigError) as exc:
         print(f"cannot read {path}: {exc}", file=sys.stderr)
         return {}

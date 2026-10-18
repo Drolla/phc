@@ -12,7 +12,6 @@ from phc.core.config.params import (
     _ModuleConfig,
     _resolve_module_config,
 )
-from phc.core.config.yamlio import _flatten_list_entries
 from phc.core.device import Device
 from phc.core.errors import ConfigError
 from phc.core.registry import get_device_class
@@ -62,7 +61,7 @@ def _build_device(entry: dict, intervals_map: dict, parent_qualified_id: str | N
     children = [
         _build_device(child_entry, intervals_map, qualified_id, flat, modules_config,
                       module_config_cache, effective_module_cache, context)
-        for child_entry in _flatten_list_entries(entry.get("children", []))
+        for child_entry in entry.get("children") or []
     ]
 
     device = device_cls(

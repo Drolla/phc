@@ -5,15 +5,13 @@ Ties every other layer together into a runnable system.
 
 from pathlib import Path
 
-import yaml
-
 from phc.core.config.descriptors import ModuleDescriptor, _load_module_descriptor
 from phc.core.config.devices import _build_device
 from phc.core.config.extensions import _load_extensions
 from phc.core.config.hooks import _collect_history_records, _make_history_tick_hook, _make_sticky_tick_hook
 from phc.core.config.params import _build_effective_module, _ModuleConfig, _resolve_module_config
 from phc.core.config.tasks import _build_task
-from phc.core.config.yamlio import _find_placeholders, _flatten_list_entries, _include_stack, _IncludeLoader
+from phc.core.config.yamlio import _find_placeholders, load_yaml
 from phc.core.device import Device
 from phc.core.errors import ConfigError
 from phc.core.extension import check_lifecycle_hooks, collect_hook
@@ -85,9 +83,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     `log_levels_override` (e.g. from CLI flags) is merged into every stream
     destination's `levels:` -- see phc.core.logging_setup.configure_logging.
     """
-    _include_stack.clear()
-    with open(path, encoding="utf-8") as f:
-        raw = yaml.load(f, Loader=_IncludeLoader) or {}
+    raw = load_yaml(path) or {}
 
     if not isinstance(raw, dict):
         raise ConfigError(
@@ -156,7 +152,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     roots = [
         _build_device(entry, intervals_map, None, flat, modules_config, module_config_cache,
                       effective_module_cache, device_context)
-        for entry in _flatten_list_entries(raw.get("devices", []))
+        for entry in raw.get("devices") or []
     ]
 
     # Every device's update_interval is resolved by now, so this is the
@@ -189,7 +185,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     # duplicate-tag check happens eagerly, to catch a copy-paste mistake at
     # load time rather than only once some template is actually used.
     task_specs: dict[str, dict] = {}
-    for entry in _flatten_list_entries(raw.get("task_specs", [])):
+    for entry in raw.get("task_specs") or []:
         spec_tag = entry["tag"]
         if spec_tag in task_specs:
             raise ConfigError(f"task_specs: duplicate tag {spec_tag!r}")
@@ -202,7 +198,7 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     sticky_endpoints: set = set()
     tasks = TaskRegistry(build_task=_build_task, flat=flat, extensions=extensions_registry,
                           sticky_endpoints=sticky_endpoints, task_specs=task_specs)
-    for entry in _flatten_list_entries(raw.get("tasks", [])):
+    for entry in raw.get("tasks") or []:
         tasks.add(_build_task(entry, tasks))
     if sticky_endpoints:
         tick_hooks.append(_make_sticky_tick_hook(sticky_endpoints))

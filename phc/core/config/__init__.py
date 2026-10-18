@@ -6,10 +6,9 @@ the way.
 
 One module per stage of the load, in dependency order:
 
-- `yamlio` -- the `!include`/`!placeholder` tags; file to nested dict.
 - `expand` -- full-line `!include` directives spliced into one YAML
-  text (the text-level replacement for yamlio's `!include`; so far
-  only used by `phc expand`).
+  text.
+- `yamlio` -- that text parsed (with `!placeholder`) into a nested dict.
 - `descriptors` -- parsed module.yaml/extension.yaml, and the key sets
   defining what a config entry may contain.
 - `params` -- parameter scope/override resolution, `modules.<name>:`.
@@ -57,7 +56,7 @@ from phc.core.config.tasks import (
                                           _build_task,
                                           _subscribe_referenced_endpoints,
 )
-from phc.core.config.yamlio import _find_placeholders, _flatten_list_entries, _IncludeLoader, _Placeholder
+from phc.core.config.yamlio import _ConfigLoader, _find_placeholders, _Placeholder, load_yaml
 from phc.core.errors import ConfigError
 
 __all__ = ["ConfigError", "System", "load_system"]

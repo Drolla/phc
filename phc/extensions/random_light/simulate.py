@@ -24,9 +24,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-import yaml
-
-from phc.core.config.yamlio import _IncludeLoader
+from phc.core.config.yamlio import load_yaml
 from phc.core.intervals import parse_duration
 from phc.extensions.random_light.extension import _parse_probability, _parse_windows
 from phc.extensions.random_light.random_light import Light, RandomLightController
@@ -252,12 +250,9 @@ def parse_args(argv=None):
 def main(argv=None) -> int:
     args = parse_args(argv)
 
-    # PHC's own include-aware loader, not yaml.safe_load: a full system
-    # YAML can use !include/!placeholder, and !include resolves relative
-    # to the including file's own path (read off the open file's .name),
-    # so the file must be handed to yaml.load as-is, not pre-read to text.
-    with open(args.config, encoding="utf-8") as f:
-        raw = yaml.load(f, Loader=_IncludeLoader)
+    # PHC's own loader, not yaml.safe_load: a full system YAML can use
+    # !include/!placeholder.
+    raw = load_yaml(args.config)
     spec = _find_instance_spec(raw, args.instance)
     lights = _load_lights(spec, f"{args.config}")
 
