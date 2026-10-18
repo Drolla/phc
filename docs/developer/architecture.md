@@ -38,26 +38,41 @@ so anything may import it without a cycle:
                  |
               selectors
                  |
-              config/          (a package: see below)
+              config/          (config loading: see below)
                  |
              scheduler
                  |
             cli / extensions
 ```
 
-`phc.core.config` is itself layered, one module per stage of a load:
+`device`, `endpoint`, `task` and `extension` are packages: the runtime code in
+`<name>/<name>.py` (re-exported by the package, so `from phc.core.device
+import Device` is the import to use), and the loading of that domain's
+config sections in `<name>/config.py`.
+
+`load_system()` hands each top-level section of a system YAML to the module
+that owns it, in phase order. Each owner declares the keys it parses as
+`CONFIG_KEYS`; any other top-level key is a `ConfigError`.
 
 ```
-expand       -> (none)        full-line !include; files to one YAML text
-yamlio       -> expand        !placeholder; that text to nested dict
-descriptors  -> (none)        parsed module.yaml / extension.yaml
-params       -> descriptors   parameter scope/override resolution
-endpoints    -> descriptors, params    profiles, {param} templating, Endpoint
-extensions   -> descriptors   the extensions: section
-devices      -> descriptors, endpoints, params
-tasks        -> (none)        conditions, actions, tasks
-hooks        -> (none)        the tick hooks the loader synthesizes
-system       -> everything above       System + load_system()
+phase       owner              keys
+settings    logging_setup      log
+            registry           plugin_paths
+            scheduler          heartbeat, max_workers, fetch_timeout
+            intervals          intervals
+devices     device.config      modules, devices (module.yaml, params, device tree)
+            endpoint.config    endpoint specs, profiles, history sampling
+extensions  extension.config   extensions (extension.yaml, configure())
+tasks       task.config        task_specs, tasks (conditions, actions)
+bind        -                  each extension instance's on_bind(system)
+```
+
+`phc.core.config` keeps only what no section owns:
+
+```
+expand   -> (none)          full-line !include; files to one YAML text
+yamlio   -> expand          !placeholder; that text to nested dict
+system   -> every owner     System + load_system()
 ```
 
 Two dependency inversions were removed and are worth not reintroducing:
@@ -65,7 +80,7 @@ Two dependency inversions were removed and are worth not reintroducing:
 - **`ConfigError` lives in `errors`, not `config`.** It used to live in the
   loader, so a leaf like `selectors` had to import the whole loader just to
   name an exception.
-- **`config` imports `task`, never the reverse.** Building a `Task` from a
+- **`task.config` imports `task.task`, never the reverse.** Building a `Task` from a
   spec is the loader's job, but `create_task` needs it at *runtime* from
   inside `task.py`. Rather than importing back, the builder is injected
   into `TaskRegistry`, which owns the live task list and the context needed

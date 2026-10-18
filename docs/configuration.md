@@ -1,5 +1,20 @@
 # Configuration Reference
 
+## Top-Level Keys
+
+A system YAML may contain these top-level keys, and no others -- a
+misspelled one is an error rather than silently ignored:
+
+| Key | Section |
+| --- | --- |
+| `log` | [Logging](#logging) |
+| `plugin_paths` | [Using device modules and extensions from outside PHC](#using-device-modules-and-extensions-from-outside-phc) |
+| `heartbeat`, `max_workers`, `fetch_timeout` | Scheduler tick length and device I/O concurrency |
+| `intervals` | Named durations for `update:`/`interval:` fields |
+| `modules`, `devices` | [Modules and shared configuration](#modules-and-shared-configuration) |
+| `extensions` | One page per extension under [`docs/`](.) |
+| `task_specs`, `tasks` | [Tasks](#tasks) |
+
 ## Splitting Configuration Across Files
 
 A system YAML is assembled as text before it is parsed. A line of its own
