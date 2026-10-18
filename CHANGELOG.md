@@ -25,6 +25,7 @@ Changes merged into `main` since the 0.1.0 release, in order.
   [`docs/configuration.md`](docs/configuration.md#selecting-part-of-a-file-path).
 - `phc expand --config FILE` writes the fully expanded config. See
   [`docs/configuration.md`](docs/configuration.md#seeing-the-result-phc-expand).
+- `waveplus_bridge` gains a `battery` endpoint (percent).
 
 **Improvements**
 

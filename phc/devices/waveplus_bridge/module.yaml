@@ -104,3 +104,11 @@ endpoints:
     name: TVOC
     description: Total volatile organic compounds (TVOC)
     field: voc
+  - key: battery
+    readable: true
+    writable: false
+    type: int
+    unit: "%"
+    name: Battery
+    description: Battery level
+    field: battery
