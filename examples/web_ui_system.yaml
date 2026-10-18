@@ -26,8 +26,8 @@ log:
 # not any one device module, so it just needs a few devices to render
 # widgets for.
 devices:
-  - !include devices/emulated_demo_devices.yaml
-  - !include devices/sun_zurich.yaml
+  !include devices/emulated_demo_devices.yaml#devices
+  !include devices/sun_zurich.yaml#devices
 
 extensions:
   # Feeds the "History" graph panel below -- see the log_db task at the

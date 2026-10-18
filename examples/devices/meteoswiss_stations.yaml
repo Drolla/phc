@@ -3,10 +3,9 @@
 # https://data.geo.admin.ch/ch.meteoschweiz.messwerte-aktuell/info/VQHA80_en.txt
 # and swap in whichever stations you actually want to track.
 #
-# A bare list, not a devices:-keyed mapping: a consuming config includes it
-# as one `devices:` list item (`- !include devices/meteoswiss_stations.yaml`)
-# alongside its own extra devices, and the loader splices this file's
-# entries into the surrounding list rather than nesting them -- see
+# Holds its devices under `devices:`; a consuming config splices them
+# into its own `devices:` (or a host's `children:`) list with a full-line
+# `!include devices/meteoswiss_stations.yaml#devices` at that list's item column -- see
 # docs/configuration.md#splitting-configuration-across-files. No modules:/
 # tasks:/intervals: here -- deliberately no update: on any device below
 # either, since an including config is expected to set modules.meteoswiss.
@@ -18,27 +17,28 @@
 # per device), so an including config that also sets
 # modules.meteoswiss.cache_time gets them coalesced into a single shared
 # HTTP fetch per cache window.
-- id: meteo-bern
-  module: meteoswiss
-  name: Bern Weather
-  station: BER
+devices:
+  - id: meteo-bern
+    module: meteoswiss
+    name: Bern Weather
+    station: BER
 
-- id: meteo-zurich
-  module: meteoswiss
-  name: Zurich Weather
-  station: KLO
+  - id: meteo-zurich
+    module: meteoswiss
+    name: Zurich Weather
+    station: KLO
 
-- id: meteo-geneva
-  module: meteoswiss
-  name: Geneva Weather
-  station: GVE
+  - id: meteo-geneva
+    module: meteoswiss
+    name: Geneva Weather
+    station: GVE
 
-- id: meteo-basel
-  module: meteoswiss
-  name: Basel Weather
-  station: BAS
+  - id: meteo-basel
+    module: meteoswiss
+    name: Basel Weather
+    station: BAS
 
-- id: meteo-lugano
-  module: meteoswiss
-  name: Lugano Weather
-  station: LUG
+  - id: meteo-lugano
+    module: meteoswiss
+    name: Lugano Weather
+    station: LUG

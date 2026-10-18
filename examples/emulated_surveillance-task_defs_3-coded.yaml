@@ -25,7 +25,7 @@
 # `template:` reference instead of a literal spec -- narrowly avoiding the
 # code-in-code case, without templating anything else here.
 
-<<: !include emulated_surveillance-system_setup.yaml
+!include emulated_surveillance-system_setup.yaml
 
 task_specs:
   - tag: surv_intrusion

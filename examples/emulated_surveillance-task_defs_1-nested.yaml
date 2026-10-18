@@ -16,7 +16,7 @@
 # needed -- see surv_intrusion below for the deepest case (a create_task
 # whose own actions include three further create_task calls).
 
-<<: !include emulated_surveillance-system_setup.yaml
+!include emulated_surveillance-system_setup.yaml
 
 tasks:
   - tag: surveillance_enable

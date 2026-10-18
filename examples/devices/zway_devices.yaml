@@ -6,109 +6,110 @@
 #   python phc/devices/zway/demo.py --url ... --token ... list
 # to see what your own controller exposes.
 
-- id: lights
-  module: zway
-  name: House Lights
-  endpoints:
-    - key: corridor
-      name: Corridor Light
-      device: "Rez: Light corridor"
-      endpoint_profile: switch
-    - key: living
-      name: Living Room Light
-      device: "Rez: Light living"
-      endpoint_profile: switch
-    - key: parent_room
-      name: Parent Room Light
-      device: ZWayVDev_zway_7-1-37
-      endpoint_profile: switch
+devices:
+  - id: lights
+    module: zway
+    name: House Lights
+    endpoints:
+      - key: corridor
+        name: Corridor Light
+        device: "Rez: Light corridor"
+        endpoint_profile: switch
+      - key: living
+        name: Living Room Light
+        device: "Rez: Light living"
+        endpoint_profile: switch
+      - key: parent_room
+        name: Parent Room Light
+        device: ZWayVDev_zway_7-1-37
+        endpoint_profile: switch
 
-- id: light_landing
-  module: zway
-  name: Landing Light
-  endpoints:
-    - key: base
-      device: ZWayVDev_zway_9-0-37
-      endpoint_profile: switch
-    - key: sv1
-      name: "Landing Light (paddle 1)"
-      device: ZWayVDev_zway_9-1-37
-      endpoint_profile: switch
-    - key: sv2
-      name: "Landing Light (paddle 2)"
-      device: ZWayVDev_zway_9-2-37
-      endpoint_profile: switch
+  - id: light_landing
+    module: zway
+    name: Landing Light
+    endpoints:
+      - key: base
+        device: ZWayVDev_zway_9-0-37
+        endpoint_profile: switch
+      - key: sv1
+        name: "Landing Light (paddle 1)"
+        device: ZWayVDev_zway_9-1-37
+        endpoint_profile: switch
+      - key: sv2
+        name: "Landing Light (paddle 2)"
+        device: ZWayVDev_zway_9-2-37
+        endpoint_profile: switch
 
-- id: sensors_indoor
-  module: zway
-  name: Indoor Sensors
-  update: 1s
-  endpoints:
-    - key: living_temp
-      name: Living Room Temperature
-      device: "*living temp*"
-      endpoint_profile: temperature
-      history: 4
-    - key: living_humidity
-      name: Living Room Humidity
-      device: "*living humidity*"
-      endpoint_profile: humidity
-    - key: motion
-      name: Hallway Motion
-      device: "Rez: Motion detector"
-      endpoint_profile: motion
-    - key: battery
-      name: Hallway Motion Battery
-      # Same node as `motion` above, different command class -- its own
-      # virtual device, addressed by id since a title glob could collide
-      # with another endpoint sharing that node's title.
-      device: "ZWayVDev_zway_11-0-128"
-      endpoint_profile: battery
+  - id: sensors_indoor
+    module: zway
+    name: Indoor Sensors
+    update: 1s
+    endpoints:
+      - key: living_temp
+        name: Living Room Temperature
+        device: "*living temp*"
+        endpoint_profile: temperature
+        history: 4
+      - key: living_humidity
+        name: Living Room Humidity
+        device: "*living humidity*"
+        endpoint_profile: humidity
+      - key: motion
+        name: Hallway Motion
+        device: "Rez: Motion detector"
+        endpoint_profile: motion
+      - key: battery
+        name: Hallway Motion Battery
+        # Same node as `motion` above, different command class -- its own
+        # virtual device, addressed by id since a title glob could collide
+        # with another endpoint sharing that node's title.
+        device: "ZWayVDev_zway_11-0-128"
+        endpoint_profile: battery
 
-- id: weather_station
-  module: zway
-  name: Outdoor Weather Station
-  # Longer than the devices above: this sensor reports far less often
-  # than a switch or a motion detector.
-  update: 5m
-  endpoints:
-    - key: temp
-      name: Outdoor Temperature
-      device: "Meteo station: Temp"
-      endpoint_profile: temperature
-    - key: humidity
-      name: Outdoor Humidity
-      device: "Meteo station: Humidity"
-      endpoint_profile: humidity
-    - key: luminosity
-      name: Outdoor Luminosity
-      device: "Meteo station: Luminiscence"
-      endpoint_profile: luminosity
-    - key: pressure
-      name: Barometric Pressure
-      device: "Meteo station: Barometric*"
-      endpoint_profile: pressure
-    - key: wind_speed
-      name: Wind Speed
-      device: "Meteo station: Velocity"
-      type: float
-      unit: "m/s"
+  - id: weather_station
+    module: zway
+    name: Outdoor Weather Station
+    # Longer than the devices above: this sensor reports far less often
+    # than a switch or a motion detector.
+    update: 5m
+    endpoints:
+      - key: temp
+        name: Outdoor Temperature
+        device: "Meteo station: Temp"
+        endpoint_profile: temperature
+      - key: humidity
+        name: Outdoor Humidity
+        device: "Meteo station: Humidity"
+        endpoint_profile: humidity
+      - key: luminosity
+        name: Outdoor Luminosity
+        device: "Meteo station: Luminiscence"
+        endpoint_profile: luminosity
+      - key: pressure
+        name: Barometric Pressure
+        device: "Meteo station: Barometric*"
+        endpoint_profile: pressure
+      - key: wind_speed
+        name: Wind Speed
+        device: "Meteo station: Velocity"
+        type: float
+        unit: "m/s"
 
-- id: battery_sensor
-  module: zway
-  name: Battery-Powered Sensor
-  update: 5m
-  endpoints:
-    - key: level
-      device: "Rez: Door sensor battery"
-      endpoint_profile: battery
+  - id: battery_sensor
+    module: zway
+    name: Battery-Powered Sensor
+    update: 5m
+    endpoints:
+      - key: level
+        device: "Rez: Door sensor battery"
+        endpoint_profile: battery
 
-# See docs/zway.md's "Tag Readers" section for the controller-side setup.
-- id: tag_reader
-  module: zway
-  name: Front Door Tag Reader
-  endpoints:
-    - key: state
-      device: "DummyDevice_15"
-      type: str
-      writable: true
+  # See docs/zway.md's "Tag Readers" section for the controller-side setup.
+  - id: tag_reader
+    module: zway
+    name: Front Door Tag Reader
+    endpoints:
+      - key: state
+        device: "DummyDevice_15"
+        type: str
+        writable: true

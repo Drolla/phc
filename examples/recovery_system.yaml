@@ -11,7 +11,7 @@ log:
 # devices to persist/restore, not a device-module walkthrough of its own
 # (see examples/emulated_system.yaml for that).
 devices:
-  - !include devices/emulated_demo_devices.yaml
+  !include devices/emulated_demo_devices.yaml#devices
 
 # Persists lights.desk_lamp/power and thermostat/setpoint to a small YAML
 # file, restoring them automatically the next time PHC starts (e.g. after a

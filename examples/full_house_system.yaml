@@ -175,10 +175,10 @@ devices:
     module: host
     name: Weather
     children:
-      - !include devices/meteoswiss_stations.yaml
+      !include devices/meteoswiss_stations.yaml#devices
 
   # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
-  - !include devices/sun_zurich.yaml
+  !include devices/sun_zurich.yaml#devices
 
 extensions:
   mail_alert:

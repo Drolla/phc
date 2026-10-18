@@ -24,7 +24,7 @@ modules:
 # see that file for the full list of MeteoSwiss automatic weather stations
 # to swap in instead.
 devices:
-  - !include devices/meteoswiss_stations.yaml
+  !include devices/meteoswiss_stations.yaml#devices
 
 # min_interval: 1m on every task below caps how often it can fire -- a
 # no-op in practice at this module's own 10-minute poll cadence, but

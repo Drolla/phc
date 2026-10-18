@@ -269,7 +269,7 @@ devices:
             simulate: { kind: drift, step: 0.2 }
 
   # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
-  - !include devices/sun_zurich.yaml
+  !include devices/sun_zurich.yaml#devices
 
 extensions:
   # smtp_host points at loopback with nothing listening -- like every
