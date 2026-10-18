@@ -33,6 +33,11 @@
 #                         examples/debug_portal_system.yaml)
 # See each module/extension's own example file for a narrower walkthrough
 # with more commentary on that piece alone.
+#
+# examples/emulated_full_system.yaml runs this same system without hardware
+# and includes its tasks and most extensions from here by path
+# (`!include full_house_system.yaml#tasks.<tag>`), so changes to those
+# apply to both files.
 
 heartbeat: 1s
 
