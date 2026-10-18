@@ -15,6 +15,8 @@ Changes merged into `main` since the 0.1.0 release, in order.
 - `!include` is now text-level: a line of its own, re-indented to its
   column; `key: !include`, `- !include` and `<<: !include` are removed.
   See [`docs/configuration.md`](docs/configuration.md#splitting-configuration-across-files).
+- An unknown top-level key in a system YAML is now a `ConfigError`. See
+  [`docs/configuration.md`](docs/configuration.md#top-level-keys).
 
 **New features**
 
@@ -28,6 +30,12 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 - Examples: shared `examples/devices/` files hold their devices under
   `devices:`, included with `#devices`.
+
+**Internal changes**
+
+- Config parsing moved from `phc.core.config` to each section's owner;
+  `phc.core.device`/`endpoint`/`task`/`extension` became packages with a
+  `config.py` each. See [`docs/developer/architecture.md`](docs/developer/architecture.md#layers).
 
 ### 2026-10-17
 
