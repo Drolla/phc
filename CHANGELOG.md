@@ -29,7 +29,8 @@ Changes merged into `main` since the 0.1.0 release, in order.
 **Improvements**
 
 - Examples: shared `examples/devices/` files hold their devices under
-  `devices:`, included with `#devices`.
+  `devices:`, included with `#devices`; `emulated_full_system.yaml`
+  includes its tasks and extensions from `full_house_system.yaml` by path.
 
 **Internal changes**
 
