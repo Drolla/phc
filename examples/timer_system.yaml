@@ -25,7 +25,7 @@ log:
 # timer extension, not any one device module, so it just needs a few
 # writable endpoints to target.
 devices:
-  - !include devices/emulated_demo_devices.yaml
+  !include devices/emulated_demo_devices.yaml#devices
 
 extensions:
   timer:

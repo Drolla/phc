@@ -22,7 +22,7 @@ modules:
     token: !placeholder <Token>      # e.g. "12345.../abcdef-..."
 
 devices:
-  - !include devices/zway_devices.yaml
+  !include devices/zway_devices.yaml#devices
 
 tasks:
   - tag: motion_light

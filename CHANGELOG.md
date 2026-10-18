@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-18
+
+**Breaking changes**
+
+- `!include` is now text-level: a line of its own, re-indented to its
+  column; `key: !include`, `- !include` and `<<: !include` are removed.
+  See [`docs/configuration.md`](docs/configuration.md#splitting-configuration-across-files).
+- An unknown top-level key in a system YAML is now a `ConfigError`. See
+  [`docs/configuration.md`](docs/configuration.md#top-level-keys).
+
+**New features**
+
+- `!include <file>#<path>` inserts part of a file (dotted keys, list
+  entries by `id`/`tag` or `[n]`). See
+  [`docs/configuration.md`](docs/configuration.md#selecting-part-of-a-file-path).
+- `phc expand --config FILE` writes the fully expanded config. See
+  [`docs/configuration.md`](docs/configuration.md#seeing-the-result-phc-expand).
+
+**Improvements**
+
+- Examples: shared `examples/devices/` files hold their devices under
+  `devices:`, included with `#devices`; `emulated_full_system.yaml`
+  includes its tasks and extensions from `full_house_system.yaml` by path.
+
+**Internal changes**
+
+- Config parsing moved from `phc.core.config` to each section's owner;
+  `phc.core.device`/`endpoint`/`task`/`extension` became packages with a
+  `config.py` each. See [`docs/developer/architecture.md`](docs/developer/architecture.md#layers).
+
 ### 2026-10-17
 
 **Improvements**

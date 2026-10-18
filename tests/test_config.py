@@ -932,7 +932,7 @@ def test_history_tick_hook_samples_only_once_per_interval(monkeypatch):
     # Monotonic, not time.time(): history sampling is an interval like any
     # other in the system (see phc.core.scheduler.Scheduler's class docstring).
     now = [1000.0]
-    monkeypatch.setattr("phc.core.config.hooks.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.endpoint.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # next_due starts at -inf -> immediately due
     assert ep.get_history() == [1.0]
@@ -956,7 +956,7 @@ def test_history_tick_hook_retries_after_a_skipped_none_sample(monkeypatch):
     hook = _make_history_tick_hook(records)
 
     now = [1000.0]
-    monkeypatch.setattr("phc.core.config.hooks.time.monotonic", lambda: now[0])
+    monkeypatch.setattr("phc.core.endpoint.config.time.monotonic", lambda: now[0])
 
     hook({"d": device})  # ep.get() is still None -> record_history() is False
     assert ep.get_history() == []
@@ -2513,97 +2513,32 @@ tasks:
         load_system(system_yaml)
 
 
-# ---------- !include ----------
+# ---------- !include (text-level; see also tests/test_expand.py) ----------
 
-def test_load_system_include_as_mapping_value(tmp_path):
-    (tmp_path / "station.yaml").write_text("BER\n")
+def test_load_system_include_splices_mapping_keys(tmp_path):
+    (tmp_path / "conn.yaml").write_text("""
+url: http://192.168.1.21:8083
+token: admin-token
+""")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
+intervals: { zwave: 30s }
+modules:
+  zway:
+    update: zwave
+    !include conn.yaml
 devices:
-  - id: meteo-bern
-    module: meteoswiss
-    station: !include station.yaml
+  - id: light
+    module: zway
 """)
     system = load_system(system_yaml)
-    assert system.devices["meteo-bern"].params["station"] == "BER"
+    assert system.devices["light"].params["url"] == "http://192.168.1.21:8083"
+    assert system.devices["light"].params["token"] == "admin-token"
+    assert system.devices["light"].update_interval == 30.0
 
 
-def test_load_system_include_as_sequence_item(tmp_path):
-    (tmp_path / "device.yaml").write_text("""
-id: living_light
-module: virtual
-update: fast
-endpoints:
-  - key: state
-    writable: true
-    default: "off"
-""")
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-intervals: { fast: 3s }
-devices:
-  - !include device.yaml
-""")
-    system = load_system(system_yaml)
-    assert system.devices["living_light"].get() == "off"
-
-
-def test_load_system_include_resolves_relative_to_including_file(tmp_path):
-    # sub/device.yaml's own !include of "endpoints.yaml" only resolves if
-    # it's taken relative to sub/ (where endpoints.yaml actually lives),
-    # not relative to tmp_path/ (the root system.yaml's directory).
-    sub_dir = tmp_path / "sub"
-    sub_dir.mkdir()
-    (sub_dir / "endpoints.yaml").write_text("""
-- key: state
-  writable: true
-  default: "off"
-""")
-    (sub_dir / "device.yaml").write_text("""
-id: living_light
-module: virtual
-endpoints: !include endpoints.yaml
-""")
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-devices:
-  - !include sub/device.yaml
-""")
-    system = load_system(system_yaml)
-    assert system.devices["living_light"].get() == "off"
-
-
-def test_load_system_include_missing_file_raises(tmp_path):
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-devices: !include missing.yaml
-""")
-    with pytest.raises(ConfigError):
-        load_system(system_yaml)
-
-
-def test_load_system_include_circular_raises(tmp_path):
-    (tmp_path / "a.yaml").write_text("!include b.yaml\n")
-    (tmp_path / "b.yaml").write_text("!include a.yaml\n")
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-devices: !include a.yaml
-""")
-    with pytest.raises(ConfigError):
-        load_system(system_yaml)
-
-
-def test_load_system_include_splices_a_list_valued_target_into_tasks(tmp_path):
-    """A `- !include <path>` list item whose target file is itself a YAML
-    sequence (e.g. several tasks merged into one topic file) is spliced
-    into the surrounding tasks: list -- phc.core.config._flatten_list_entries
-    -- rather than nested as one list-of-lists element, so it composes
-    with an ordinary literal task item in the same list."""
+def test_load_system_include_splices_list_items_into_tasks(tmp_path):
     (tmp_path / "extra_tasks.yaml").write_text("""
 - tag: b
   time: "+2s"
@@ -2623,42 +2558,24 @@ tasks:
   - tag: a
     time: "+1s"
     action: { kind: toggle, device: "living_light.state" }
-  - !include extra_tasks.yaml
+  !include extra_tasks.yaml
 """)
     system = load_system(system_yaml)
     assert [t.tag for t in system.tasks] == ["a", "b", "c"]
 
 
-def test_load_system_include_splices_a_list_valued_target_into_devices(tmp_path):
-    (tmp_path / "extra_devices.yaml").write_text("""
-- id: porch_light
-  module: virtual
-  endpoints: [{ key: state, writable: true }]
-- id: hallway_light
-  module: virtual
-  endpoints: [{ key: state, writable: true }]
-""")
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
+def test_load_system_include_path_selects_children(tmp_path):
+    # The included file holds its devices at their full path, as fusion18 does.
+    (tmp_path / "house.yaml").write_text("""
 devices:
-  - id: living_light
-    module: virtual
-    endpoints: [{ key: state, writable: true }]
-  - !include extra_devices.yaml
-""")
-    system = load_system(system_yaml)
-    assert set(system.devices) == {"living_light", "porch_light", "hallway_light"}
-
-
-def test_load_system_include_splices_a_list_valued_target_into_children(tmp_path):
-    (tmp_path / "extra_children.yaml").write_text("""
-- id: b
-  module: virtual
-  endpoints: [{ key: state, writable: true }]
-- id: c
-  module: virtual
-  endpoints: [{ key: state, writable: true }]
+  - id: house
+    children:
+      - id: b
+        module: virtual
+        endpoints: [{ key: state, writable: true }]
+      - id: c
+        module: virtual
+        endpoints: [{ key: state, writable: true }]
 """)
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2670,144 +2587,94 @@ devices:
       - id: a
         module: virtual
         endpoints: [{ key: state, writable: true }]
-      - !include extra_children.yaml
+      !include house.yaml#devices.house.children
 """)
     system = load_system(system_yaml)
     assert set(system.devices) == {"house", "house.a", "house.b", "house.c"}
 
 
-# ---------- <<: !include (merge-key) ----------
-
-def test_load_system_merge_include_extends_a_mapping(tmp_path):
-    (tmp_path / "conn.yaml").write_text("""
-url: http://192.168.1.21:8083
-token: admin-token
+def test_load_system_include_path_selects_one_list_entry(tmp_path):
+    (tmp_path / "devices.yaml").write_text("""
+- id: porch_light
+  module: virtual
+  endpoints: [{ key: state, writable: true }]
+- id: unused
+  module: virtual
 """)
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
-intervals: { zwave: 30s }
-modules:
-  zway:
-    update: zwave
-    <<: !include conn.yaml
 devices:
-  - id: light
-    module: zway
+  !include devices.yaml#porch_light
 """)
     system = load_system(system_yaml)
-    assert system.devices["light"].params["url"] == "http://192.168.1.21:8083"
-    assert system.devices["light"].params["token"] == "admin-token"
-    assert system.devices["light"].update_interval == 30.0
+    assert set(system.devices) == {"porch_light"}
 
 
-def test_load_system_merge_include_own_keys_win_over_fragment(tmp_path):
-    (tmp_path / "conn.yaml").write_text("""
-url: http://fragment:8083
-token: tok
-""")
+def test_load_system_include_duplicate_key_last_wins(tmp_path):
+    (tmp_path / "conn.yaml").write_text("url: http://fragment:8083\ntoken: tok\n")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
 modules:
   zway:
-    <<: !include conn.yaml
-    url: http://own-key-wins:8083
-    token: tok
+    url: http://overridden:8083
+    !include conn.yaml
+    token: own-token
 devices:
   - id: light
     module: zway
 """)
-    system = load_system(system_yaml)
-    assert system.devices["light"].params["url"] == "http://own-key-wins:8083"
+    params = load_system(system_yaml).devices["light"].params
+    assert params["url"] == "http://fragment:8083"
+    assert params["token"] == "own-token"
 
 
-def test_load_system_merge_include_populates_device_params(tmp_path):
-    (tmp_path / "conn.yaml").write_text("""
-url: http://192.168.1.21:8083
-token: admin-token
-request_timeout: 9s
-""")
-    system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-devices:
-  - id: light
-    module: zway
-    <<: !include conn.yaml
-""")
-    system = load_system(system_yaml)
-    params = system.devices["light"].params
-    assert params["url"] == "http://192.168.1.21:8083"
-    assert params["token"] == "admin-token"
-    assert params["request_timeout"] == "9s"
-
-
-def test_load_system_merge_include_nested_include_resolves_relative_to_fragment(tmp_path):
-    # conn.yaml's own !include of "secret.yaml" only resolves if it's taken
-    # relative to sub/ (where secret.yaml actually lives), not relative to
-    # tmp_path/ (the root system.yaml's directory) -- same relative-path
-    # rule as a plain (non-merge) !include, see
-    # test_load_system_include_resolves_relative_to_including_file.
+def test_load_system_include_resolves_relative_to_including_file(tmp_path):
+    # sub/conn.yaml's own include of "secret.yaml" only resolves relative to sub/.
     sub_dir = tmp_path / "sub"
     sub_dir.mkdir()
-    (sub_dir / "secret.yaml").write_text("supersecret\n")
-    (sub_dir / "conn.yaml").write_text("""
-url: http://192.168.1.21:8083
-token: tok
-token: !include secret.yaml
-""")
+    (sub_dir / "secret.yaml").write_text("token: supersecret\n")
+    (sub_dir / "conn.yaml").write_text("url: http://192.168.1.21:8083\n!include secret.yaml\n")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
 devices:
   - id: light
     module: zway
-    <<: !include sub/conn.yaml
+    !include sub/conn.yaml
 """)
     system = load_system(system_yaml)
     assert system.devices["light"].params["token"] == "supersecret"
 
 
-def test_load_system_merge_include_rejects_non_mapping_target(tmp_path):
-    (tmp_path / "conn.yaml").write_text("just a string\n")
+def test_load_system_inline_include_tag_raises(tmp_path):
+    (tmp_path / "station.yaml").write_text("BER\n")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
 devices:
-  - id: light
-    module: zway
-    <<: !include conn.yaml
+  - id: meteo-bern
+    module: meteoswiss
+    station: !include station.yaml
 """)
-    with pytest.raises(ConfigError):
+    with pytest.raises(ConfigError, match="must be a line of its own"):
         load_system(system_yaml)
 
 
-def test_load_system_merge_include_missing_file_raises(tmp_path):
+def test_load_system_include_missing_file_raises(tmp_path):
     system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-devices:
-  - id: light
-    module: zway
-    <<: !include missing.yaml
-""")
-    with pytest.raises(ConfigError):
+    system_yaml.write_text("heartbeat: 1s\ndevices:\n  !include missing.yaml\n")
+    with pytest.raises(ConfigError, match="no such file"):
         load_system(system_yaml)
 
 
-def test_load_system_merge_include_circular_raises(tmp_path):
-    (tmp_path / "a.yaml").write_text("<<: !include b.yaml\n")
-    (tmp_path / "b.yaml").write_text("<<: !include a.yaml\n")
+def test_load_system_include_circular_raises(tmp_path):
+    (tmp_path / "a.yaml").write_text("!include b.yaml\n")
+    (tmp_path / "b.yaml").write_text("!include a.yaml\n")
     system_yaml = tmp_path / "system.yaml"
-    system_yaml.write_text("""
-heartbeat: 1s
-devices:
-  - id: light
-    module: zway
-    <<: !include a.yaml
-""")
-    with pytest.raises(ConfigError):
+    system_yaml.write_text("heartbeat: 1s\ndevices:\n  !include a.yaml\n")
+    with pytest.raises(ConfigError, match="circular include"):
         load_system(system_yaml)
 
 
@@ -2873,6 +2740,32 @@ def test_load_system_rejects_non_mapping_top_level(tmp_path):
         load_system(system_yaml)
 
 
+def test_load_system_rejects_unknown_top_level_key(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("heartbeat: 1s\ntaks: []\n")
+    with pytest.raises(ConfigError, match=r"unknown top-level key\(s\) 'taks' -- known: log, "):
+        load_system(system_yaml)
+
+
+def test_load_system_accepts_every_owned_top_level_key(tmp_path):
+    system_yaml = tmp_path / "system.yaml"
+    system_yaml.write_text("""
+log: [{ dest: stdout }]
+plugin_paths: []
+heartbeat: 2s
+max_workers: 4
+fetch_timeout: 5s
+intervals: { fast: 3s }
+modules: {}
+devices: []
+extensions: {}
+task_specs: []
+tasks: []
+""")
+    system = load_system(system_yaml)
+    assert (system.heartbeat, system.max_workers, system.fetch_timeout) == (2.0, 4, 5.0)
+
+
 def test_load_system_placeholder_raises(tmp_path):
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
@@ -2888,16 +2781,14 @@ devices: []
 
 
 def test_load_system_placeholder_via_include_raises(tmp_path):
-    # A !placeholder pulled in through !include must still block the load --
-    # the check runs on the fully-resolved raw tree, after every include has
-    # already been spliced in (see _include_constructor/load_system).
+    # The check runs on the parsed tree, after every include is spliced in.
     (tmp_path / "conn.yaml").write_text("url: !placeholder <URL>\n")
     system_yaml = tmp_path / "system.yaml"
     system_yaml.write_text("""
 heartbeat: 1s
 modules:
   zway:
-    <<: !include conn.yaml
+    !include conn.yaml
 devices: []
 """)
     with pytest.raises(ConfigError):

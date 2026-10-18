@@ -217,6 +217,10 @@ Subcommands:
   without starting the scheduler, binding a port or touching hardware.
   Exits non-zero if the config is broken, so it works as a pre-deploy check.
 
+- `phc expand --config FILE [--output OUT]` — write the single YAML text a
+  config split across `!include`-d files adds up to. See
+  [docs/configuration.md](docs/configuration.md#splitting-configuration-across-files).
+
 - `phc list-modules` / `phc list-extensions` — what this installation can
   use, with each one's package, description and declared parameters. Add
   `--plugin-path DIR` to include out-of-tree plugins.

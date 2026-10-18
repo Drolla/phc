@@ -28,6 +28,14 @@
 # For the minimal "no hardware, single device module" walkthrough instead
 # of this full-system one, see examples/emulated_system.yaml.
 #
+# Only what differs from full_house_system.yaml is written out here: the
+# devices, mail_alert, the web UI layout and one task. Everything else --
+# the surveillance tasks, random_light, recovery, timer, logdb,
+# debug_portal -- is pulled in from that file by path, e.g.
+#   !include full_house_system.yaml#tasks.surveillance_enable
+# with a key written after the include line overriding a value where this
+# system differs (its own data file paths).
+#
 # Ties together:
 #   - emulated_device/virtual -- every device below, standing in for
 #                      zway/waveplus_bridge (see the per-device comments)
@@ -269,7 +277,7 @@ devices:
             simulate: { kind: drift, step: 0.2 }
 
   # Shared sun-position device -- see examples/devices/sun_zurich.yaml.
-  - !include devices/sun_zurich.yaml
+  !include devices/sun_zurich.yaml#devices
 
 extensions:
   # smtp_host points at loopback with nothing listening -- like every
@@ -292,47 +300,28 @@ extensions:
 
   random_light:
     house:
-      sun_device: "sun_zurich"
-      lights:
-        # light_corridor inherits this instance's own default windows
-        # (sunset-relative evening cutoff, sunrise-relative morning start).
-        - device: "house.light_corridor.sw1"
-          default: true
-        # porch_light overrides all three per-light instead.
-        - device: "house.porch_light.sw"
-          windows:
-            - { start: "20:00", end: "23:00" }
-          min_interval: 25m
-          probability_on: 0.3
+      !include full_house_system.yaml#extensions.random_light.house
 
-  # Persists the armed flag across a restart -- an armed system otherwise
-  # falls back to its endpoint's default (disarmed) after a crash, which is
-  # the wrong failure mode for a security feature. See
-  # examples/recovery_system.yaml for the fuller crash-recovery walkthrough.
+  # Persists the armed flag across a restart -- see
+  # examples/recovery_system.yaml. Each file path is overridden by the key
+  # after the include line (the last one wins), so this system's state and
+  # history stay apart from full_house_system.yaml's.
   recovery:
     critical_state:
-      selectors: ["house.surveillance/armed"]
+      !include full_house_system.yaml#extensions.recovery.critical_state
       path: "logs/emulated_full_recovery.yaml"
 
-  # User-programmable timers (created/edited from the web UI's "Timers"
-  # section below), scoped to the house's writable, individually-meaningful
-  # switches -- see examples/timer_system.yaml for a narrower walkthrough.
+  # User-programmable timers, created/edited from the web UI's "Timers"
+  # section below -- see examples/timer_system.yaml.
   timer:
     house:
-      selectors:
-        - "house.light_corridor/sw1"
-        - "house.porch_light/sw"
-        - "house.siren/state"
-        - "house.alarm/state"
-        - "house.surveillance/armed"
+      !include full_house_system.yaml#extensions.timer.house
       path: "logs/emulated_full_timers.yaml"
 
   logdb:
     full_history:
-      selectors: ["house.*/*", "weather.*/*", "sun_zurich/*"]
+      !include full_house_system.yaml#extensions.logdb.full_history
       csv_path: "logs/emulated_full_history.csv"
-      max_records: 100000
-      full_vector_interval: 100
 
   web_ui:
     home:
@@ -441,131 +430,29 @@ extensions:
                   timer_instance: "timer.house"
 
   # A live view of this whole system's scheduler/task queue and endpoint
-  # state -- see examples/debug_portal_system.yaml for a narrower
-  # walkthrough. Disabled by default in any system that omits this block.
+  # state -- see examples/debug_portal_system.yaml.
   debug_portal:
     debug:
-      port: 8081
-      # host: 0.0.0.0   -- already the default (all interfaces)
-      # selectors: ["*"]  -- already the default (every endpoint)
+      !include full_house_system.yaml#extensions.debug_portal.debug
 
 tasks:
-  - tag: log_full_history
-    description: "Sample the whole system's state for the web UI's history graphs"
-    time: +5s
-    repeat: 1m
-    action: { kind: log_db, instance: "logdb.full_history" }
+  !include full_house_system.yaml#tasks.log_full_history
+  # min_interval: matters here too -- both endpoints drift by a small step
+  # on every poll (see their simulate: config above).
+  !include full_house_system.yaml#tasks.report_low_battery
 
-  # min_interval: caps how often these fire -- both endpoints drift by a
-  # small step on every poll (see their simulate: config above), so
-  # without it this would log on nearly every tick.
-  - tag: report_low_battery
-    description: "Log the hallway motion sensor's battery level, at most once a minute"
-    condition: { device: "house.sensor_garage.battery", changed: true }
-    min_interval: 1m
-    action: { kind: log, device: "house.sensor_garage", message: "hallway motion sensor battery changed to {text}" }
-
+  # This file's own stand-in for full_house_system.yaml's
+  # report_bern_temperature, reading the emulated outdoor station.
   - tag: report_outdoor_temperature
     description: "Log the outdoor temperature reading, at most once a minute"
     condition: { device: "weather.outdoor.temperature", changed: true }
     min_interval: 1m
     action: { kind: log, device: "weather.outdoor.temperature", message: "outdoor temperature changed to {text}" }
 
-  - tag: surveillance_tag_reader
-    description: "Tag reader lock/unlock arms/disarms surveillance"
-    condition: { device: "house.tag_reader_front.state", changed: true }
-    action:
-      kind: script
-      code: |
-        event = state('house.tag_reader_front.state')
-        log(f'tag reader event: {event}')
-        if 'lock' in event:
-            set_state('house.surveillance.armed', True)
-        elif 'unlock' in event:
-            set_state('house.surveillance.armed', False)
-
-  - tag: surveillance_enable
-    description: "Arming resets the alarm flag and forces lights off before random control takes over"
-    # The {device, changed, value} shorthand -- equivalent to (and shorter
-    # than) an expr like "armed.changed and armed.state" -- see
-    # docs/scripting.md's Conditions section for five equivalent ways to
-    # write this same gate.
-    condition: { device: "house.surveillance.armed", changed: true, value: true }
-    actions:
-      - kind: script
-        code: |
-          log('surveillance enabled')
-          set_state('house.alarm.state', False)
-      - kind: random_light
-        instance: "random_light.house"
-        force: 0
-
-  - tag: surveillance_disable
-    description: "Disarming clears the siren/lights and cancels pending follow-ups"
-    condition:
-      expr: "changed('house.surveillance.armed') and not state('house.surveillance.armed')"
-    actions:
-      - kind: script
-        code: |
-          log('surveillance disabled')
-          set_state('house.siren.state', False)
-          set_state('house.light_corridor.sw1', False)
-          set_state('house.alarm.state', False)
-          kill_task('surv_*')
-      - kind: random_light
-        instance: "random_light.house"
-        force: 0
-
-  - tag: surveillance_random_light
-    description: "While armed and not alarmed, randomize the corridor/porch lights"
-    time: +5s
-    repeat: 1m
-    condition:
-      refs: { armed: "house.surveillance.armed", alarm: "house.alarm.state" }
-      expr: "armed.state and not alarm.state"
-    action: { kind: random_light, instance: "random_light.house" }
-
-  - tag: surveillance_intrusion
-    description: "Motion on either sensor while armed raises the alarm, at most once per 5 minutes"
-    # Two refs combined with an `or`, rather than one `{device, changed,
-    # value}` shorthand -- needed as soon as more than one device can
-    # trigger the same condition.
-    condition:
-      refs:
-        armed: "house.surveillance.armed"
-        motion_garage: "house.sensor_garage.state"
-        motion_cellar: "house.sensor_cellar.state"
-      expr: >-
-        armed.state and
-        ((motion_garage.changed and motion_garage.state) or
-         (motion_cellar.changed and motion_cellar.state))
-    min_interval: 5m
-    # Declarative actions throughout (including the two create_task
-    # follow-ups below via kind: create_task/specs:) rather than a single
-    # kind: script action calling create_task() -- see
-    # surveillance_enable/_disable above for the script-based style on the
-    # same kind of follow-up work.
-    actions:
-      - { kind: log, device: "house.surveillance.armed", message: "intrusion detected" }
-      - { kind: set, device: "house.alarm.state", value: true }
-      - { kind: set, device: "house.siren.state", value: true }
-      - kind: create_task
-        specs:
-          tag: surv_siren_off
-          time: "+3m"
-          action: { kind: set, device: "house.siren.state", value: false }
-      - kind: create_task
-        specs:
-          tag: surv_light_off
-          time: "+45m"
-          actions:
-            - { kind: set, device: "house.light_corridor.sw1", value: false }
-            - { kind: set, device: "house.alarm.state", value: false }
-            - { kind: random_light, instance: "random_light.house", force: 0 }
-      - kind: random_light
-        instance: "random_light.house"
-        force: 1
-      - kind: mail_alert
-        instance: "mail_alert.house"
-        title: "Surveillance - Intrusion Alert"
-        message: "Motion detected while armed"
+  # The surveillance state machine, unchanged from full_house_system.yaml
+  # (which comments each task in full).
+  !include full_house_system.yaml#tasks.surveillance_tag_reader
+  !include full_house_system.yaml#tasks.surveillance_enable
+  !include full_house_system.yaml#tasks.surveillance_disable
+  !include full_house_system.yaml#tasks.surveillance_random_light
+  !include full_house_system.yaml#tasks.surveillance_intrusion

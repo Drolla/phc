@@ -119,7 +119,7 @@ class GraphPanel(Panel):
     e.g. "logdb.house_log"). The referenced instance is *not* resolved
     here: phc.extensions.web_ui's own
     configure() may run before that logdb instance has been configured (see
-    phc.core.config._load_extensions), so resolution is deferred to request
+    phc.core.extension.config._load_extensions), so resolution is deferred to request
     time, in phc/extensions/web_ui/server.py's handle_graph_data -- an
     unresolvable logdb_instance therefore surfaces as a 404 there, not a
     ConfigError at load time.
@@ -201,7 +201,7 @@ class TimersPanel(Panel):
     e.g. "timer.house"). Like GraphPanel's logdb_instance, the
     reference is *not* resolved here: phc.extensions.timer's
     own configure() may run before or after this web_ui instance (see
-    phc.core.config._load_extensions), so resolution is deferred to request
+    phc.core.extension.config._load_extensions), so resolution is deferred to request
     time -- see phc/extensions/web_ui/server.py's _describe_timers_panel. Unlike
     a graph panel's history data (fetched separately by the browser, see
     GraphPanel), a timers panel's target/timer lists are small enough to be

@@ -22,7 +22,7 @@ description for the user-facing rationale).
 
 ## `on_bind`: A Fourth Hook Kind
 
-`configure()` runs during `core.config._load_extensions`, which happens
+`configure()` runs during `core.extension.config._load_extensions`, which happens
 *before* `tasks:` is parsed (`load_system()` builds `tasks` afterward) —
 so at `configure()`-time there is no task list to reference yet. Rather
 than special-case this one extension, `core.config.load_system()` gained a

@@ -1,76 +1,142 @@
 # Configuration Reference
 
+## Top-Level Keys
+
+A system YAML may contain these top-level keys, and no others -- a
+misspelled one is an error rather than silently ignored:
+
+| Key | Section |
+| --- | --- |
+| `log` | [Logging](#logging) |
+| `plugin_paths` | [Using device modules and extensions from outside PHC](#using-device-modules-and-extensions-from-outside-phc) |
+| `heartbeat`, `max_workers`, `fetch_timeout` | Scheduler tick length and device I/O concurrency |
+| `intervals` | Named durations for `update:`/`interval:` fields |
+| `modules`, `devices` | [Modules and shared configuration](#modules-and-shared-configuration) |
+| `extensions` | One page per extension under [`docs/`](.) |
+| `task_specs`, `tasks` | [Tasks](#tasks) |
+
 ## Splitting Configuration Across Files
 
-A system YAML can pull in another YAML file with `!include <relative-path>`,
-anywhere a value is expected -- a mapping value, a list item, nested
-arbitrarily deep:
+A system YAML is assembled as text before it is parsed. A line of its own
+of the form
 
 ```yaml
-devices:
-  - !include common/living_light_device.yaml
-  - id: sun
-    module: sun
-    update: 1h
-    latitude: 47.3769
-    longitude: 8.5417
+!include <relative-path>
+!include <relative-path>#<path>
 ```
 
-The path is resolved relative to the file the `!include` appears in, not the
-root config or the current directory, so an included file can itself use
-`!include` to pull in further files. This is a plain substitution (the tagged
-node is replaced by the included file's parsed content) rather than a merge,
-so a shared fragment works best when it's a fully self-contained block, e.g.
-a whole device (as `common/living_light_device.yaml` is above).
-
-For a fragment that only supplies *some* of a mapping's fields -- e.g. a
-device's or module's shared params, alongside other fields (`update:`, `id:`)
-that differ per file -- use `<<: !include <relative-path>` instead, which
-merges the included mapping's keys into the surrounding mapping rather than
-replacing it wholesale. The surrounding mapping's own keys win over the
-fragment's, the same precedence a plain YAML `<<: *anchor` merge already has:
+is replaced by the lines of that file, re-indented to the column the
+`!include` stands at. A file holding a mapping contributes its keys, a file
+holding a list its items -- right where the line is:
 
 ```yaml
-# common/some_location_params.yaml
-latitude: 47.3769
-longitude: 8.5417
-timezone: Europe/Zurich
+# common/zway_controller.yaml
+url: ws://192.168.1.21:8083
+token: "..."
 ```
 
 ```yaml
-devices:
-  - id: sun_zurich
-    module: sun
-    update: 1h              # this device's own field, not in the fragment
-    <<: !include common/some_location_params.yaml
-```
+modules:
+  zway:
+    update: zwave
+    !include common/zway_controller.yaml   # url/token become keys of zway
 
-This is most useful when several system YAML files in the same project
-genuinely share a fragment -- e.g. a `zway:` controller's connection
-params, reused across every system config talking to that same
-controller -- rather than for a single system's own internal structure.
-
-A `- !include <relative-path>` list item whose target file is itself a YAML
-sequence is *spliced* into the surrounding list rather than nested as one
-list-of-lists element -- so a whole topic file of several entries (e.g.
-several related tasks merged into one file) composes with an ordinary
-literal item in the same list, at every place a list of entries is built:
-`devices:`, a `host` device's `children:`, `task_specs:`, and `tasks:`.
-
-```yaml
-# radon_tasks.yaml -- a plain list of several tasks
-- tag: radon_control
-  ...
-- tag: radon_alert
-  ...
-```
-
-```yaml
 tasks:
-  - tag: log_history          # an ordinary literal task, unaffected
+  - tag: log_history                      # an ordinary literal task
     ...
-  - !include radon_tasks.yaml # spliced in as two tasks, not one nested list
+  !include radon_tasks.yaml               # its tasks become items of this list
 ```
+
+An `!include` must be a line of its own; `key: !include ...` and
+`- !include ...` are errors. A trailing comment needs a space before its
+`#`, since a `#` directly after the file name starts the path.
+
+The relative path is resolved against the file the `!include` appears in,
+not the root config or the current directory, so an included file can
+itself use `!include`. Every included file must be valid YAML once its own
+`!include` lines are expanded.
+
+### Selecting part of a file: `#<path>`
+
+`!include <file>#<path>` inserts only what sits under `<path>` in that
+file: dotted mapping keys, with a list entry picked by its `id` (or a
+task's `tag`) or by position as `[n]`.
+
+- A mapping key inserts its *content* -- the keys or list items under it,
+  not the key line itself: `#modules.zway` inserts zway's `url:`/`token:`.
+- A list entry is inserted *as a list item*, `- ` included:
+  `#devices.house.children.porch_light` inserts that one device.
+- A single value (`#modules.zway.url`) or a flow-style `{...}`/`[...]`
+  value can't fill a full line and is an error.
+- Comments directly above the selected key are not part of it -- keep a
+  comment meant to come along *inside* the selected block.
+
+This lets an included file hold its content at the same path it has in the
+complete configuration, which keeps each file readable as a piece of the
+whole, and makes an include line name exactly where its content lands:
+
+```yaml
+# site_config.yaml -- credentials, at their real paths
+modules:
+  zway:
+    url: ws://192.168.1.21:8083
+    token: "..."
+extensions:
+  recovery:
+    house:
+      path: /var/phc/recovery.yaml
+```
+
+```yaml
+# lights.yaml
+devices:
+  - id: lights
+    children:
+      - id: corridor
+        module: zway
+        ...
+```
+
+```yaml
+modules:
+  zway:
+    update: zwave
+    !include site_config.yaml#modules.zway
+
+devices:
+  - id: lights
+    module: host
+    children:
+      !include lights.yaml#devices.lights.children
+
+extensions:
+  recovery:
+    house:
+      selectors: ["lights.*/*"]
+      !include site_config.yaml#extensions.recovery.house
+```
+
+The shared device files under [`examples/devices/`](../examples/devices/)
+follow this convention, each holding its devices under `devices:` and
+included with `!include devices/<file>#devices`.
+
+### Duplicate keys
+
+The assembled text is parsed as plain YAML, so a key that appears twice in
+one mapping keeps its *last* value. Place a literal key after an `!include`
+line to override the included value, or before it to provide a value the
+included file may replace.
+
+### Seeing the result: `phc expand`
+
+```bash
+phc expand --config myhome.yaml --output myhome.expanded.yaml
+```
+
+writes the single YAML text a split-up config adds up to, each included
+block framed by `# >>> !include ...` / `# <<< !include ...` comments, and
+checks its YAML syntax (`phc validate` checks its content). Errors in
+either command name the original file and line.
 
 
 ## Placeholder Values
@@ -88,8 +154,8 @@ modules:
 
 `load_system` checks for `!placeholder` right after parsing, before
 building any device or extension, and refuses to start if it finds one
-anywhere in the config -- including one pulled in through `!include`/`<<:
-!include` -- listing every offending field by its path (e.g.
+anywhere in the config -- including one pulled in through `!include` --
+listing every offending field by its path (e.g.
 `modules.zway.url`). This is how every example config that talks to
 real hardware or a real mail server ships: safe to read and copy, but not
 runnable until its placeholders are replaced with real values. Plain,
@@ -195,7 +261,7 @@ configuration instead of repeating it on every device:
 modules:
   zway:
     update: zwave                       # falls between a device's own update: and module.yaml's default
-    <<: !include common/zway_controller_params.yaml   # url/token, shared by every zway device
+    !include common/zway_controller.yaml   # url/token, shared by every zway device
 
 devices:
   - id: lights

@@ -84,9 +84,9 @@ rationale in `device.py` docstrings instead.
 
 Once the module works, propose — and on confirmation, implement — an
 example system config under `examples/` that demonstrates it end to end.
-Follow the existing conventions: a bare device-list file at
-`examples/devices/<name>_*.yaml` (see [`meteoswiss_stations.yaml`](../../examples/devices/meteoswiss_stations.yaml) for the
-`!include`-able list pattern) and/or a runnable system file at
+Follow the existing conventions: a shared device file at
+`examples/devices/<name>_*.yaml`, its devices under `devices:` and
+included with `!include devices/<file>#devices` (see [`meteoswiss_stations.yaml`](../../examples/devices/meteoswiss_stations.yaml)) and/or a runnable system file at
 `examples/<name>_*.yaml` (see [`meteo_multi_city.yaml`](../../examples/meteo_multi_city.yaml), or
 [`device_template_system.yaml`](../../examples/device_template_system.yaml)
 for the template's own minimal one) wiring it into a

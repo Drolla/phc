@@ -1,4 +1,4 @@
-"""Building the `extensions:` section into configured instances.
+"""Extension config: the `extensions:` section into configured instances.
 
 One instance per `extensions.<name>.<instance>:` entry, each merged
 against its extension.yaml and handed to that package's own configure().
@@ -8,12 +8,51 @@ import importlib
 import logging
 from pathlib import Path
 
-from phc.core.config.descriptors import ExtensionDescriptor, _load_extension_descriptor
 from phc.core.device import Device
 from phc.core.errors import ConfigError
-from phc.core.registry import extension_package
+from phc.core.registry import _extension_packages, _read_descriptor_yaml, extension_package
 
 logger = logging.getLogger("phc.config")
+
+# Top-level system YAML keys this module parses (see _load_extensions).
+CONFIG_KEYS = ("extensions",)
+
+
+class ExtensionDescriptor:
+    """Parsed extension.yaml for one extension package.
+
+    Structurally like ModuleDescriptor, but every extension instance
+    (e.g. one named logdb entry) is merged independently against the
+    same descriptor -- there is no module/device scope split since
+    extensions aren't devices."""
+
+    def __init__(self, name: str, raw: dict):
+        self.name = name
+        self.description = raw.get("description", "")
+        self.parameters = raw.get("parameters") or []
+
+
+_extension_descriptors: dict[str, ExtensionDescriptor] = {}
+
+
+def _load_extension_descriptor(name: str) -> ExtensionDescriptor:
+    """Return the cached ExtensionDescriptor for `name`.
+
+    Loads and parses its extension.yaml on first use. The package to
+    read it from comes from the registry (see _load_module_descriptor
+    for the same reasoning)."""
+    if name in _extension_descriptors:
+        return _extension_descriptors[name]
+    try:
+        package = extension_package(name)
+    except KeyError:
+        raise ConfigError(
+            f"unknown extension {name!r}; discovered extensions: "
+            f"{sorted(_extension_packages)}") from None
+    raw = _read_descriptor_yaml(package, name, "extension.yaml", "extension")
+    descriptor = ExtensionDescriptor(name, raw)
+    _extension_descriptors[name] = descriptor
+    return descriptor
 
 
 def _resolve_path_param(value, config_dir: Path, instance_label: str, name: str):

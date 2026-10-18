@@ -13,7 +13,7 @@ a timer just re-registers its Task under the same tag (`register_task`
 replaces by tag); deleting one calls `core.task.kill_tasks`.
 
 `_task_spec()` builds the same dict shape a `tasks:` YAML entry would
-parse into (`core.config._build_task`): `time:` is always the timer's own
+parse into (`core.task.config._build_task`): `time:` is always the timer's own
 literal Unix timestamp (hits `core.intervals.parse_time`'s digit-string
 branch), and `repeat:` (when set) is exactly what drives `parse_time`'s
 own "already past → advance by whole multiples" catch-up logic — no
@@ -23,7 +23,7 @@ timers.
 
 ## `on_bind`, Not `configure()`, Is Where Timers Are Restored
 
-`configure()` runs during `core.config._load_extensions`, before `tasks:`
+`configure()` runs during `core.extension.config._load_extensions`, before `tasks:`
 is built (see [`docs/developer/debug-portal.md`](debug-portal.md)'s own
 explanation of the same constraint) — so there is no `System.tasks` list
 yet to register a Task into. `TimerInstance.on_bind(system)` is where

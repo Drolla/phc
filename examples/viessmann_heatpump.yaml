@@ -47,7 +47,7 @@ modules:
     cache_time: 5m
 
 devices:
-  - !include devices/viessmann_heatpump.yaml
+  !include devices/viessmann_heatpump.yaml#devices
 
 tasks:
   - tag: log_outside_temperature

@@ -901,9 +901,9 @@ modules:
 def test_discover_reads_credentials_behind_an_include(tmp_path):
     """--config must cope with the shape a real system config has.
 
-    Credentials behind `<<: !include`, devices behind `children: !include`.
-    yaml.safe_load reads neither tag, so it failed on exactly the configs
-    this option exists for.
+    Credentials and devices behind `!include` lines, which yaml.safe_load
+    cannot resolve, so it failed on exactly the configs this option exists
+    for.
     """
     (tmp_path / "account.yaml").write_text("""
 email: someone@example.com
@@ -922,14 +922,15 @@ client_id: 0123456789abcdef
     config.write_text("""
 modules:
   viessmann:
-    <<: !include account.yaml
+    !include account.yaml
     cache_time: 5m
 
 devices:
   - id: viessmann
     module: host
     name: Viessmann
-    children: !include devices.yaml
+    children:
+      !include devices.yaml
 """, encoding="utf-8")
 
     found = discover.credentials_from_config(config)

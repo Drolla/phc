@@ -322,7 +322,8 @@ it accordingly:
 - Make it readable only by the user running PHC
   (`chmod 600`, or Windows ACLs).
 - Consider keeping the credentials in their own file and pulling them in
-  with `<<: !include secrets/viessmann.yaml`, so the main config can be
+  with an `!include secrets/viessmann.yaml#modules.viessmann` line under
+  `modules: viessmann:`, so the main config can be
   shared or version-controlled while the secrets are not.
 - A `token_file` is equally sensitive — it grants API access without the
   password.

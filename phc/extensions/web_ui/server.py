@@ -43,7 +43,7 @@ PAGES_BY_ID = web.AppKey("phc_pages_by_id", dict)
 ALL_PAIRS = web.AppKey("phc_all_pairs", set)
 REFRESH_INTERVAL = web.AppKey("phc_refresh_interval", float)
 JINJA_ENV = web.AppKey("phc_jinja_env", jinja2.Environment)
-# The live phc.core.config._load_extensions registry (see extension.py's
+# The live phc.core.extension.config._load_extensions registry (see extension.py's
 # WebUiInstance) -- lets a panel kind (e.g. "graph") resolve a reference to
 # another extension's instance lazily, per request, rather than at
 # configure()-time. See phc/extensions/web_ui/panels.py's GraphPanel.

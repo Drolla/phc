@@ -5,7 +5,7 @@ against the live device tree (or, absent `pages:`, synthesizes a
 single flat page from the top-level `selectors:` shorthand), builds an
 aiohttp.web server (server.py) that renders it via Jinja2 and serves a
 per-widget HTML fragment/write endpoint for HTMX. See
-phc.core.config._load_extensions for configure()'s call site, and
+phc.core.extension.config._load_extensions for configure()'s call site, and
 phc.core.scheduler.Scheduler for how on_start/on_stop get invoked
 (start_hooks/stop_hooks -- see phc/core/scheduler.py)."""
 
@@ -147,7 +147,7 @@ def _build_page(page_spec: dict, flat: dict[str, Device], instance_key: str) -> 
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "WebUiInstance":
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     Builds every page/section/panel from `params["pages"]`, or --
     absent `pages:` -- synthesizes a single flat page from the
@@ -196,7 +196,7 @@ class WebUiInstance:
         self._shutdown_timeout = shutdown_timeout
         self._instance_key = instance_key
         # `extensions_registry` is the live, still-growing dict from
-        # phc.core.config._load_extensions -- held onto (not snapshotted) so a
+        # phc.core.extension.config._load_extensions -- held onto (not snapshotted) so a
         # `kind: graph` panel's `logdb_instance` reference (see
         # phc/extensions/web_ui/server.py's handle_graph_data) can resolve
         # against extensions declared *after* this one, since by the time

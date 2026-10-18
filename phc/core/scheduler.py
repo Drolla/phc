@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from phc.core.clock import Now
 from phc.core.device import Device, _write_collector
+from phc.core.intervals import parse_duration
 from phc.core.task import Task
 
 logger = logging.getLogger("phc.scheduler")
@@ -16,6 +17,23 @@ logger = logging.getLogger("phc.scheduler")
 # everything else the scheduler says -- it is the one scheduler-level
 # message a user actually wants to see, and to be able to route.
 health_logger = logging.getLogger("phc.health")
+
+# Top-level system YAML keys this module parses (see parse_settings).
+CONFIG_KEYS = ("heartbeat", "max_workers", "fetch_timeout")
+
+
+def parse_settings(raw: dict) -> dict:
+    """Scheduler settings from a parsed system YAML, as Scheduler kwargs.
+
+    `heartbeat` defaults to 1s; `max_workers`/`fetch_timeout` to None
+    (see Scheduler)."""
+    max_workers = raw.get("max_workers")
+    fetch_timeout = raw.get("fetch_timeout")
+    return {
+        "heartbeat": parse_duration(raw.get("heartbeat", "1s")),
+        "max_workers": int(max_workers) if max_workers is not None else None,
+        "fetch_timeout": parse_duration(fetch_timeout) if fetch_timeout is not None else None,
+    }
 
 
 class Scheduler:

@@ -3,7 +3,7 @@
 Resolves an extensions.mail_alert.<instance>'s SMTP connection details
 and default sender/recipients, and registers the "mail_alert" task
 action kind so a hand-authored `tasks:` entry can send a message
-through it -- see phc.core.config._load_extensions for how configure()
+through it -- see phc.core.extension.config._load_extensions for how configure()
 is invoked, and phc.core.registry.discover_extensions() for how this
 module's @register_task_kind decorator gets picked up at startup."""
 
@@ -29,12 +29,12 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="phc-mail")
 
 def configure(params: dict, flat: dict[str, Device], instance_key: str,
               extensions_registry: dict | None = None) -> "MailAlertInstance":
-    """Extension entry point (see phc.core.config._load_extensions).
+    """Extension entry point (see phc.core.extension.config._load_extensions).
 
     Validates this instance's SMTP settings and builds a
     MailAlertInstance. Unlike logdb/random_light, nothing here is
     resolved against `flat` -- a mail alert has no device target.
-    `extensions_registry` (see phc.core.config._load_extensions) is
+    `extensions_registry` (see phc.core.extension.config._load_extensions) is
     unused here -- mail_alert never references another extension's
     instance."""
     security = params["security"]
@@ -67,7 +67,8 @@ class MailAlertInstance:
 
     Resolved SMTP connection settings plus default sender/recipients.
     Looked up by name from a mail_alert task action (see
-    phc.core.config._load_extensions/_build_action)."""
+    phc.core.extension.config._load_extensions and
+    phc.core.task.config._build_action)."""
 
     def __init__(self, *, smtp_host: str, smtp_port: int, security: str,
                  username: str | None, password: str | None, timeout: float,

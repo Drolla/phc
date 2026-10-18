@@ -13,7 +13,7 @@ log:
 # aggregation: min (see that file) shows how an endpoint chooses which
 # value survives between two log samples.
 devices:
-  - !include devices/emulated_demo_devices.yaml
+  !include devices/emulated_demo_devices.yaml#devices
 
 # Two independently-scheduled logdb instances: a frequent one covering
 # every shared device, and a slower one demonstrating a second,

@@ -19,7 +19,7 @@
 # surv_alert_mail each be defined exactly once instead of buried three
 # levels deep in surv_intrusion's own actions:.
 
-<<: !include emulated_surveillance-system_setup.yaml
+!include emulated_surveillance-system_setup.yaml
 
 task_specs:
   - tag: surv_random_light

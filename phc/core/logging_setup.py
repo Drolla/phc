@@ -8,6 +8,9 @@ import logging
 import sys
 from pathlib import Path
 
+# Top-level system YAML keys this module parses (see configure_logging).
+CONFIG_KEYS = ("log",)
+
 
 class _InPlaceLineState:
     """Shared between InPlaceLineHandler and NewlineSafeStreamHandler.
@@ -141,8 +144,8 @@ def configure_logging(log_config: list | None, log_levels_override: dict | None 
     `dest` is "stdout"/"stderr" for a stream, or any other string for a
     file path -- resolved relative to `config_dir` (the system YAML's own
     directory; deliberately NOT relative to the file the `dest:` value
-    itself came from via !include, since !include discards that
-    provenance -- see phc.core.config._include_constructor), opened in append
+    itself came from via !include, since the parsed tree no longer carries
+    that provenance -- see phc.core.config.expand), opened in append
     mode, lazily (no file is created until the first record for it).
 
     `log_levels_override` (CLI --log-level/--log-level-module) is merged

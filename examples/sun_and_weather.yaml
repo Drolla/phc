@@ -29,8 +29,8 @@ modules:
 # specifically. sun and open_meteo take latitude/longitude directly on the
 # device, so swap in whatever location you actually want to track.
 devices:
-  - !include devices/sun_zurich.yaml
-  - !include devices/meteoswiss_stations.yaml
+  !include devices/sun_zurich.yaml#devices
+  !include devices/meteoswiss_stations.yaml#devices
 
   - id: zurich-weather
     module: open_meteo

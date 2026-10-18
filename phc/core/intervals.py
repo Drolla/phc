@@ -8,6 +8,10 @@ import math
 import re
 from datetime import datetime, timedelta
 
+# Top-level system YAML keys this module owns: `intervals:` names durations
+# that update:/history interval: fields may refer to (resolved where used).
+CONFIG_KEYS = ("intervals",)
+
 _TOKEN_RE = re.compile(r"(\d+)\s*(Y|M|W|D|ms|h|m|s)")
 
 _FIXED_UNIT_SECONDS = {
