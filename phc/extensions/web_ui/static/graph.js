@@ -95,10 +95,58 @@ window.addEventListener("resize", function () {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(function () {
     graphs.forEach(function (entry) {
-      if (entry.lanes.count > 0) { restyle(entry, laneAxisOptions(entry)); }
+      if (entry.lanes.count > 0) {
+        restyle(entry, laneAxisOptions(entry));
+      }
     });
   }, 150);
 });
+
+/* A chart's legend box: a block above the canvas, so it never covers
+ * the plot. `tall` reserves room for a lane chart's many entries. */
+function createLegend(container, tall) {
+  var canvas = container.querySelector(".graph-canvas");
+  var legend = document.createElement("div");
+  legend.className = "graph-legend" + (tall ? " graph-legend-tall" : "");
+  canvas.parentNode.insertBefore(legend, canvas);
+  return legend;
+}
+
+/* One-finger horizontal pan on the plot. With the range selector on,
+ * Dygraphs defaults to a mouse-only drag-to-pan model, so without this a
+ * chart can't be panned by touch. Handled here, not through Dygraphs'
+ * interaction model, whose touch helpers this build doesn't expose.
+ * Horizontal only (a lane chart's y-range is fixed); touches outside the
+ * plot, i.e. on the range selector, are left to Dygraphs. A drag on the
+ * plot doesn't scroll the page. */
+function enableTouchPan(graph, element) {
+  var start = null;
+  var inPlot = function (touch) {
+    var box = element.getBoundingClientRect();
+    var area = graph.getArea();
+    var x = touch.clientX - box.left;
+    var y = touch.clientY - box.top;
+    return x >= area.x && x <= area.x + area.w && y >= area.y && y <= area.y + area.h;
+  };
+  element.addEventListener("touchstart", function (event) {
+    start = null;
+    if (event.touches.length === 1 && inPlot(event.touches[0])) {
+      start = { x: event.touches[0].clientX, range: graph.xAxisRange() };
+      event.preventDefault();
+    }
+  }, { passive: false });
+  element.addEventListener("touchmove", function (event) {
+    if (!start || event.touches.length !== 1) { return; }
+    event.preventDefault();
+    var span = start.range[1] - start.range[0];
+    var shift = -(event.touches[0].clientX - start.x) / graph.getArea().w * span;
+    var extremes = graph.xAxisExtremes();
+    shift = Math.max(extremes[0] - start.range[0], Math.min(extremes[1] - start.range[1], shift));
+    graph.updateOptions({ dateWindow: [start.range[0] + shift, start.range[1] + shift] });
+  }, { passive: false });
+  element.addEventListener("touchend", function () { start = null; });
+  element.addEventListener("touchcancel", function () { start = null; });
+}
 
 /* Apply `options` to a live chart without resetting the user's zoom/pan. */
 function restyle(entry, options) {
@@ -140,21 +188,29 @@ function initGraph(container) {
       options.labels = data.labels;
       options.ylabel = data.unit || "";
       options.showRangeSelector = true;
+      options.strokeWidth = 2;  /* Dygraphs' default is 1 */
       options.dateWindow = [now - windowSeconds * 1000, now];
       /* `series` may be absent if script/server versions mismatch; degrade
        * to a plain single-axis chart rather than throwing. */
       var lanes = assignLanes(data.series || []);
       var rows = buildRows(data.rows, lanes);
+      var legend = createLegend(container, lanes.count > 0);
+      options.labelsDiv = legend;
+      options.legend = "always";  /* shows the latest values when not hovering */
       if (lanes.count > 0) {
         applyLaneOptions(options, data, lanes, container);
       } else {
         applyUnitAxisOptions(options, data.series || [], data.unit);
       }
-      graphs.push({
-        graph: new Dygraph(container.querySelector(".graph-canvas"), rows, options),
+      var canvas = container.querySelector(".graph-canvas");
+      var entry = {
+        graph: new Dygraph(canvas, rows, options),
         container: container,
         lanes: lanes,
-      });
+        legend: legend,
+      };
+      graphs.push(entry);
+      enableTouchPan(entry.graph, canvas);
     });
 }
 
@@ -272,7 +328,7 @@ function applyLaneOptions(options, data, lanes, container) {
         stepPlot: true,  /* a switch holds its value between samples */
         drawPoints: false,
         highlightCircleSize: 0,
-        strokeWidth: 2,
+        strokeWidth: 3,
       };
     } else {
       seriesOpts[title] = { axis: "y2" };

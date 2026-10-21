@@ -10,22 +10,60 @@ header.container, main.container {
   max-width: 100% !important;
 }
 
-/* Give the page header a faint accent identity instead of blending into
-   the body -- a plain bottom border, no background fill, so it stays
-   legible in both themes without a separate light/dark override. */
+/* Bootstrap's .container keeps a 0.75rem gutter either side, which on a
+   phone is a visible strip of the screen's width. Trim it there. */
+@media (max-width: 576px) {
+  header.container, main.container {
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  /* The page title is ~2.5rem by default: too tall a band on a phone. */
+  header.container h1 {
+    font-size: 1.5rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* The page header is a solid accent band with light text, so the title and
+   navigation stand clearly apart from the pale cards below. Its own tokens
+   (not --bs-primary) because white text needs a darker teal than the
+   accent in light mode, and a lighter accent would wash out in dark mode. */
+:root,
+[data-bs-theme="light"] {
+  --header-bg: #0b7a70;
+}
+[data-bs-theme="dark"] {
+  --header-bg: #115e59;
+}
+
 header.container {
+  padding-top: 0.5rem;
   padding-bottom: 0.5rem;
-  border-bottom: 2px solid var(--bs-primary);
+  background: var(--header-bg);
+  color: #fff;
+}
+
+/* A pale mint, so the title reads apart from the white nav text. */
+header.container h1 {
+  color: #99f6e4;
+}
+
+header .nav-link {
+  --bs-nav-link-color: rgba(255, 255, 255, 0.85);
+  --bs-nav-link-hover-color: #fff;
 }
 
 /* Bootstrap's .nav-link has no built-in "active" treatment beyond color;
    add a pill so the current page in multi-page nav reads at a glance. */
 header .nav-link.active {
-  background-color: var(--bs-primary-bg-subtle);
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
   border-radius: var(--bs-border-radius);
 }
 header .nav-link:hover:not(.active) {
-  background-color: var(--bs-tertiary-bg);
+  background-color: rgba(255, 255, 255, 0.12);
   border-radius: var(--bs-border-radius);
 }
 
@@ -58,10 +96,12 @@ header .nav-link:hover:not(.active) {
 .device,
 .graph-panel,
 .timers-panel {
-  padding: 0.4rem 0.5rem;
+  padding: 0.5rem 0.6rem;
   border: 1px solid var(--bs-primary-border-subtle);
-  border-radius: var(--bs-border-radius);
+  border-radius: 0.6rem;
   background: var(--bs-primary-bg-subtle);
+  /* A soft lift so the cards read as layers, not flat fills. */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .device > h4 {
@@ -310,6 +350,26 @@ input[type="range"].widget-input {
   /* Dygraphs positions this absolutely over the plot; its own width:250px
      can overflow a narrow phone viewport. */
   max-width: 100%;
+}
+
+/* Chart legend: a full-width block above the plot, filled by Dygraphs
+   through `labelsDiv`. Above, not over, the plot so it never hides a
+   series; min-height reserves its usual lines so the chart doesn't
+   jump as the text changes. */
+.graph-legend {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  min-height: 2.8em;
+  margin-bottom: 0.25rem;
+  padding: 0.25rem 0.4rem;
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+}
+
+.graph-legend-tall {
+  min-height: 3.9em;  /* a lane chart lists every lane */
 }
 
 /* Timers panel: a management table plus an add/edit form, sharing the
