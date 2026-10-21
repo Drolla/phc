@@ -64,3 +64,24 @@ def test_resolve_selectors_invalid_pattern_no_slash_raises():
 def test_resolve_selectors_invalid_pattern_multiple_slashes_raises():
     with pytest.raises(ConfigError):
         resolve_selectors(["a/b/c"], _house())
+
+
+def test_resolve_selectors_exclusion_removes_matches():
+    flat = _house()
+    pairs = resolve_selectors(["house.desk_lamp/*", "!*/brightness"], flat)
+    assert pairs == [("house.desk_lamp", "power")]
+
+
+def test_resolve_selectors_exclusion_applies_regardless_of_position():
+    flat = _house()
+    assert resolve_selectors(["!*/brightness", "house.desk_lamp/*"], flat) == [
+        ("house.desk_lamp", "power")]
+
+
+def test_resolve_selectors_exclusion_only_matches_nothing():
+    assert resolve_selectors(["!*/power"], _house()) == []
+
+
+def test_resolve_selectors_invalid_exclusion_raises():
+    with pytest.raises(ConfigError):
+        resolve_selectors(["*", "!power"], _house())

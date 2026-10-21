@@ -28,6 +28,9 @@ tasks:
   everything. Device globs match a device's qualified id (dot-joined, e.g.
   `"house.desk_lamp"`); `"*"` in a device glob matches across `.`
   boundaries too (i.e. matches at any depth), which is intentional.
+  A pattern starting with `!` (e.g. `"!*/battery"`) excludes what it
+  matches from the result, wherever it sits in the list. The same syntax
+  applies wherever `selectors` is accepted.
 - `csv_path` (required) — CSV file path, resolved relative to the
   system YAML file's own directory (see
   [configuration](configuration.md#where-relative-paths-point)).
