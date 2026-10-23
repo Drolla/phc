@@ -317,6 +317,19 @@ input[type="range"].widget-input {
   background: var(--bs-body-bg);
   border-radius: var(--bs-border-radius);
   padding: 0.25rem 0.25rem 0 0;
+  /* Vertical drags scroll the page; horizontal ones reach graph.js's
+     touch pan instead. */
+  touch-action: pan-y pinch-zoom;
+}
+
+/* graph.js's selectionLine: marks the time the legend shows. No pointer
+   events, so it never steals the hover from the plot beneath. */
+.graph-selection-line {
+  position: absolute;
+  display: none;
+  width: 0;
+  border-left: 1px solid var(--bs-secondary-color);
+  pointer-events: none;
 }
 
 /* Dygraphs ships hardcoded light-theme colors -- #000 axis labels and a

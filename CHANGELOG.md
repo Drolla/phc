@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-23
+
+**Improvements**
+
+- Web UI graphs on touch screens: a tap shows that moment's values in the
+  legend, a horizontal drag pans, a vertical drag scrolls the page.
+- Web UI graphs mark the selected time with a thin vertical line.
+
 ### 2026-10-18
 
 **Breaking changes**
