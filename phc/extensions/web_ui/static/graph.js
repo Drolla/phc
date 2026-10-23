@@ -112,14 +112,51 @@ function createLegend(container, tall) {
   return legend;
 }
 
-/* One-finger horizontal pan on the plot. With the range selector on,
- * Dygraphs defaults to a mouse-only drag-to-pan model, so without this a
- * chart can't be panned by touch. Handled here, not through Dygraphs'
+/* Dygraphs plugin: a thin vertical line at the selected time, so a tap
+ * or hover shows where in the plot the legend's values come from (lane
+ * traces have no highlight dot to show it). A redraw drops Dygraphs'
+ * selection without a deselect event, so it hides the line too. */
+function selectionLine() {
+  var line = null;
+  var hide = function () { line.style.display = "none"; };
+  return {
+    activate: function (graph) {
+      line = document.createElement("div");
+      line.className = "graph-selection-line";
+      graph.graphDiv.appendChild(line);
+      return {
+        select: function (event) {
+          var area = graph.getArea();
+          var x = graph.toDomXCoord(event.selectedX);
+          if (x === null || x < area.x || x > area.x + area.w) { hide(); return; }
+          line.style.left = Math.round(x) + "px";
+          line.style.top = area.y + "px";
+          line.style.height = area.h + "px";
+          line.style.display = "block";
+        },
+        deselect: hide,
+        didDrawChart: hide,
+      };
+    },
+  };
+}
+
+/* A touch that moves less than this is a tap, not a drag. */
+var TAP_SLOP_PX = 10;
+
+/* One-finger touch on the plot. With the range selector on, Dygraphs
+ * defaults to a mouse-only model, so without this a chart can neither be
+ * panned nor read by touch. Handled here, not through Dygraphs'
  * interaction model, whose touch helpers this build doesn't expose.
- * Horizontal only (a lane chart's y-range is fixed); touches outside the
- * plot, i.e. on the range selector, are left to Dygraphs. A drag on the
- * plot doesn't scroll the page. */
-function enableTouchPan(graph, element) {
+ *  - A tap selects the nearest row, so the legend shows its values as a
+ *    hover does on desktop; a touch anywhere off the plot clears it.
+ *  - A horizontal drag pans (horizontal only: a lane chart's y-range is
+ *    fixed).
+ *  - A vertical drag scrolls the page, left to the browser through
+ *    .graph-canvas's touch-action (see style.css).
+ * Touches outside the plot, i.e. on the range selector, are left to
+ * Dygraphs. */
+function enableTouch(graph, element) {
   var start = null;
   var inPlot = function (touch) {
     var box = element.getBoundingClientRect();
@@ -131,21 +168,40 @@ function enableTouchPan(graph, element) {
   element.addEventListener("touchstart", function (event) {
     start = null;
     if (event.touches.length === 1 && inPlot(event.touches[0])) {
-      start = { x: event.touches[0].clientX, range: graph.xAxisRange() };
-      event.preventDefault();
+      var touch = event.touches[0];
+      start = { x: touch.clientX, y: touch.clientY, range: graph.xAxisRange(), mode: null };
     }
-  }, { passive: false });
+  }, { passive: true });
   element.addEventListener("touchmove", function (event) {
-    if (!start || event.touches.length !== 1) { return; }
-    event.preventDefault();
+    if (!start || event.touches.length !== 1) { start = null; return; }
+    if (start.mode === null) {
+      var dx = event.touches[0].clientX - start.x;
+      var dy = event.touches[0].clientY - start.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < TAP_SLOP_PX) { return; }
+      start.mode = Math.abs(dx) > Math.abs(dy) ? "pan" : "scroll";
+      if (start.mode === "pan") { graph.clearSelection(); }
+    }
+    if (start.mode !== "pan") { return; }
+    if (event.cancelable) { event.preventDefault(); }
     var span = start.range[1] - start.range[0];
     var shift = -(event.touches[0].clientX - start.x) / graph.getArea().w * span;
     var extremes = graph.xAxisExtremes();
     shift = Math.max(extremes[0] - start.range[0], Math.min(extremes[1] - start.range[1], shift));
     graph.updateOptions({ dateWindow: [start.range[0] + shift, start.range[1] + shift] });
   }, { passive: false });
-  element.addEventListener("touchend", function () { start = null; });
+  element.addEventListener("touchend", function (event) {
+    if (start && start.mode === null) {
+      event.preventDefault();  /* no emulated mouse events or click after the tap */
+      var row = graph.findClosestRow(start.x - element.getBoundingClientRect().left);
+      if (row >= 0) { graph.setSelection(row); }
+    }
+    start = null;
+  });
   element.addEventListener("touchcancel", function () { start = null; });
+  document.addEventListener("touchstart", function (event) {
+    var onPlot = element.contains(event.target) && inPlot(event.touches[0]);
+    if (!onPlot) { graph.clearSelection(); }
+  }, { passive: true });
 }
 
 /* Apply `options` to a live chart without resetting the user's zoom/pan. */
@@ -197,6 +253,7 @@ function initGraph(container) {
       var legend = createLegend(container, lanes.count > 0);
       options.labelsDiv = legend;
       options.legend = "always";  /* shows the latest values when not hovering */
+      options.plugins = [selectionLine()];
       if (lanes.count > 0) {
         applyLaneOptions(options, data, lanes, container);
       } else {
@@ -210,7 +267,7 @@ function initGraph(container) {
         legend: legend,
       };
       graphs.push(entry);
-      enableTouchPan(entry.graph, canvas);
+      enableTouch(entry.graph, canvas);
     });
 }
 
