@@ -1,0 +1,30 @@
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+intervals:
+  matter: 1s
+
+# Devices sharing a url share one WebSocket connection to the server.
+# The server needs no credentials; it should only listen on this machine
+# (see docs/matter.md).
+modules:
+  matter:
+    update: matter
+    url: "ws://127.0.0.1:5580/ws"
+
+devices:
+  !include devices/matter_devices.yaml#devices
+
+tasks:
+  - tag: report_office_plug_power
+    description: "Log the office plug's power draw, at most once a minute"
+    condition: { device: "plug_office.power", changed: true }
+    min_interval: 1m
+    action:
+      kind: log
+      device: "plug_office.power"
+      message: "office plug draws {text}"

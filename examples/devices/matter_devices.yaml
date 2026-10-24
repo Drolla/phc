@@ -1,0 +1,38 @@
+# Shared device list: a sample of the Matter nodes one matterjs-server
+# exposes over its WebSocket API.
+#
+# `node:` names a node by the label stored on it (NodeLabel), its serial
+# number or its node id. Run
+#   python phc/devices/matter/demo.py list
+# to see what your own server has paired and what each node reports.
+
+devices:
+  # One physical plug, one PHC device: `node:` once, on the device.
+  - id: plug_office
+    module: matter
+    name: Office Plug
+    node: "My 1st Power Switch (Osram)"
+    endpoints:
+      - key: switch
+        name: Office Plug
+        endpoint_profile: switch
+      - key: power
+        endpoint_profile: power
+      - key: energy
+        endpoint_profile: energy
+      - key: voltage
+        endpoint_profile: voltage
+
+  # Several nodes in one PHC device: `node:` per endpoint instead.
+  - id: lamps
+    module: matter
+    name: Lamps
+    endpoints:
+      - key: living
+        name: Living Room Lamp
+        node: "Living lamp"
+        endpoint_profile: switch
+      - key: bedroom
+        name: Bedroom Lamp
+        node: 7                      # a node id, as `demo.py list` shows it
+        endpoint_profile: switch

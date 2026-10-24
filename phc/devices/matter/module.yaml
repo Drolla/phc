@@ -1,0 +1,167 @@
+description: >
+  Matter devices (plugs, lights, sensors) paired with a matterjs-server,
+  read and written over its WebSocket API. PHC does not pair devices
+  itself: commission them on the server first (see docs/matter.md).
+
+  A node is named by the label stored on the device (its NodeLabel), by
+  its serial number, or by its numeric node id. A label or serial number
+  is a glob and must match exactly one node: matching none, or several,
+  is a config error naming the candidates. Matching ignores case unless
+  the endpoint sets `match_case: true`. Set `node:` once on the device, or
+  per endpoint to group several nodes in one device. Patterns are
+  resolved to node ids once per connection and whenever a node is added,
+  removed or relabelled.
+
+  Each endpoint reads one attribute of one node: `endpoint_profile` picks
+  a ready-made one (switch, power, temperature, ...), and `endpoint:`
+  names the Matter endpoint on the node (default 1). Values are
+  translated to PHC's own types: a switch reads as a real bool, a
+  temperature in degrees. An unavailable node, or a value the node does
+  not report, reads None.
+
+  State is kept current by the server's own push events, so an endpoint is
+  typically fresh within a tick of changing, with a periodic full re-read
+  as a safety net. A server that is unreachable is retried after 1s, 10s,
+  60s and then every 5 minutes; while it is down every endpoint reads
+  None.
+
+update: "1s"
+
+parameters:
+  - name: url
+    override: allowed
+    default: "ws://127.0.0.1:5580/ws"
+    description: >
+      WebSocket URL of the matterjs-server. Typically set once for every
+      device of this module under modules.matter. Devices sharing a url
+      share one connection.
+  - name: node
+    override: allowed
+    description: >
+      The node this device's endpoints belong to: a glob over the node's
+      label and serial number, or a node id. An endpoint can override it
+      with its own `node`.
+  - name: request_timeout
+    override: allowed
+    default: "10s"
+    description: >
+      How long to wait for one reply from the server.
+  - name: resync_interval
+    override: allowed
+    default: "5m"
+    description: >
+      How often to re-read every node in full, as a safety net behind the
+      push events (any value parse_duration accepts).
+
+endpoint_parameters:
+  - name: node
+    description: >
+      The node this endpoint reads and writes: a glob over its label and
+      serial number, or a node id. Defaults to the device's `node`.
+  - name: match_case
+    description: >
+      Match `node` case-sensitively. Defaults to false.
+  - name: endpoint
+    description: >
+      The Matter endpoint number on the node. Defaults to 1.
+  - name: attribute
+    description: >
+      The attribute to read, as "cluster/attribute" in decimal, e.g. "6/0"
+      for On/Off. Set by the endpoint profile; set it directly for an
+      attribute without one.
+  - name: field
+    description: >
+      Read one member of a structured attribute value, by its numeric
+      tag, e.g. 0.
+  - name: mask
+    description: >
+      Read a bitmap attribute as true when any of these bits is set.
+  - name: scale
+    description: >
+      Factor that turns the attribute's unit into the endpoint's unit,
+      e.g. 0.001 for millivolts to volts.
+  - name: commands
+    description: >
+      Cluster command that writes true and false, e.g. {true: "On",
+      false: "Off"}.
+  - name: level_command
+    description: >
+      Cluster command that writes a number as a level, divided by `scale`
+      to get the attribute's unit.
+
+endpoints: []
+
+endpoint_profiles:
+  switch:
+    attribute: "6/0"
+    commands: { true: "On", false: "Off" }
+    type: bool
+    writable: true
+    values: { false: "off", true: "on" }
+    name: Switch
+  dimmer:
+    attribute: "8/0"
+    level_command: "MoveToLevelWithOnOff"
+    scale: 0.393701
+    type: int
+    writable: true
+    min: 0
+    max: 100
+    unit: "%"
+    name: Dimmer
+  power:
+    attribute: "144/8"
+    scale: 0.001
+    type: float
+    unit: W
+    name: Power
+  voltage:
+    attribute: "144/4"
+    scale: 0.001
+    type: float
+    unit: V
+    name: Voltage
+  current:
+    attribute: "144/5"
+    scale: 0.001
+    type: float
+    unit: A
+    format: ".3f"
+    name: Current
+  energy:
+    attribute: "145/1"
+    field: 0
+    scale: 0.000001
+    type: float
+    unit: kWh
+    format: ".3f"
+    name: Energy
+  temperature:
+    attribute: "1026/0"
+    scale: 0.01
+    type: float
+    unit: "°C"
+    name: Temperature
+  humidity:
+    attribute: "1029/0"
+    scale: 0.01
+    type: float
+    unit: "%"
+    name: Humidity
+  motion:
+    attribute: "1030/0"
+    mask: 1
+    type: bool
+    values: { false: "clear", true: "triggered" }
+    name: Motion
+  contact:
+    attribute: "69/0"
+    type: bool
+    values: { false: "open", true: "closed" }
+    name: Contact
+  battery:
+    attribute: "47/12"
+    scale: 0.5
+    type: int
+    unit: "%"
+    name: Battery
