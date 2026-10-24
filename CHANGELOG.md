@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-24
+
+**New features**
+
+- `matter` module: reads and controls Matter devices (switches, plugs with
+  power/energy, sensors, dimmers) through a matterjs-server. See
+  [`docs/matter.md`](docs/matter.md) and
+  [`examples/matter_system.yaml`](examples/matter_system.yaml).
+
 ### 2026-10-23
 
 **Improvements**
