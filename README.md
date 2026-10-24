@@ -171,6 +171,7 @@ Located in [`docs/`](docs/):
   - [`docs/web-ui.md`](docs/web-ui.md)
   - [`docs/debug-portal.md`](docs/debug-portal.md)
   - [`docs/zway.md`](docs/zway.md)
+  - [`docs/matter.md`](docs/matter.md)
   - [`docs/viessmann.md`](docs/viessmann.md)
 - Raspberry Pi installation — [`docs/raspberry-pi-install.md`](docs/raspberry-pi-install.md)
 
@@ -187,6 +188,7 @@ Detailed documentation is located in [`docs/developer/`](docs/developer/):
 - Writing a skill — [`docs/developer/agentic-creating-a-skill.md`](docs/developer/agentic-creating-a-skill.md)
 - Internals:
   - [`docs/developer/zway.md`](docs/developer/zway.md)
+  - [`docs/developer/matter.md`](docs/developer/matter.md)
   - [`docs/developer/web-ui.md`](docs/developer/web-ui.md)
   - [`docs/developer/timer.md`](docs/developer/timer.md)
   - [`docs/developer/debug-portal.md`](docs/developer/debug-portal.md)
