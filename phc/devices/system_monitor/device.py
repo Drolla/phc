@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import time
+from typing import Any
 
 import psutil
 
@@ -66,7 +67,7 @@ class SystemMonitorDevice(Device):
             try:
                 pattern = re.compile(str(value))
             except re.error as exc:
-                raise ConfigError(f"device {self.id!r}: invalid match.cmdline regex: {exc}")
+                raise ConfigError(f"device {self.id!r}: invalid match.cmdline regex: {exc}") from None
             return lambda proc: bool(pattern.search(" ".join(proc.info["cmdline"] or ())))
         if value is not True:
             raise ConfigError(f"device {self.id!r}: match.self must be true")
@@ -95,8 +96,9 @@ class SystemMonitorDevice(Device):
         skew them; None if any matched process denies io_counters() (e.g.
         root's, seen from an unprivileged PHC). Network, disk usage and
         temperature have no per-process value and stay None."""
-        state = {key: None for key in self.endpoints}
-        samples, io = [], {}
+        state: dict[str, Any] = {key: None for key in self.endpoints}
+        samples: list[tuple[float, float, int, float]] = []
+        io: dict[int, tuple[int, int] | None] = {}
         for proc in psutil.process_iter(["name", "cmdline"]):
             if not self._match(proc):
                 continue
@@ -116,7 +118,7 @@ class SystemMonitorDevice(Device):
         state.update(running=bool(samples), process_count=len(samples))
         if not samples:
             return state
-        cpu, mem_percent, mem_used, created = zip(*samples)
+        cpu, mem_percent, mem_used, created = zip(*samples, strict=True)
         state.update(
             cpu_percent=sum(cpu) / (psutil.cpu_count() or 1),
             memory_percent=sum(mem_percent),
@@ -124,9 +126,14 @@ class SystemMonitorDevice(Device):
             uptime_seconds=time.time() - min(created),
         )
         if None not in io.values():
-            common = [pid for pid in io.keys() & prev_io.keys() if prev_io[pid] is not None]
-            state["disk_read_rate"] = sum(io[p][0] - prev_io[p][0] for p in common) / mb_seconds
-            state["disk_write_rate"] = sum(io[p][1] - prev_io[p][1] for p in common) / mb_seconds
+            read = write = 0
+            for pid, counters in io.items():
+                prev = prev_io.get(pid)
+                if counters is not None and prev is not None:
+                    read += counters[0] - prev[0]
+                    write += counters[1] - prev[1]
+            state["disk_read_rate"] = read / mb_seconds
+            state["disk_write_rate"] = write / mb_seconds
         return state
 
     def _receive_system(self, mb_seconds: float) -> dict:
