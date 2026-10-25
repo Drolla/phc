@@ -16,6 +16,9 @@ Changes merged into `main` since the 0.1.0 release, in order.
   selected processes instead of the whole system, plus `memory_used`,
   `process_count` and `running` endpoints. See
   [`docs/system-monitor.md`](docs/system-monitor.md).
+- `memory` logger: `memory: DEBUG` reports PHC's memory at startup, per
+  imported module/extension and per extension instance. See
+  [`docs/configuration.md`](docs/configuration.md#memory-usage).
 
 **Bug fixes**
 
