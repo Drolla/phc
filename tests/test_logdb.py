@@ -387,6 +387,26 @@ def test_restore_across_forced_multi_chunk_backward_read(tmp_path, monkeypatch):
     db2.close()
 
 
+def test_restore_honors_max_age_across_multi_chunk_backward_read(tmp_path, monkeypatch):
+    # Regression: the backward scan stopped at its first chunk whenever
+    # that chunk's anchor was younger than max_age, restoring only it.
+    import phc.extensions.logdb.logdb as logdb_module
+    monkeypatch.setattr(logdb_module, "_INITIAL_CHUNK_SIZE", 64)
+    monkeypatch.setattr(logdb_module.time, "time", lambda: 1000.0)
+
+    path = _csv_path(tmp_path)
+    db = LogDb(path, ["a"], full_vector_interval=10)
+    for t in range(900, 1001):
+        db.log(float(t), {"a": float(t)})
+    db.close()
+
+    db2 = LogDb(path, ["a"], full_vector_interval=10, max_age=50.0)
+    rows = db2.get_range(0, 2000)
+    assert [r["time"] for r in rows] == [float(t) for t in range(950, 1001)]
+    assert rows[0]["a"] == 950.0
+    db2.close()
+
+
 def test_restore_carries_forward_unchanged_values_across_delta_rows(tmp_path):
     path = _csv_path(tmp_path)
     db = LogDb(path, ["a", "b"], full_vector_interval=100)
@@ -399,6 +419,32 @@ def test_restore_carries_forward_unchanged_values_across_delta_rows(tmp_path):
     rows = db2.get_range(0, 100)
     assert [r["a"] for r in rows] == [1.0, 1.0, 1.0]
     assert [r["b"] for r in rows] == [2.0, 3.0, 3.0]
+    db2.close()
+
+
+def test_restore_peak_memory_stays_near_the_restored_arrays(tmp_path):
+    # Regression: replay used to snapshot a dict per row before filling
+    # the arrays, peaking at several times their size.
+    import tracemalloc
+
+    labels = [f"dev{i}/ep" for i in range(50)]
+    path = _csv_path(tmp_path)
+    db = LogDb(path, labels)
+    values = dict.fromkeys(labels, 0.0)
+    for i in range(2000):
+        values[labels[i % 50]] = float(i)
+        db.log(float(i), values)
+    db.close()
+
+    tracemalloc.start()
+    try:
+        db2 = LogDb(path, labels)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    arrays = 2000 * (len(labels) + 1) * 8
+    assert len(db2) == 2000
+    assert peak < 2 * arrays
     db2.close()
 
 
