@@ -42,8 +42,8 @@ understand it in an afternoon.
 - **Lightweight footprint** — runs comfortably on a Raspberry Pi. On a
   Raspberry Pi 4, one instance polling 60 endpoints across z-Way,
   meteoswiss, and waveplus_bridge uses well under 1% CPU and ~50MB RSS.
-- **Built-in integrations** — mail alerts, random lights, log database, web UI,
-  Z-Wave, timers, recovery, debug portal.
+- **Built-in integrations** — **Matter** and **Z-Wave** devices, mail alerts,
+  random lights, log database, web UI, timers, recovery, debug portal.
 - **AI-friendly development workflow** — PHC is intentionally structured so AI
   assistants can help build modules and extensions quickly, which makes
   extending it approachable for developers of all experience levels.
