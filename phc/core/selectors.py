@@ -23,8 +23,8 @@ def resolve_selectors(patterns: list[str], flat: dict[str, Device]) -> list[tupl
     A pattern starting with "!" (e.g. "!*/battery") excludes what it
     matches from the result, wherever it sits in the list; a list of only
     exclusions matches nothing."""
-    include_globs = []
-    exclude_globs = []
+    include_globs: list[tuple[str, str]] = []
+    exclude_globs: list[tuple[str, str]] = []
     for pattern in patterns:
         target = exclude_globs if pattern.startswith("!") else include_globs
         body = pattern[1:] if pattern.startswith("!") else pattern
