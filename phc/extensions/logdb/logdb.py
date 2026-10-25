@@ -483,7 +483,7 @@ class LogDb:
             covered = covered and (len(lines) - anchor_index) >= self.max_records
         if self.max_age is not None:
             anchor_time = float(lines[anchor_index].split(",", 2)[1])
-            covered = covered and (reference_time - anchor_time) <= self.max_age
+            covered = covered and (reference_time - anchor_time) >= self.max_age
         return covered
 
     def _parse_row(self, line: str, current: dict[str, float]) -> float:
