@@ -495,7 +495,7 @@ class LogDb:
         else is parsed as a float ("nan" -> NaN). Returns the row's
         timestamp.
 
-        Caller must snapshot `current` (dict(current)) before the next
+        Caller must copy what it needs from `current` before the next
         call, since it's mutated in place."""
         fields = line.split(",")
         timestamp = float(fields[1])
@@ -510,7 +510,7 @@ class LogDb:
             current[label] = _NAN if cell == "nan" else float(cell)
         return timestamp
 
-    def _retention_cutoff(self, times: list[float], reference_time: float) -> int:
+    def _retention_cutoff(self, times: array.array, reference_time: float) -> int:
         """Compute the index below which replayed records fall outside limits.
 
         max_records/max_age."""
@@ -565,22 +565,22 @@ class LogDb:
                             self.csv_path)
             return
 
-        anchor = f_positions[0]
+        # Parse straight into the arrays, then cut the retention window from
+        # the front: a per-row dict snapshot instead costs ~5x the arrays'
+        # memory at peak (a 120-column, 40k-row file peaked at ~200 MB), and
+        # CPython keeps that peak as RSS after freeing it.
         current = {label: _NAN for label in self.labels}
-        times: list[float] = []
-        rows: list[dict[str, float]] = []
-        for line in lines[anchor:]:
-            t = self._parse_row(line, current)
-            times.append(t)
-            rows.append(dict(current))
+        columns = [(label, self._columns[label]) for label in self.labels]
+        for line in lines[f_positions[0]:]:
+            self._times.append(self._parse_row(line, current))
+            for label, col in columns:
+                col.append(current[label])
 
-        cutoff = self._retention_cutoff(times, reference_time)
-        times, rows = times[cutoff:], rows[cutoff:]
-
-        for t, row in zip(times, rows, strict=True):
-            self._times.append(t)
-            for label in self.labels:
-                self._columns[label].append(row[label])
-        if rows:
-            self._last_written = dict(rows[-1])
+        cutoff = self._retention_cutoff(self._times, reference_time)
+        if cutoff > 0:
+            del self._times[:cutoff]
+            for col in self._columns.values():
+                del col[:cutoff]
+        if self._times:
+            self._last_written = current
         logger.info("%s: loaded %d record(s) from existing file", self.csv_path, len(self._times))
