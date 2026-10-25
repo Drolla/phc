@@ -378,6 +378,47 @@ the command line.
 There is no `log_levels:` top-level key — every destination carries its own
 `levels:` instead.
 
+### Memory Usage
+
+The `memory` logger reports PHC's memory (RSS, the RES column in `top`) at
+startup: at process start, after each module or extension is imported,
+after the devices are built, and after each extension instance is created.
+Each line shows the total and the growth since the previous line:
+
+```yaml
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+      memory: DEBUG
+```
+
+or for one run:
+
+```
+phc --config system.yaml --log-level-module memory=DEBUG
+```
+
+A library used by several modules counts toward the first one that loads
+it, so the lines show where memory was added, not which module owns it.
+
+To watch memory over time, e.g. to spot a leak, add a
+[`system_monitor`](system-monitor.md) device for PHC's own process and a
+task that logs it periodically:
+
+```yaml
+devices:
+  - id: phc_process
+    module: system_monitor
+    match: { self: true }
+
+tasks:
+  - tag: log_phc_memory
+    time: +1m
+    repeat: 1h
+    action: { kind: log, device: "phc_process.memory_used", message: "PHC memory: {text}" }
+```
+
 
 ## Tasks
 
