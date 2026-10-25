@@ -1,10 +1,11 @@
 description: >
   Local system performance metrics: CPU load, memory, network/disk throughput,
   disk usage, CPU temperature, uptime. Cross-platform (Windows/Linux).
+  Reports the whole system, or with `match` the selected processes.
   Unavailable data reports null.
   CPU temperature reporting uses psutil.sensors_temperatures() on Linux; on
   Windows, temperature is fetched via OpenHardwareMonitor WMI (requires
-  OpenHardwareMonitor or LibreHardwareMonitor running with admin rights).
+  OpenHardwareMonitor running with admin rights).
 
 update: "10s"
 
@@ -16,6 +17,15 @@ parameters:
       Filesystem path/drive whose usage disk_usage_percent reports (e.g.
       "/" on Linux, "D:\\" on Windows). Empty (default) auto-selects "/" on
       Linux and the system drive on Windows.
+  - name: match
+    override: allowed
+    default: null
+    description: >
+      Selects processes instead of the whole system, with exactly one of:
+      `name` (exact process name, as shown by top), `cmdline` (regular
+      expression searched in the full command line), or `self: true` (PHC
+      itself). Values are summed over all matching processes. Empty
+      (default) reports the whole system.
 
 endpoints:
   - key: cpu_percent
@@ -24,7 +34,9 @@ endpoints:
     type: float
     unit: "%"
     name: CPU Usage
-    description: Overall CPU utilization, averaged since last poll.
+    description: >
+      CPU utilization since last poll, as a share of the whole machine (100%
+      = all cores busy).
   - key: memory_percent
     readable: true
     writable: false
@@ -32,18 +44,44 @@ endpoints:
     unit: "%"
     name: Memory Usage
     description: Physical memory (RAM) currently in use.
+  - key: memory_used
+    readable: true
+    writable: false
+    type: float
+    unit: "MB"
+    name: Memory Used
+    description: >
+      Physical memory (RAM) in use; for processes, their resident memory
+      (RES in top).
+  - key: process_count
+    readable: true
+    writable: false
+    type: int
+    name: Process Count
+    description: Number of running processes, or of matching processes.
+  - key: running
+    readable: true
+    writable: false
+    type: bool
+    values: { false: "stopped", true: "running" }
+    name: Running
+    description: >
+      Whether at least one matching process is running; always true for the
+      whole system.
   - key: network_rx_rate
     readable: true
     writable: false
     type: float
-    unit: "B/s"
+    unit: "MB/s"
+    format: ".3f"
     name: Network Receive Rate
     description: Inbound network throughput since last poll.
   - key: network_tx_rate
     readable: true
     writable: false
     type: float
-    unit: "B/s"
+    unit: "MB/s"
+    format: ".3f"
     name: Network Transmit Rate
     description: Outbound network throughput since last poll.
   - key: disk_usage_percent
@@ -57,14 +95,16 @@ endpoints:
     readable: true
     writable: false
     type: float
-    unit: "B/s"
+    unit: "MB/s"
+    format: ".3f"
     name: Disk Read Rate
     description: Disk read throughput since last poll.
   - key: disk_write_rate
     readable: true
     writable: false
     type: float
-    unit: "B/s"
+    unit: "MB/s"
+    format: ".3f"
     name: Disk Write Rate
     description: Disk write throughput since last poll.
   - key: cpu_temperature
@@ -80,4 +120,6 @@ endpoints:
     type: float
     unit: s
     name: Uptime
-    description: Seconds since the machine last booted.
+    description: >
+      Seconds since the machine last booted, or since the oldest matching
+      process started.
