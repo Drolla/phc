@@ -47,7 +47,6 @@ The rate endpoints are averaged over the time since the previous poll.
   for `coretemp` (x86) or `cpu_thermal` (Raspberry Pi) first, then falls
   back to any sensor it finds.
 - **Windows**: read through WMI from
-  [OpenHardwareMonitor](https://openhardwaremonitor.org/) or
-  [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor).
-  One of them must be running with admin rights. If neither is running,
-  the value is `null`. Once a monitor starts, the next poll picks it up.
+  [OpenHardwareMonitor](https://openhardwaremonitor.org/), which must be
+  running with admin rights. If it isn't running, the value is `null`.
+  Once it starts, the next poll picks it up.

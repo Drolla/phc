@@ -4,7 +4,7 @@ description: >
   Unavailable data reports null.
   CPU temperature reporting uses psutil.sensors_temperatures() on Linux; on
   Windows, temperature is fetched via OpenHardwareMonitor WMI (requires
-  OpenHardwareMonitor or LibreHardwareMonitor running with admin rights).
+  OpenHardwareMonitor running with admin rights).
 
 update: "10s"
 
