@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-10-25
+
+**New features**
+
+- `system_monitor` gains `match` (`name`, `cmdline` or `self`) to report
+  selected processes instead of the whole system, plus `memory_used`,
+  `process_count` and `running` endpoints. See
+  [`docs/system-monitor.md`](docs/system-monitor.md).
+
+**Breaking changes**
+
+- `system_monitor` network and disk rates are now in MB/s instead of B/s.
+
 ### 2026-10-24
 
 **New features**
