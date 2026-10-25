@@ -37,6 +37,7 @@ from pathlib import Path
 
 import yaml
 
+from phc.core import memory
 from phc.core.endpoint import Endpoint
 from phc.core.errors import ConfigError
 
@@ -177,6 +178,7 @@ def _import_plugin_submodule(package: str, submodule: str) -> bool:
     if importlib.util.find_spec(f"{package}.{submodule}") is None:
         return False
     importlib.import_module(f"{package}.{submodule}")
+    memory.log_rss(f"import {package}.{submodule}")
     return True
 
 

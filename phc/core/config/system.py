@@ -8,7 +8,7 @@ the keys it parses as CONFIG_KEYS; any other top-level key is an error.
 
 from pathlib import Path
 
-from phc.core import intervals, logging_setup, registry, scheduler
+from phc.core import intervals, logging_setup, memory, registry, scheduler
 from phc.core.config.yamlio import _find_placeholders, load_yaml
 from phc.core.device import Device
 from phc.core.device import config as device_config
@@ -112,12 +112,15 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
         configure_logging(raw.get("log"), log_levels_override, config_dir)
     except ValueError as exc:
         raise ConfigError(str(exc)) from None
+    memory.log_baseline()
+    memory.log_rss("PHC core loaded")
     discover_plugins(raw.get("plugin_paths"), config_dir)
     settings = parse_settings(raw)
     intervals_map = raw.get("intervals") or {}
 
     # Phase 2, devices.
     roots, flat = load_devices(raw, intervals_map)
+    memory.log_rss("devices built")
     # Needs every device's resolved update_interval (history's default cadence).
     history_records = _collect_history_records(flat)
 
@@ -147,4 +150,5 @@ def load_system(path: str | Path, log_levels_override: dict | None = None) -> Sy
     for on_bind in collect_hook(extensions_registry, "on_bind"):
         on_bind(system)
 
+    memory.log_rss("system loaded")
     return system
