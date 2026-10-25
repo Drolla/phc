@@ -8,6 +8,7 @@ import importlib
 import logging
 from pathlib import Path
 
+from phc.core import memory
 from phc.core.device import Device
 from phc.core.errors import ConfigError
 from phc.core.registry import _extension_packages, _read_descriptor_yaml, extension_package
@@ -162,4 +163,5 @@ def _load_extensions(raw: dict, flat: dict[str, Device],
             key = f"{ext_name}.{instance_name}"
             params = _merge_extension_params(descriptor, instance_config or {}, key, config_dir)
             registry[key] = configure(params, flat, key, registry)
+            memory.log_rss(f"extension {key}")
     return registry

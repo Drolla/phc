@@ -14,6 +14,10 @@ from pathlib import Path
 
 import yaml
 
+# First, so its baseline RSS (see phc.core.memory) precedes the rest of PHC.
+from phc.core import memory  # noqa: F401
+
+# isort: split
 from phc.core.config import ConfigError, System, load_system
 from phc.core.config.expand import check_syntax, expand_file
 from phc.core.device.config import _load_module_descriptor
