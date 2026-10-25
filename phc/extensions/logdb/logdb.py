@@ -565,10 +565,8 @@ class LogDb:
                             self.csv_path)
             return
 
-        # Parse straight into the arrays, then cut the retention window from
-        # the front: a per-row dict snapshot instead costs ~5x the arrays'
-        # memory at peak (a 120-column, 40k-row file peaked at ~200 MB), and
-        # CPython keeps that peak as RSS after freeing it.
+        # Parse straight into the arrays, then trim from the front: keeps peak
+        # memory (which CPython retains as RSS) near the arrays' own size.
         current = {label: _NAN for label in self.labels}
         columns = [(label, self._columns[label]) for label in self.labels]
         for line in lines[f_positions[0]:]:
