@@ -402,6 +402,32 @@ def test_restore_carries_forward_unchanged_values_across_delta_rows(tmp_path):
     db2.close()
 
 
+def test_restore_peak_memory_stays_near_the_restored_arrays(tmp_path):
+    # Regression: replay used to snapshot a dict per row before filling
+    # the arrays, peaking at several times their size.
+    import tracemalloc
+
+    labels = [f"dev{i}/ep" for i in range(50)]
+    path = _csv_path(tmp_path)
+    db = LogDb(path, labels)
+    values = dict.fromkeys(labels, 0.0)
+    for i in range(2000):
+        values[labels[i % 50]] = float(i)
+        db.log(float(i), values)
+    db.close()
+
+    tracemalloc.start()
+    try:
+        db2 = LogDb(path, labels)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    arrays = 2000 * (len(labels) + 1) * 8
+    assert len(db2) == 2000
+    assert peak < 2 * arrays
+    db2.close()
+
+
 def test_restore_with_no_data_rows_yields_empty_store(tmp_path):
     path = _csv_path(tmp_path)
     db = LogDb(path, ["a"])
