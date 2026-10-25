@@ -173,6 +173,7 @@ Located in [`docs/`](docs/):
   - [`docs/zway.md`](docs/zway.md)
   - [`docs/matter.md`](docs/matter.md)
   - [`docs/viessmann.md`](docs/viessmann.md)
+  - [`docs/system-monitor.md`](docs/system-monitor.md)
 - Raspberry Pi installation — [`docs/raspberry-pi-install.md`](docs/raspberry-pi-install.md)
 
 ### Developer Guide
