@@ -17,6 +17,11 @@ Changes merged into `main` since the 0.1.0 release, in order.
   `process_count` and `running` endpoints. See
   [`docs/system-monitor.md`](docs/system-monitor.md).
 
+**Bug fixes**
+
+- `logdb` no longer peaks at ~5x its history's size in memory while
+  loading it at startup (e.g. ~200 MB for 40k records x 120 columns).
+
 **Breaking changes**
 
 - `system_monitor` network and disk rates are now in MB/s instead of B/s.
