@@ -21,6 +21,8 @@ Changes merged into `main` since the 0.1.0 release, in order.
 
 - `logdb` no longer peaks at ~5x its history's size in memory while
   loading it at startup (e.g. ~200 MB for 40k records x 120 columns).
+- `logdb` with `max_age` restores its full window at startup, not just
+  the last ~64 KB of the CSV.
 
 **Breaking changes**
 
