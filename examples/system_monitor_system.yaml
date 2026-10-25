@@ -2,9 +2,11 @@
 #   python -m phc --config examples/system_monitor_system.yaml
 # then open http://127.0.0.1:8080/ in a browser.
 #
-# One page ("System") with two sections:
+# One page ("System") with three sections:
 #   - "Live Metrics" (open by default): every this_machine endpoint,
 #     rendered as live-updating labels.
+#   - "PHC Process" (open by default): CPU, memory and uptime of PHC's own
+#     process (phc_process, a system_monitor device with `match`).
 #   - "History" (open by default): two graph panels charting CPU/memory
 #     and network throughput over time (see the logdb instance and
 #     log_system_metrics task below, which is what actually samples it).
@@ -23,6 +25,14 @@ devices:
     name: This Machine
     update: system_metrics
     disk_path: ""   # auto: "/" on Linux, system drive on Windows
+
+  # PHC's own process; other rules: match: { name: z-way-server } or
+  # match: { cmdline: "matter-server" }.
+  - id: phc_process
+    module: system_monitor
+    name: PHC Process
+    update: system_metrics
+    match: { self: true }
 
 extensions:
   # Feeds the "History" graph panels below -- see the log_system_metrics
@@ -46,6 +56,11 @@ extensions:
               title: Live Metrics
               collapsed: false
               selectors: ["this_machine/*"]
+            - id: phc_process
+              title: PHC Process
+              collapsed: false
+              selectors: ["phc_process/cpu_percent", "phc_process/memory_used",
+                          "phc_process/uptime_seconds"]
             - id: history
               title: History
               collapsed: false
@@ -67,7 +82,7 @@ extensions:
                   logdb_instance: "logdb.system_monitor_log"
                   selectors: ["this_machine/network_rx_rate", "this_machine/network_tx_rate"]
                   title: "Network Throughput"
-                  unit: "B/s"
+                  unit: "MB/s"
                   window: 1h
                   decimation:
                     - older_than: 25h
