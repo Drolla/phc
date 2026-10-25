@@ -387,6 +387,26 @@ def test_restore_across_forced_multi_chunk_backward_read(tmp_path, monkeypatch):
     db2.close()
 
 
+def test_restore_honors_max_age_across_multi_chunk_backward_read(tmp_path, monkeypatch):
+    # Regression: the backward scan stopped at its first chunk whenever
+    # that chunk's anchor was younger than max_age, restoring only it.
+    import phc.extensions.logdb.logdb as logdb_module
+    monkeypatch.setattr(logdb_module, "_INITIAL_CHUNK_SIZE", 64)
+    monkeypatch.setattr(logdb_module.time, "time", lambda: 1000.0)
+
+    path = _csv_path(tmp_path)
+    db = LogDb(path, ["a"], full_vector_interval=10)
+    for t in range(900, 1001):
+        db.log(float(t), {"a": float(t)})
+    db.close()
+
+    db2 = LogDb(path, ["a"], full_vector_interval=10, max_age=50.0)
+    rows = db2.get_range(0, 2000)
+    assert [r["time"] for r in rows] == [float(t) for t in range(950, 1001)]
+    assert rows[0]["a"] == 950.0
+    db2.close()
+
+
 def test_restore_carries_forward_unchanged_values_across_delta_rows(tmp_path):
     path = _csv_path(tmp_path)
     db = LogDb(path, ["a", "b"], full_vector_interval=100)
