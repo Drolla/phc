@@ -13,7 +13,8 @@ Changes merged into `main` since the 0.1.0 release, in order.
 **New features**
 
 - `matter` module: `air_quality`, `pressure`, `co2`, `voc` and `radon` endpoint
-  profiles, e.g. for the Airthings bridge. See
+  profiles, an `airthings_bridge` device profile, and `bridged:` to select a
+  bridge's device by name. See
   [`examples/matter_airthings_system.yaml`](examples/matter_airthings_system.yaml).
 
 ### 2026-10-25
