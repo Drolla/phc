@@ -335,6 +335,40 @@ Tested on a real device (LEDVANCE Matter plug): reading `switch`, `power`,
 `voltage` and `energy`. Switching, `dimmer` and the sensor profiles follow
 the Matter specification but haven't been tried on hardware yet.
 
+### Bridges (Airthings bridge)
+
+A bridge is one Matter device that exposes several devices, one per numbered
+part (`endpoint:`). The
+[Airthings bridge](https://github.com/Drolla/Airthings-Bridge) is one:
+`matter list` shows its parts as `cellar_office`, `cellar_room`, ... With
+`bridged:` you name the part instead of counting numbers, so the config
+keeps working when a sensor is added to the bridge or the order changes.
+`bridged:` is a glob over the part's name or serial number (upper/lower case
+doesn't matter, unless `match_case: true`), and must match exactly one part:
+
+```yaml
+- key: temperature
+  endpoint_profile: temperature
+  node: "Airthings Bridge"
+  bridged: cellar_office
+```
+
+It can also be set once on the device. The `airthings_bridge` device profile
+defines all readings of a Wave Plus sensor, so each sensor needs only its
+name:
+
+```yaml
+- id: cellar_office
+  module: matter
+  name: Cellar Office Air Quality
+  node: "Airthings Bridge"
+  device_profile: airthings_bridge
+  bridged: cellar_office
+```
+
+`endpoint: <n>` still works for a fixed number, and takes precedence over a
+`bridged:` set on the device.
+
 ### Any other attribute
 
 For a value without a profile, an endpoint can name the Matter attribute

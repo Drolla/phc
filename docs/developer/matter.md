@@ -99,6 +99,7 @@ protocol facts here are ordinary endpoint fields declared in
 | Field | Meaning |
 |---|---|
 | `attribute` | `"cluster/attribute"`; the endpoint number is `endpoint:` (default 1) |
+| `bridged` | name or serial glob of a bridge's device; resolved to the endpoint number once per generation (like `node`), a bridged name or serial change bumps the generation |
 | `field` | struct member tag to read |
 | `mask` | read a bitmap as "any of these bits set" |
 | `scale` | wire unit × scale = endpoint unit |
