@@ -155,6 +155,11 @@ services:
   matterjs-server:
     container_name: matterjs-server
     image: ghcr.io/matter-js/matterjs-server:1.5.4  # pinned version
+    command: ["--enable-test-net-dcl"]  # accept not-certified devices
+    # For troubleshooting, replace the line above with this one to also get
+    # detailed logs (view them with `docker compose logs -f`). Switch back
+    # afterwards: debug logs are large and slow down the Pi.
+    # command: ["--enable-test-net-dcl", "--log-level", "debug"]
     restart: unless-stopped
     network_mode: host            # required for Matter device discovery
     read_only: true
@@ -315,6 +320,11 @@ the module's [`module.yaml`](../phc/devices/matter/module.yaml#L94); see
 | `motion` | detected or not | no | Occupancy `1030/0` |
 | `contact` | open/closed | no | Boolean State `69/0` |
 | `battery` | % | no | Power Source `47/12` |
+| `air_quality` | good, fair, moderate, poor, ... (number 1-6, text shown) | no | Air Quality `91/0` |
+| `pressure` | hPa | no | `1027/0` |
+| `co2` | ppm | no | `1037/0` |
+| `voc` | ppb | no | `1070/0` (the Matter value is in ppm) |
+| `radon` | Bq/m³ | no | `1071/0` |
 
 With `update: 1s`, values follow a change within about a second. A device
 that is offline,
