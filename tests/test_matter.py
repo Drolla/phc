@@ -657,3 +657,83 @@ def test_runs_through_scheduler_ticks():
     finally:
         loop.run_until_complete(finish())
         scheduler.close()
+
+
+# ---------- bridged devices ----------
+
+
+def bridge_nodes():
+    """A bridge node (id 9) exposing two devices on endpoints 2 and 3."""
+    return [_node(9, "Airthings Bridge", "BRIDGE-1", **{
+        "2/57/5": "cellar_office", "2/57/15": "SN-OFFICE", "2/1026/0": 1910,
+        "3/57/5": "cellar_room", "3/57/15": "SN-ROOM", "3/1026/0": 1830,
+    })]
+
+
+TEMPERATURE = {"attribute": "1026/0", "value_type": "float", "scale": 0.01}
+
+
+def test_bridged_finds_the_endpoint_by_name_or_serial():
+    async def body(url, controller):
+        device = build_device(url, {
+            "office": {**TEMPERATURE, "bridged": "cellar_office"},
+            "room": {**TEMPERATURE, "bridged": "SN-ROOM"},
+            "upper": {**TEMPERATURE, "bridged": "CELLAR_ROOM"},   # case-insensitive
+        }, node="Airthings Bridge")
+        return await device.receive_async()
+
+    assert run(with_server(body, nodes=bridge_nodes())) == {
+        "office": 19.1, "room": 18.3, "upper": 18.3}
+
+
+def test_device_bridged_is_the_default_and_an_endpoint_number_overrides_it():
+    async def body(url, controller):
+        device = build_device(url, {
+            "name": {**TEMPERATURE},
+            "number": {**TEMPERATURE, "endpoint": 3},
+        }, node="Airthings Bridge", bridged="cellar_office")
+        return await device.receive_async()
+
+    assert run(with_server(body, nodes=bridge_nodes())) == {"name": 19.1, "number": 18.3}
+
+
+def test_unknown_or_ambiguous_bridged_name_costs_only_its_own_endpoint():
+    async def body(url, controller):
+        device = build_device(url, {
+            "ok": {**TEMPERATURE, "bridged": "cellar_room"},
+            "none": {**TEMPERATURE, "bridged": "attic"},
+            "both": {**TEMPERATURE, "bridged": "cellar_*"},
+        }, node="Airthings Bridge")
+        return await device.receive_async()
+
+    values = run(with_server(body, nodes=bridge_nodes()))
+    assert values == {"ok": 18.3, "none": None, "both": None}
+
+
+def test_relabelling_a_bridged_device_rebinds_the_endpoint():
+    async def body(url, controller):
+        device = build_device(url, {"t": {**TEMPERATURE, "bridged": "cellar_room"}},
+                              node="Airthings Bridge")
+        first = await device.receive_async()
+        await controller.push_attribute(9, "2/57/5", "cellar_room")   # now ambiguous
+        await controller.push_attribute(9, "3/57/5", "renamed")
+        await asyncio.sleep(0.05)
+        return first, await device.receive_async()
+
+    first, second = run(with_server(body, nodes=bridge_nodes()))
+    assert first == {"t": 18.3}
+    assert second == {"t": 19.1}      # endpoint 2 is the only "cellar_room" now
+
+
+def test_bridged_write_goes_to_the_found_endpoint():
+    async def body(url, controller):
+        controller.nodes[9]["attributes"]["3/6/0"] = False
+        device = build_device(url, {"sw": {**SWITCH, "bridged": "cellar_room"}},
+                              node="Airthings Bridge")
+        await device.receive_async()
+        await device.transmit_async({"sw": True})
+        return controller.commands()
+
+    sent = run(with_server(body, nodes=bridge_nodes()))
+    assert sent[-1]["endpoint_id"] == 3
+    assert sent[-1]["command_name"] == "On"

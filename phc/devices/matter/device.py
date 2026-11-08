@@ -86,17 +86,23 @@ class MatterDevice(Device):
         }
 
         default_node = self.params.get("node")
-        # key -> (node pattern, match_case, "endpoint/cluster/attribute")
+        default_bridged = self.params.get("bridged")
+        # key -> (node pattern, match_case, "cluster/attribute", endpoint
+        # number, bridged-device pattern)
         self._specs: dict[str, tuple] = {}
         for key, endpoint in self.endpoints.items():
             params = endpoint.params
-            attribute = params.get("attribute")
-            path = None if attribute is None else (
-                f"{params.get('endpoint', DEFAULT_ENDPOINT)}/{attribute}")
+            bridged = params.get("bridged")
+            if bridged is None and "endpoint" not in params:
+                bridged = default_bridged   # an endpoint's own number wins over the device's
             self._specs[key] = (params.get("node", default_node),
-                                bool(params.get("match_case")), path)
-        # endpoint key -> node id, filled in by _bind once connected.
+                                bool(params.get("match_case")), params.get("attribute"),
+                                int(params.get("endpoint", DEFAULT_ENDPOINT)), bridged)
+        # endpoint key -> node id and "endpoint/cluster/attribute" path (the
+        # endpoint number being found by name for a bridged device), filled
+        # in by _bind once connected.
         self._node_ids: dict[str, int] = {}
+        self._paths: dict[str, str] = {}
         self._bound_generation = -1
 
     def _bind(self, connection: MatterConnection):
@@ -110,12 +116,17 @@ class MatterDevice(Device):
             return
         self._bound_generation = connection.generation
         self._node_ids = {}
-        for key, (pattern, match_case, path) in self._specs.items():
-            if pattern is None or path is None:
+        self._paths = {}
+        for key, (pattern, match_case, attribute, number, bridged) in self._specs.items():
+            if pattern is None or attribute is None:
                 self.report_failure(f"endpoint {key!r} needs a node and an attribute")
                 continue
             try:
-                self._node_ids[key] = connection.resolve(pattern, match_case)
+                node_id = connection.resolve(pattern, match_case)
+                if bridged is not None:
+                    number = connection.resolve_endpoint(node_id, bridged, match_case)
+                self._node_ids[key] = node_id
+                self._paths[key] = f"{number}/{attribute}"
             except MatterError as exc:
                 # One unmatched pattern must not cost this device its other
                 # endpoints, nor the server its connection.
@@ -137,7 +148,7 @@ class MatterDevice(Device):
             if node_id is None:
                 values[key] = None
                 continue
-            raw = connection.read(node_id, self._specs[key][2])
+            raw = connection.read(node_id, self._paths[key])
             values[key] = to_phc(raw, endpoint.params, endpoint.value_type)
         return values
 
@@ -155,13 +166,11 @@ class MatterDevice(Device):
                 self.report_failure(f"endpoint {key!r} is not bound to a matter node")
                 continue
             params = self.endpoints[key].params
-            cluster = int(self._specs[key][2].split("/")[1])
+            number, cluster = (int(part) for part in self._paths[key].split("/")[:2])
             try:
                 # Validated here, before anything reaches the wire -- see
                 # matter_ws.write_for.
                 name, payload = write_for(value, params)
-                await connection.command(
-                    node_id, int(params.get("endpoint", DEFAULT_ENDPOINT)),
-                    cluster, name, payload)
+                await connection.command(node_id, number, cluster, name, payload)
             except MatterError as exc:
                 self.report_failure(f"write to node {node_id} failed: {exc}")
