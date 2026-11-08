@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Changes merged into `main` since the 0.1.0 release, in order.
 
+### 2026-11-08
+
+**New features**
+
+- `matter` module: `air_quality`, `pressure`, `co2`, `voc` and `radon` endpoint
+  profiles, an `airthings_bridge` device profile, and `bridged:` to select a
+  bridge's device by name. See
+  [`examples/matter_airthings_system.yaml`](examples/matter_airthings_system.yaml).
+
 ### 2026-10-25
 
 **New features**

@@ -35,6 +35,11 @@ BACKOFF = (1.0, 10.0, 60.0, 300.0)
 LABEL_PATH = "0/40/5"
 SERIAL_PATH = "0/40/15"
 
+# Bridged Device Basic Information cluster (0x39): the NodeLabel and
+# SerialNumber of each device a bridge node exposes, one per endpoint.
+BRIDGED_LABEL_ATTRIBUTE = "57/5"
+BRIDGED_SERIAL_ATTRIBUTE = "57/15"
+
 
 def _release(connector):
     """Drop a connector's transports without needing a running loop.
@@ -286,12 +291,12 @@ class MatterConnection:
         node_id = node.get("node_id")
         if node_id is None:
             return
-        old_label = self.label(node_id)
+        old_names = (self.label(node_id), self.bridged_names(node_id))
         self.nodes[node_id] = {
             "available": bool(node.get("available", True)),
             "attributes": node.get("attributes") or {},
         }
-        if old_label != self.label(node_id):
+        if old_names != (self.label(node_id), self.bridged_names(node_id)):
             self.generation += 1
 
     def _fail(self, error: str):
@@ -432,7 +437,8 @@ class MatterConnection:
             node = self.nodes.get(node_id)
             if node is not None:
                 node["attributes"][path] = value
-                if path == LABEL_PATH:
+                if path == LABEL_PATH or path.endswith(
+                        ("/" + BRIDGED_LABEL_ATTRIBUTE, "/" + BRIDGED_SERIAL_ATTRIBUTE)):
                     self.generation += 1
         elif event in ("node_added", "node_updated"):
             self._store(data)
@@ -460,6 +466,19 @@ class MatterConnection:
         """The node's NodeLabel, or "" if it has none."""
         node = self.nodes.get(node_id)
         return str(node["attributes"].get(LABEL_PATH) or "") if node else ""
+
+    def bridged_names(self, node_id: int) -> dict[int, list[str]]:
+        """Map each bridged endpoint of a node to its label and serial number."""
+        node = self.nodes.get(node_id)
+        names: dict[int, list[str]] = {}
+        if node is None:
+            return names
+        for path, value in node["attributes"].items():
+            endpoint, _, attribute = path.partition("/")
+            if (value and endpoint.isdigit()
+                    and attribute in (BRIDGED_LABEL_ATTRIBUTE, BRIDGED_SERIAL_ATTRIBUTE)):
+                names.setdefault(int(endpoint), []).append(str(value))
+        return names
 
     def read(self, node_id: int, path: str) -> Any:
         """Return a cached attribute value; None if unknown or unavailable."""
@@ -490,6 +509,24 @@ class MatterConnection:
             listed = ", ".join(f"{node_id} ({names[node_id][0]})"
                                for node_id in sorted(matches))
             raise MatterLookupError(f"{pattern!r} matches {len(matches)} matter nodes: {listed}")
+        return matches[0]
+
+    def resolve_endpoint(self, node_id: int, pattern: str, match_case: bool = False) -> int:
+        """Return the endpoint of a bridge node's one device matching `pattern`.
+
+        An fnmatch glob over the bridged device's NodeLabel and SerialNumber,
+        like resolve() does for nodes; raises unless exactly one matches."""
+        names = self.bridged_names(node_id)
+        matches = match_nodes(pattern, names, match_case)
+        if not matches:
+            raise MatterLookupError(
+                f"no bridged device matches {pattern!r} on matter node {node_id}")
+        if len(matches) > 1:
+            listed = ", ".join(f"{endpoint} ({names[endpoint][0]})"
+                               for endpoint in sorted(matches))
+            raise MatterLookupError(
+                f"{pattern!r} matches {len(matches)} bridged devices on matter node "
+                f"{node_id}: {listed}")
         return matches[0]
 
     async def command(self, node_id: int, endpoint: int, cluster: int,

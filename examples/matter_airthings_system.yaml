@@ -1,0 +1,53 @@
+# Airthings Wave Plus sensors read through the Matter server of the Airthings
+# bridge (https://github.com/Drolla/Airthings-Bridge, "matter:" section of its
+# configuration).
+#
+# The bridge appears as ONE Matter node, with an Aggregator (endpoint 1) and
+# one bridged Air Quality Sensor per Wave Plus device, found by the name it
+# has on the bridge (`bridged:`). Pair the bridge with the
+# matterjs-server first (the bridge's web UI shows the pairing code), then
+# name it:
+#   matter label <node-id> "Airthings Bridge"
+# `matter list` (docs/matter.md) shows the name of each sensor.
+#
+# pressure, co2 and voc are only exposed when the bridge lists them under
+# `matter: values:`; an endpoint of a missing value reads None.
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+intervals:
+  matter: 1s
+
+modules:
+  matter:
+    update: matter
+    url: "ws://127.0.0.1:5580/ws"
+    # One node for all devices below
+    node: "Airthings Bridge"
+
+devices:
+  # One device profile, one device per sensor: only the sensor's name on the
+  # bridge differs.
+  - id: cellar_office
+    module: matter
+    name: Cellar Office Air Quality
+    device_profile: airthings_bridge
+    bridged: cellar_office
+
+  - id: cellar_room
+    module: matter
+    name: Cellar Room Air Quality
+    device_profile: airthings_bridge
+    bridged: cellar_room
+
+tasks:
+  - tag: report_cellar_office_radon
+    description: "Log the cellar office's radon reading, at most once a minute"
+    condition: { device: "cellar_office.radon", changed: true }
+    min_interval: 1m
+    action: { kind: log, device: "cellar_office", message: "cellar_office radon changed to {state}" }

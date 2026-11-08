@@ -41,6 +41,14 @@ parameters:
       The node this device's endpoints belong to: a glob over the node's
       label and serial number, or a node id. An endpoint can override it
       with its own `node`.
+  - name: bridged
+    override: allowed
+    description: >
+      For a bridge node (one Matter node exposing several devices, such as
+      the Airthings bridge): the device of the bridge these endpoints read,
+      a glob over its name (NodeLabel) and serial number, with the same case
+      rules as `node`. PHC finds the Matter endpoint number from it. An
+      endpoint can set its own `bridged`, or a fixed `endpoint:`.
   - name: request_timeout
     override: allowed
     default: "10s"
@@ -63,7 +71,12 @@ endpoint_parameters:
       Match `node` case-sensitively. Defaults to false.
   - name: endpoint
     description: >
-      The Matter endpoint number on the node. Defaults to 1.
+      The Matter endpoint number on the node. Defaults to 1. For a bridge
+      node, `bridged:` finds it by name instead.
+  - name: bridged
+    description: >
+      The device of a bridge node this endpoint reads: a glob over its name
+      (NodeLabel) and serial number. Defaults to the device's `bridged`.
   - name: attribute
     description: >
       The attribute to read, as "cluster/attribute" in decimal, e.g. "6/0"
@@ -90,6 +103,25 @@ endpoint_parameters:
       to get the attribute's unit.
 
 endpoints: []
+
+device_profiles:
+  # One Airthings Wave Plus sensor behind the Airthings bridge's Matter
+  # server (https://github.com/Drolla/Airthings-Bridge). The bridge is one
+  # node with a bridged sensor per endpoint: set `node:` to the bridge and
+  # `bridged:` to the sensor's name on the bridge.
+  airthings_bridge:
+    brand: Airthings
+    product: Wave Plus
+    description: Radon and air-quality sensor, via the Airthings bridge
+    endpoints:
+      - { key: air_quality, endpoint_profile: air_quality, bridged: "{bridged}" }
+      - { key: temperature, endpoint_profile: temperature, bridged: "{bridged}" }
+      - { key: humidity, endpoint_profile: humidity, bridged: "{bridged}" }
+      - { key: pressure, endpoint_profile: pressure, bridged: "{bridged}" }
+      - { key: co2, endpoint_profile: co2, bridged: "{bridged}" }
+      - { key: voc, endpoint_profile: voc, bridged: "{bridged}" }
+      - { key: radon, endpoint_profile: radon, bridged: "{bridged}" }
+      - { key: battery, endpoint_profile: battery, bridged: "{bridged}" }
 
 endpoint_profiles:
   switch:
@@ -165,3 +197,35 @@ endpoint_profiles:
     type: int
     unit: "%"
     name: Battery
+  # Air-quality sensors: Matter measurement clusters, as exposed by the
+  # Airthings bridge (https://github.com/Drolla/Airthings-Bridge).
+  air_quality:
+    attribute: "91/0"
+    type: int
+    # Stays a number for tasks and graphs; the UI and logs show the text.
+    values: { 0: "unknown", 1: "good", 2: "fair", 3: "moderate", 4: "poor", 5: "very poor", 6: "extremely poor" }
+    name: Air Quality
+    description: "Matter air quality level, 0 (unknown) to 6 (extremely poor)"
+  pressure:
+    attribute: "1027/0"
+    type: int
+    unit: hPa
+    name: Pressure
+    description: "Matter pressure unit is 0.1 kPa, which is 1 hPa"
+  co2:
+    attribute: "1037/0"
+    type: float
+    unit: ppm
+    name: CO2
+  voc:
+    attribute: "1070/0"
+    scale: 1000
+    type: int
+    unit: ppb
+    name: TVOC
+    description: "Read in ppm (as the Airthings bridge sends it), shown in ppb"
+  radon:
+    attribute: "1071/0"
+    type: int
+    unit: "Bq/m3"
+    name: Radon

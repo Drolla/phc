@@ -155,6 +155,11 @@ services:
   matterjs-server:
     container_name: matterjs-server
     image: ghcr.io/matter-js/matterjs-server:1.5.4  # pinned version
+    command: ["--enable-test-net-dcl"]  # accept not-certified devices
+    # For troubleshooting, replace the line above with this one to also get
+    # detailed logs (view them with `docker compose logs -f`). Switch back
+    # afterwards: debug logs are large and slow down the Pi.
+    # command: ["--enable-test-net-dcl", "--log-level", "debug"]
     restart: unless-stopped
     network_mode: host            # required for Matter device discovery
     read_only: true
@@ -315,6 +320,11 @@ the module's [`module.yaml`](../phc/devices/matter/module.yaml#L94); see
 | `motion` | detected or not | no | Occupancy `1030/0` |
 | `contact` | open/closed | no | Boolean State `69/0` |
 | `battery` | % | no | Power Source `47/12` |
+| `air_quality` | good, fair, moderate, poor, ... (number 1-6, text shown) | no | Air Quality `91/0` |
+| `pressure` | hPa | no | `1027/0` |
+| `co2` | ppm | no | `1037/0` |
+| `voc` | ppb | no | `1070/0` (the Matter value is in ppm) |
+| `radon` | Bq/m³ | no | `1071/0` |
 
 With `update: 1s`, values follow a change within about a second. A device
 that is offline,
@@ -324,6 +334,40 @@ after the server restarts.
 Tested on a real device (LEDVANCE Matter plug): reading `switch`, `power`,
 `voltage` and `energy`. Switching, `dimmer` and the sensor profiles follow
 the Matter specification but haven't been tried on hardware yet.
+
+### Bridges (Airthings bridge)
+
+A bridge is one Matter device that exposes several devices, one per numbered
+part (`endpoint:`). The
+[Airthings bridge](https://github.com/Drolla/Airthings-Bridge) is one:
+`matter list` shows its parts as `cellar_office`, `cellar_room`, ... With
+`bridged:` you name the part instead of counting numbers, so the config
+keeps working when a sensor is added to the bridge or the order changes.
+`bridged:` is a glob over the part's name or serial number (upper/lower case
+doesn't matter, unless `match_case: true`), and must match exactly one part:
+
+```yaml
+- key: temperature
+  endpoint_profile: temperature
+  node: "Airthings Bridge"
+  bridged: cellar_office
+```
+
+It can also be set once on the device. The `airthings_bridge` device profile
+defines all readings of a Wave Plus sensor, so each sensor needs only its
+name:
+
+```yaml
+- id: cellar_office
+  module: matter
+  name: Cellar Office Air Quality
+  node: "Airthings Bridge"
+  device_profile: airthings_bridge
+  bridged: cellar_office
+```
+
+`endpoint: <n>` still works for a fixed number, and takes precedence over a
+`bridged:` set on the device.
 
 ### Any other attribute
 
