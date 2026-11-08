@@ -1,0 +1,65 @@
+# Airthings Wave Plus sensors read through the Matter server of the Airthings
+# bridge (https://github.com/Drolla/Airthings-Bridge, "matter:" section of its
+# configuration).
+#
+# The bridge appears as ONE Matter node, with an Aggregator (endpoint 1) and
+# one bridged Air Quality Sensor per Wave Plus device (endpoint 2, 3, ...,
+# in the order the bridge lists them). Pair the bridge with the
+# matterjs-server first (the bridge's web UI shows the pairing code), then
+# name it:
+#   matter label <node-id> "Airthings Bridge"
+# `matter list` (docs/matter.md) shows the endpoint number of each sensor.
+#
+# pressure, co2 and voc are only exposed when the bridge lists them under
+# `matter: values:`; an endpoint of a missing value reads None.
+
+heartbeat: 1s
+
+log:
+  - dest: stdout
+    levels:
+      default: INFO
+
+intervals:
+  matter: 1s
+
+modules:
+  matter:
+    update: matter
+    url: "ws://127.0.0.1:5580/ws"
+    # One node for all devices below
+    node: "Airthings Bridge"
+
+devices:
+  - id: cellar_office
+    module: matter
+    name: Cellar Office Air Quality
+    endpoints:
+      - { key: air_quality, endpoint_profile: air_quality, endpoint: 3 }
+      - { key: temperature, endpoint_profile: temperature, endpoint: 3 }
+      - { key: humidity,    endpoint_profile: humidity,    endpoint: 3 }
+      - { key: pressure,    endpoint_profile: pressure,    endpoint: 3 }
+      - { key: co2,         endpoint_profile: co2,         endpoint: 3 }
+      - { key: voc,         endpoint_profile: voc,         endpoint: 3 }
+      - { key: radon,       endpoint_profile: radon,       endpoint: 3 }
+      - { key: battery,     endpoint_profile: battery,     endpoint: 3 }
+
+  - id: cellar_room
+    module: matter
+    name: Cellar Room Air Quality
+    endpoints:
+      - { key: air_quality, endpoint_profile: air_quality, endpoint: 4 }
+      - { key: temperature, endpoint_profile: temperature, endpoint: 4 }
+      - { key: humidity,    endpoint_profile: humidity,    endpoint: 4 }
+      - { key: pressure,    endpoint_profile: pressure,    endpoint: 4 }
+      - { key: co2,         endpoint_profile: co2,         endpoint: 4 }
+      - { key: voc,         endpoint_profile: voc,         endpoint: 4 }
+      - { key: radon,       endpoint_profile: radon,       endpoint: 4 }
+      - { key: battery,     endpoint_profile: battery,     endpoint: 4 }
+
+tasks:
+  - tag: report_cellar_office_radon
+    description: "Log the cellar office's radon reading, at most once a minute"
+    condition: { device: "cellar_office.radon", changed: true }
+    min_interval: 1m
+    action: { kind: log, device: "cellar_office", message: "cellar_office radon changed to {state}" }
