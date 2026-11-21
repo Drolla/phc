@@ -6,6 +6,8 @@
 
 [![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Matter](https://img.shields.io/badge/Matter-supported-1F6FEB)](docs/matter.md)
+[![Raspberry Pi](https://img.shields.io/badge/runs%20on-Raspberry%20Pi-C51A4A)](docs/raspberry-pi-install.md)
 [![AI-friendly](https://img.shields.io/badge/workflow-AI--friendly-8A63D2)](docs/developer/agentic-adding-a-device.md)
 
 Pylon Home Control is a compact home automation framework: describe your home
