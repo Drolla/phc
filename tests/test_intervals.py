@@ -141,9 +141,10 @@ def test_parse_time_relative_years_months_calendar_arithmetic():
     before = datetime.now()
     result = parse_time("+1Y2M")
     result_dt = datetime.fromtimestamp(result)
-    assert result_dt.year == before.year + 1
-    expected_month = (before.month - 1 + 2) % 12 + 1
-    assert result_dt.month == expected_month
+    total_months = before.month - 1 + 2
+    # months past December carry into the year
+    assert result_dt.year == before.year + 1 + total_months // 12
+    assert result_dt.month == total_months % 12 + 1
 
 
 def test_parse_time_relative_year_month_and_days_combined():
