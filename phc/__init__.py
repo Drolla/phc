@@ -16,4 +16,4 @@ The pieces live in the three subpackages:
 entry point (see `__main__.py`).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

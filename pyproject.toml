@@ -1,6 +1,6 @@
 [project]
 name = "phc"
-version = "0.1.0"
+version = "0.2.0"
 description = "YAML-configured home automation framework"
 requires-python = ">=3.11"
 dependencies = [
